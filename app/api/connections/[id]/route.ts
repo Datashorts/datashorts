@@ -18,22 +18,32 @@ export async function DELETE(
       );
     }
     
-    const connectionId = parseInt(params.id);
+    console.log('Deleting connection with ID:', params.id);
+    
+
+    const connectionId = typeof params.id === 'string' ? parseInt(params.id) : params.id;
     
     if (isNaN(connectionId)) {
+      console.error('Invalid connection ID:', params.id);
       return NextResponse.json(
         { error: 'Invalid connection ID' },
         { status: 400 }
       );
     }
     
-    // First, delete all table sync status records for this connection
+    console.log('Parsed connection ID:', connectionId);
+    
+
+    console.log('Deleting table sync status records for connection ID:', connectionId);
     await db.delete(tableSyncStatus)
       .where(eq(tableSyncStatus.connectionId, connectionId));
     
-    // Then delete the connection itself
+
+    console.log('Deleting connection with ID:', connectionId);
     await db.delete(dbConnections)
       .where(eq(dbConnections.id, connectionId));
+    
+    console.log('Connection and associated sync status records deleted successfully');
     
     return NextResponse.json({ 
       success: true,

@@ -300,9 +300,14 @@ export default function Sidebar() {
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation()
-                                  removeConnectionFromFolder(folder.id, connection.id)
+                                  try {
+                                    await removeConnectionFromFolder(folder.id, connection.id)
+
+                                  } catch (error) {
+                                    console.error('Error deleting connection:', error);
+                                  }
                                 }}
                                 className="text-red-500 hover:text-red-400"
                                 disabled={isLoading}
