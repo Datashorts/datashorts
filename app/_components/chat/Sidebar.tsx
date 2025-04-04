@@ -12,7 +12,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { useUser } from '@clerk/nextjs'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-
+// mongodb+srv://karthiknadar1204:u31oziQ2NgYPhzS9@cluster0.eibha1d.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 export default function Sidebar() {
   const router = useRouter()
   const { user } = useUser()
@@ -69,7 +69,7 @@ export default function Sidebar() {
     if (newFolderName.trim() && user) {
       await addFolder(user.id, newFolderName)
       
-      // If a connection was selected, add it to the new folder
+
       if (selectedConnectionForFolder) {
         const folderId = folders[folders.length - 1].id
         addConnectionToFolder(folderId, selectedConnectionForFolder)
@@ -93,7 +93,7 @@ export default function Sidebar() {
     })
   }
 
-  // Generate a unique endpoint for a connection
+
   const generateConnectionEndpoint = (connectionId: string, dbName: string) => {
     return `/chats/${connectionId}/${encodeURIComponent(dbName)}`
   }
@@ -101,21 +101,35 @@ export default function Sidebar() {
   const handleCreateConnection = async () => {
     if (newConnection.name && selectedFolderForConnection) {
       try {
-        // Show loading state
         useFoldersStore.setState({ isLoading: true })
         
-        // Make API call to connect to the database
-        const response = await fetch('/api/connectdb', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
+        const apiEndpoint = newConnection.type === 'mongodb' 
+          ? '/api/connectMongodb' 
+          : '/api/connectdb'
+        
+        // Prepare request body based on database type
+        let requestBody;
+        if (newConnection.type === 'mongodb') {
+          requestBody = {
+            mongoUrl: newConnection.url,
+            connectionName: newConnection.name,
+            folderId: selectedFolderForConnection
+          };
+        } else {
+          requestBody = {
             name: newConnection.name,
             type: newConnection.type,
             url: newConnection.url,
             folderId: selectedFolderForConnection
-          }),
+          };
+        }
+        
+        const response = await fetch(apiEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
           credentials: 'include'
         })
         
@@ -126,33 +140,26 @@ export default function Sidebar() {
         
         const data = await response.json()
         
-        // Create the connection with the ID from the API response
         const connectionWithId = {
           ...newConnection,
-          id: data.connection.id
+          id: data.id || data.connection.id
         }
         
-        // Generate the unique endpoint for this connection
-        const endpoint = generateConnectionEndpoint(connectionWithId.id, connectionWithId.name)
+        const connectionEndpoint = generateConnectionEndpoint(connectionWithId.id, connectionWithId.name)
         
-        // Log the connection details
         console.log('Creating connection:', {
           folderId: selectedFolderForConnection,
           connection: connectionWithId,
-          endpoint: endpoint,
+          endpoint: connectionEndpoint,
           apiResponse: data
         })
         
-        // Add the connection to the folder
         addConnectionToFolder(selectedFolderForConnection, connectionWithId)
         
-        // Close the modal and reset the form
         closeCreateConnectionModal()
       } catch (error) {
         console.error('Error creating connection:', error)
-        // You could add a toast notification here to show the error
       } finally {
-        // Reset loading state
         useFoldersStore.setState({ isLoading: false })
       }
     }
@@ -160,7 +167,7 @@ export default function Sidebar() {
 
   const handleConnectionClick = (connectionId: string, dbName: string) => {
     setActiveConnection(connectionId)
-    // Navigate to the chat page with the connection ID and database name
+
     const endpoint = generateConnectionEndpoint(connectionId, dbName)
     router.push(endpoint)
   }

@@ -1,7 +1,7 @@
 import { Client } from 'pg';
 import { NextResponse } from 'next/server';
 import { db } from '@/configs/db';
-import { dbConnections, tableSyncStatus } from '@/configs/schema';
+import { dbConnections } from '@/configs/schema';
 import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs';
@@ -169,20 +169,6 @@ export async function POST(request: NextRequest) {
     
     // Reset NODE_TLS_REJECT_UNAUTHORIZED to make sure we don't affect other operations
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
-    
-    // Record initial sync status for each table
-    const syncPromises = allTableData.map(table => 
-      db.insert(tableSyncStatus).values({
-        connectionId: newConnection.id,
-        tableName: table.tableName,
-        lastSyncTimestamp: new Date(),
-        lastSyncRowCount: table.data.length,
-        dbType: 'postgresql',
-      })
-    );
-
-    await Promise.all(syncPromises);
-    console.log('Initial sync status recorded for all tables');
     
     return NextResponse.json({ 
       success: true,
