@@ -33,7 +33,8 @@ export default function Sidebar() {
     removeFolder,
     addConnectionToFolder,
     setSelectedConnectionForFolder,
-    loadFolders
+    loadFolders,
+    removeConnectionFromFolder
   } = useFoldersStore()
 
   const [expandedFolders, setExpandedFolders] = useState<Record<number, boolean>>({})
@@ -269,6 +270,18 @@ export default function Sidebar() {
                               <span className="text-xs text-gray-500 ml-auto">
                                 {connection.type}
                               </span>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  removeConnectionFromFolder(folder.id, connection.id)
+                                }}
+                                className="text-red-500 hover:text-red-400"
+                                disabled={isLoading}
+                              >
+                                <Trash2 size={12} />
+                              </Button>
                             </li>
                           ))}
                         </ul>
