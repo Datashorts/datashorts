@@ -7,51 +7,224 @@ import { NextRequest } from 'next/server';
 import { auth } from '@clerk/nextjs';
 
 export async function POST(request: NextRequest) {
+  let client;
   try {
-
     const user = await currentUser();
-    
-    if (!user) {
+    const { name, type, url, folderId } = await request.json();
+
+    if (!url || !name) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-    
-    const body = await request.json();
-    const { name, type, url } = body;
-    
-    if (!name || !type || !url) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Database URL and connection name are required' },
         { status: 400 }
       );
     }
+
+    // Only proceed with PostgreSQL connections for now
+    if (type !== 'postgres') {
+      return NextResponse.json(
+        { error: 'Only PostgreSQL connections are supported at this time' },
+        { status: 400 }
+      );
+    }
+
+    // Parse the connection string to determine if it includes SSL parameters
+    const hasSSLParam = url.includes('sslmode=');
     
-    // For now, we're just validating the connection without syncing data
-    // In a real implementation, you would:
-    // 1. Test the connection to the database
-    // 2. Fetch schema information
-    // 3. Store the connection details in your database
+    // Create connection options - trying a more forceful approach to disable SSL checking
+    let connectionOptions = { 
+      connectionString: url,
+      statement_timeout: 30000,
+      query_timeout: 30000
+    };
     
-    // Simulate a successful connection
-    return NextResponse.json({
+    // Only add SSL options if not already specified in the URL
+    if (!hasSSLParam) {
+      // Set SSL mode to 'no-verify' - this is the most permissive setting
+      if (url.includes('?')) {
+        connectionOptions.connectionString = `${url}&sslmode=no-verify`;
+      } else {
+        connectionOptions.connectionString = `${url}?sslmode=no-verify`;
+      }
+      
+      // Add SSL configuration object as a fallback
+      connectionOptions.ssl = {
+        rejectUnauthorized: false
+      };
+    }
+
+    console.log('Attempting to connect with modified connection string...');
+    console.log('SSL parameters configured:', !hasSSLParam);
+    
+    client = new Client(connectionOptions);
+    
+    // Set a node environment variable to disable node's certificate checking
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    
+    try {
+      await client.connect();
+      console.log('Successfully connected to PostgreSQL database');
+    } catch (connectError) {
+      console.error('Initial connection failed:', connectError);
+      
+      // If first attempt fails, try with different SSL settings
+      console.log('Trying alternative connection method...');
+      await client.end();
+      
+      // Try with direct SSL settings approach
+      connectionOptions = { 
+        connectionString: url.split('?')[0], // Remove any existing params
+        statement_timeout: 30000,
+        query_timeout: 30000,
+        ssl: {
+          rejectUnauthorized: false
+        }
+      };
+      
+      client = new Client(connectionOptions);
+      await client.connect();
+      console.log('Connected with alternative method');
+    }
+
+    // Restore the environment variable after connection
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+
+    const tablesResult = await client.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema='public'
+    `);
+
+    const tables = tablesResult.rows;
+    console.log("Retrieved tables:", tables.length);
+    
+    const CHUNK_SIZE = 5;
+    const tableChunks = chunkArray(tables, CHUNK_SIZE);
+    console.log("Processing tables in chunks of:", CHUNK_SIZE);
+    
+    const allTableData = [];
+
+    for (const chunk of tableChunks) {
+      const chunkPromises = chunk.map(async (table) => {
+        const tableName = table.table_name;
+        console.log(`Processing table: ${tableName}`);
+        
+        try {
+          const [columnsResult, dataResult] = await Promise.all([
+            client.query(`
+              SELECT column_name, data_type 
+              FROM information_schema.columns 
+              WHERE table_schema='public' 
+              AND table_name=$1
+            `, [tableName]),
+            
+            client.query(`
+              SELECT * FROM "${tableName}" LIMIT 1000
+            `)
+          ]);
+          
+          console.log(`Table ${tableName}: Found ${columnsResult.rows.length} columns and ${dataResult.rows.length} rows`);
+          
+          return {
+            tableName,
+            columns: columnsResult.rows,
+            data: dataResult.rows
+          };
+        } catch (tableError) {
+          console.error(`Error processing table ${tableName}:`, tableError);
+          return {
+            tableName,
+            columns: [],
+            data: [],
+            error: tableError.message
+          };
+        }
+      });
+      
+      const chunkResults = await Promise.all(chunkPromises);
+      allTableData.push(...chunkResults);
+    }
+
+    console.log('Closing database connection...');
+    await client.end();
+    console.log('Database connection closed');
+
+    console.log('Saving connection information to application database...');
+    const [newConnection] = await db.insert(dbConnections).values({
+      userId: user.id,
+      folderId: folderId,
+      connectionName: name,
+      postgresUrl: url,
+      dbType: type,
+      tableSchema: JSON.stringify(allTableData.map(t => ({
+        tableName: t.tableName,
+        columns: t.columns
+      }))),
+      tableData: JSON.stringify(allTableData.map(t => ({
+        tableName: t.tableName,
+        data: t.data
+      })))
+    }).returning();
+
+    console.log('Connection saved successfully with ID:', newConnection.id);
+    
+    // Reset NODE_TLS_REJECT_UNAUTHORIZED to make sure we don't affect other operations
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+    
+    // Record initial sync status for each table
+    const syncPromises = allTableData.map(table => 
+      db.insert(tableSyncStatus).values({
+        connectionId: newConnection.id,
+        tableName: table.tableName,
+        lastSyncTimestamp: new Date(),
+        lastSyncRowCount: table.data.length,
+        dbType: 'postgresql',
+      })
+    );
+
+    await Promise.all(syncPromises);
+    console.log('Initial sync status recorded for all tables');
+    
+    return NextResponse.json({ 
       success: true,
       message: 'Connection established successfully',
       connection: {
-        id: Date.now().toString(), // Temporary ID, will be replaced with UUID in the frontend
-        name,
-        type,
+        id: newConnection.id,
+        name: name,
+        type: type,
+        folderId: folderId,
         url: url.replace(/\/\/[^:]+:[^@]+@/, '//****:****@') // Mask credentials in logs
-      }
+      },
+      tables: allTableData
     });
-    
+
   } catch (error) {
-    console.error('Error connecting to database:', error);
+    console.error('Database connection error:', error);
+    
+    // Reset NODE_TLS_REJECT_UNAUTHORIZED in case of error
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+    
+    // More descriptive error response
     return NextResponse.json(
-      { error: 'Failed to connect to database' },
+      { 
+        error: error.message,
+        code: error.code,
+        details: 'Check that your PostgreSQL URL is correct and the server is accessible'
+      },
       { status: 500 }
     );
+  } finally {
+    if (client) {
+      try {
+        console.log('Ensuring database connection is closed...');
+        await client.end();
+        console.log('PostgreSQL client disconnected');
+      } catch (e) {
+        console.error('Error closing client:', e);
+      }
+    }
+    
+    // Final safety reset of NODE_TLS_REJECT_UNAUTHORIZED
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
   }
 }
 

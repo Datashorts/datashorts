@@ -107,7 +107,8 @@ export default function Sidebar() {
           body: JSON.stringify({
             name: newConnection.name,
             type: newConnection.type,
-            url: newConnection.url
+            url: newConnection.url,
+            folderId: selectedFolderForConnection
           }),
           credentials: 'include'
         })
@@ -122,7 +123,7 @@ export default function Sidebar() {
         // Create the connection with the ID from the API response
         const connectionWithId = {
           ...newConnection,
-          id: uuidv4() // Still generate a UUID for the frontend
+          id: data.connection.id
         }
         
         // Generate the unique endpoint for this connection
