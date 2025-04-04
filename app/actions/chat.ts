@@ -160,7 +160,44 @@ export async function getQueryEmbeddings(message, connectionId) {
 
     const reconstructedData = [];
     const rowsByTable = {};
+    // Example dataChunk:
+    // {
+    //   "tableName": "users",
+    //   "entries": [
+    //     {
+    //       "pk": { "id": 1 },
+    //       "attribute": { "name": "Alice" }
+    //     },
+    //     {
+    //       "pk": { "id": 1 },
+    //       "attribute": { "email": "alice@example.com" }
+    //     }
+    //   ]
+    // }
+    // For each chunk, look at each entry.
 
+// Group entries by primary key (converted to string).
+
+// Combine their attributes.
+
+// Example:
+
+// {
+//   pk: { id: 1 },
+//   attribute: { name: "Alice" }
+// }
+// {
+//   pk: { id: 1 },
+//   attribute: { email: "alice@example.com" }
+// }
+// Becomes:
+// {
+//   id: 1,
+//   name: "Alice",
+//   email: "alice@example.com"
+// }
+
+    
     dataChunks.forEach(chunk => {
       const tableName = chunk.tableName;
       rowsByTable[tableName] = rowsByTable[tableName] || {};
@@ -183,7 +220,17 @@ export async function getQueryEmbeddings(message, connectionId) {
       }
     });
 
-
+    // Convert Grouped Rows to Final Format
+    // [
+    //   {
+    //     tableName: "users",
+    //     sampleData: [
+    //       { id: 1, name: "Alice", email: "alice@example.com" },
+    //       { id: 2, name: "Bob", email: "bob@example.com" }
+    //     ]
+    //   }
+    // ]
+    
     Object.entries(rowsByTable).forEach(([tableName, rows]) => {
       const rowsArray = Object.values(rows);
       console.log(`Reconstructed ${rowsArray.length} rows for table ${tableName}`);
