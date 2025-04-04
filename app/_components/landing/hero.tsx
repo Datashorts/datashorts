@@ -1,10 +1,10 @@
 'use client'
 
-import { Button } from "@/components/ui/button"
 import { SignInButton, SignedIn, SignedOut, useUser } from '@clerk/nextjs'
 import { useEffect } from 'react'
 import { StoreUser } from '@/app/actions/user'
 import { useRouter } from 'next/navigation'
+import { v4 as uuidv4 } from 'uuid'
 
 export default function Hero() {
   const { user, isLoaded } = useUser()
@@ -13,123 +13,80 @@ export default function Hero() {
   useEffect(() => {
     const syncUser = async () => {
       if (user) {
-        await StoreUser(
-          user.id,
-          user.firstName || user.username || 'User',
-          user.emailAddresses[0]?.emailAddress || ''
-        )
+        await StoreUser({
+          id: user.id,
+          email: user.emailAddresses[0].emailAddress,
+          name: user.fullName,
+        })
       }
     }
-    
-    if (isLoaded && user) {
-      syncUser()
+    syncUser()
+  }, [user])
+
+  const handleGetStarted = () => {
+    if (user) {
+      const chatId = uuidv4()
+      router.push(`/chats/${chatId}`)
     }
-  }, [user, isLoaded])
+  }
 
   return (
-    <section className="py-20 md:py-28 bg-[#121212]">
-      <div className="container mx-auto px-6 md:px-8 lg:px-12 max-w-7xl">
-        <div className="grid gap-6 lg:grid-cols-2 lg:gap-12 items-center">
-          <div className="flex flex-col justify-center space-y-4">
-            <div className="space-y-2">
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tighter">
-                <span className="text-blue-500">Chat</span> With Your Data,
-                <br />
-                <span className="text-blue-500">Naturally</span>
-              </h1>
-              <p className="max-w-[600px] text-gray-400 md:text-xl">
-                Talk to your PostgreSQL and MongoDB databases through an intuitive AI-powered interface that understands
-                your intent.
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <SignedOut>
-                <SignInButton mode="modal">
-                  <Button className="bg-blue-600 hover:bg-blue-700">Get Started</Button>
-                </SignInButton>
-              </SignedOut>
-              <SignedIn>
-                <Button 
-                  onClick={() => router.push('/chats')}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  Go to Dashboard
-                </Button>
-              </SignedIn>
-              <Button variant="outline" className="border-gray-700 hover:bg-gray-800">
-                Explore Features
-              </Button>
-            </div>
-            <div className="flex items-center gap-2 pt-2">
-              <div className="flex items-center justify-center rounded-full bg-gray-800 px-2.5 py-1 text-xs">PG</div>
-              <div className="flex items-center justify-center rounded-full bg-gray-800 px-2.5 py-1 text-xs">MDB</div>
-              <span className="text-xs text-gray-400">Compatible with PostgreSQL & MongoDB</span>
-            </div>
+    <div className="relative isolate overflow-hidden bg-[#121212]">
+      <div className="mx-auto max-w-7xl px-6 pb-24 pt-10 sm:pb-32 lg:flex lg:px-8 lg:py-40">
+        <div className="mx-auto max-w-2xl flex-shrink-0 lg:mx-0 lg:max-w-xl lg:pt-8">
+          <div className="mt-24 sm:mt-32 lg:mt-16">
+            <a href="#" className="inline-flex space-x-6">
+              <span className="rounded-full bg-blue-500/10 px-3 py-1 text-sm font-semibold leading-6 text-blue-400 ring-1 ring-inset ring-blue-500/20">
+                What's new
+              </span>
+              <span className="inline-flex items-center space-x-2 text-sm font-medium leading-6 text-gray-300">
+                <span>Just shipped v1.0</span>
+                <svg className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+                </svg>
+              </span>
+            </a>
           </div>
-          <div className="relative h-[400px] lg:h-[500px] rounded-lg border border-gray-800 bg-[#1a1a1a] p-4">
-            <div className="absolute top-4 left-4 flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-green-500"></div>
-              <span className="text-sm">DataChat Assistant</span>
-            </div>
-            <div className="absolute right-4 top-4">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-gray-400"
-              >
-                <rect width="18" height="18" x="3" y="3" rx="2" />
-                <path d="M9 3v18" />
-                <path d="M14 15l2 2 4-4" />
-              </svg>
-            </div>
-            <div className="mt-12 p-4">
-              <div className="mb-6 ml-auto max-w-[80%] rounded-lg bg-blue-600 p-3">
-                <p className="text-sm">All categories, but highlight top performers</p>
-              </div>
-              <div className="mb-4">
-                <p className="text-sm mb-2">Here&apos;s your sales data by region for Q2 2023:</p>
-                <div className="h-32 bg-[#222] rounded-md p-4 flex items-end gap-4">
-                  <div className="h-16 w-6 bg-blue-500 rounded"></div>
-                  <div className="h-20 w-6 bg-blue-500 rounded"></div>
-                  <div className="h-12 w-6 bg-blue-500 rounded"></div>
-                  <div className="h-24 w-6 bg-blue-500 rounded"></div>
-                </div>
-              </div>
-              <div className="relative mt-8">
-                <input
-                  type="text"
-                  placeholder="Ask about your data..."
-                  className="w-full rounded-md border border-gray-700 bg-[#222] px-4 py-2 text-sm"
-                />
-                <button className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-blue-600 p-1">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="m22 2-7 20-4-9-9-4Z" />
-                    <path d="M22 2 11 13" />
-                  </svg>
+          <h1 className="mt-10 text-4xl font-bold tracking-tight text-white sm:text-6xl">
+            Chat with your database using natural language
+          </h1>
+          <p className="mt-6 text-lg leading-8 text-gray-300">
+            Ask questions about your data in plain English and get instant answers. No SQL required.
+          </p>
+          <div className="mt-10 flex items-center gap-x-6">
+            <SignedOut>
+              <SignInButton mode="modal">
+                <button className="rounded-md bg-blue-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                  Get Started
                 </button>
-              </div>
-            </div>
+              </SignInButton>
+            </SignedOut>
+            <SignedIn>
+              <button
+                onClick={handleGetStarted}
+                className="rounded-md bg-blue-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              >
+                Go to Dashboard
+              </button>
+            </SignedIn>
+            <a href="#features" className="text-sm font-semibold leading-6 text-white">
+              Learn more <span aria-hidden="true">→</span>
+            </a>
+          </div>
+        </div>
+        <div className="mx-auto mt-16 flex max-w-2xl sm:mt-24 lg:ml-10 lg:mr-0 lg:mt-0 lg:max-w-none lg:flex-none xl:ml-32">
+          <div className="max-w-3xl flex-none sm:max-w-5xl lg:max-w-none">
+            <img
+              src="https://tailwindui.com/img/component-images/dark-project-app-screenshot.png"
+              alt="App screenshot"
+              width={2432}
+              height={1442}
+              className="w-[76rem] rounded-md bg-white/5 shadow-2xl ring-1 ring-white/10"
+            />
           </div>
         </div>
       </div>
-    </section>
+    </div>
   )
 }
 

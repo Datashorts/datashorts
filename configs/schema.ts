@@ -18,9 +18,20 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').defaultNow()
 });
 
+export const folders = pgTable('folders', {
+  id: serial('id').primaryKey(),
+  userId: text('user_id').references(() => users.clerk_id).notNull(),
+  name: varchar('name', { length: 256 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  userIdIdx: index('folder_user_id_idx').on(table.userId)
+}));
+
 export const dbConnections = pgTable('db_connections', {
   id: serial('id').primaryKey(),
   userId: varchar('user_id', { length: 256 }).references(() => users.clerk_id).notNull(),
+  folderId: integer('folder_id').references(() => folders.id),
   connectionName: varchar('connection_name', { length: 256 }).notNull(),
   postgresUrl: text('postgres_url'),
   mongoUrl: text('mongo_url'),
@@ -30,7 +41,8 @@ export const dbConnections = pgTable('db_connections', {
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({
-  userIdIdx: index('user_id_idx').on(table.userId)
+  userIdIdx: index('user_id_idx').on(table.userId),
+  folderIdIdx: index('folder_id_idx').on(table.folderId)
 }))
 
 export const tableSyncStatus = pgTable('table_sync_status', {
@@ -50,5 +62,24 @@ export const chatsRelations = relations(chats, ({ one }) => ({
   user: one(users, {
     fields: [chats.userId],
     references: [users.clerk_id],
+  }),
+}));
+
+export const foldersRelations = relations(folders, ({ one, many }) => ({
+  user: one(users, {
+    fields: [folders.userId],
+    references: [users.clerk_id],
+  }),
+  connections: many(dbConnections),
+}));
+
+export const connectionsRelations = relations(dbConnections, ({ one }) => ({
+  user: one(users, {
+    fields: [dbConnections.userId],
+    references: [users.clerk_id],
+  }),
+  folder: one(folders, {
+    fields: [dbConnections.folderId],
+    references: [folders.id],
   }),
 }));

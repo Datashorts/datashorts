@@ -1,0 +1,339 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useFoldersStore } from '@/app/store/useFoldersStore'
+import { Folder, Connection } from '@/app/store/useFoldersStore'
+import { ChevronDown, ChevronRight, Folder as FolderIcon, Database, Plus, Trash2, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { useRouter } from 'next/navigation'
+import { v4 as uuidv4 } from 'uuid'
+import { useUser } from '@clerk/nextjs'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+export default function Sidebar() {
+  const router = useRouter()
+  const { user } = useUser()
+  const { 
+    folders, 
+    activeFolderId, 
+    activeConnectionId,
+    isCreateFolderModalOpen,
+    newFolderName,
+    selectedConnectionForFolder,
+    isLoading,
+    setActiveFolder,
+    setActiveConnection,
+    openCreateFolderModal,
+    closeCreateFolderModal,
+    setNewFolderName,
+    addFolder,
+    removeFolder,
+    addConnectionToFolder,
+    setSelectedConnectionForFolder,
+    loadFolders
+  } = useFoldersStore()
+
+  const [expandedFolders, setExpandedFolders] = useState<Record<number, boolean>>({})
+  const [isCreateConnectionModalOpen, setIsCreateConnectionModalOpen] = useState(false)
+  const [selectedFolderForConnection, setSelectedFolderForConnection] = useState<number | null>(null)
+  const [newConnection, setNewConnection] = useState<Connection>({
+    id: '',
+    name: '',
+    type: 'postgres',
+    url: ''
+  })
+
+  useEffect(() => {
+    if (user) {
+      loadFolders(user.id)
+    }
+  }, [loadFolders, user])
+
+  const toggleFolder = (folderId: number) => {
+    setExpandedFolders(prev => ({
+      ...prev,
+      [folderId]: !prev[folderId]
+    }))
+  }
+
+  const handleCreateFolder = async () => {
+    if (newFolderName.trim() && user) {
+      await addFolder(user.id, newFolderName)
+      
+      // If a connection was selected, add it to the new folder
+      if (selectedConnectionForFolder) {
+        const folderId = folders[folders.length - 1].id
+        addConnectionToFolder(folderId, selectedConnectionForFolder)
+      }
+    }
+  }
+
+  const openCreateConnectionModal = (folderId: number) => {
+    setSelectedFolderForConnection(folderId)
+    setIsCreateConnectionModalOpen(true)
+  }
+
+  const closeCreateConnectionModal = () => {
+    setIsCreateConnectionModalOpen(false)
+    setSelectedFolderForConnection(null)
+    setNewConnection({
+      id: '',
+      name: '',
+      type: 'postgres',
+      url: ''
+    })
+  }
+
+  // Generate a unique endpoint for a connection
+  const generateConnectionEndpoint = (connectionId: string, dbName: string) => {
+    return `/chats/${connectionId}/${encodeURIComponent(dbName)}`
+  }
+
+  const handleCreateConnection = () => {
+    if (newConnection.name && selectedFolderForConnection) {
+      const connectionWithId = {
+        ...newConnection,
+        id: uuidv4()
+      }
+      
+      // Generate the unique endpoint for this connection
+      const endpoint = generateConnectionEndpoint(connectionWithId.id, connectionWithId.name)
+      
+      // Log the connection details
+      console.log('Creating connection:', {
+        folderId: selectedFolderForConnection,
+        connection: connectionWithId,
+        endpoint: endpoint
+      })
+      
+      // Add the connection to the folder
+      addConnectionToFolder(selectedFolderForConnection, connectionWithId)
+      
+      // Close the modal and reset the form
+      closeCreateConnectionModal()
+    }
+  }
+
+  const handleConnectionClick = (connectionId: string, dbName: string) => {
+    setActiveConnection(connectionId)
+    // Navigate to the chat page with the connection ID and database name
+    const endpoint = generateConnectionEndpoint(connectionId, dbName)
+    router.push(endpoint)
+  }
+
+  if (!user) {
+    return (
+      <div className="w-64 h-full bg-[#1a1a1a] border-r border-gray-800 p-4 flex items-center justify-center">
+        <p className="text-gray-400 text-sm">Please sign in to view your folders.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-64 h-full bg-[#1a1a1a] border-r border-gray-800 p-4 flex flex-col">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-lg font-semibold">Folders</h2>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={openCreateFolderModal}
+          className="text-blue-500 hover:text-blue-400"
+          disabled={isLoading}
+        >
+          <Plus size={16} />
+        </Button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-32">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+          </div>
+        ) : folders.length === 0 ? (
+          <p className="text-gray-400 text-sm">No folders yet. Create one to get started.</p>
+        ) : (
+          <ul className="space-y-2">
+            {folders.map(folder => (
+              <li key={folder.id} className="border border-gray-800 rounded-md">
+                <div 
+                  className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-800"
+                  onClick={() => toggleFolder(folder.id)}
+                >
+                  <div className="flex items-center gap-2">
+                    {expandedFolders[folder.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    <FolderIcon size={16} className="text-blue-500" />
+                    <span>{folder.name}</span>
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removeFolder(folder.id)
+                    }}
+                    className="text-red-500 hover:text-red-400"
+                    disabled={isLoading}
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+                
+                {expandedFolders[folder.id] && (
+                  <div className="pl-6 pr-2 pb-2">
+                    <div className="flex justify-between items-center mb-2 mt-2">
+                      <h3 className="text-sm font-medium">Connections</h3>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openCreateConnectionModal(folder.id)
+                        }}
+                        className="text-blue-500 hover:text-blue-400 text-xs"
+                        disabled={isLoading}
+                      >
+                        <Plus size={14} />
+                      </Button>
+                    </div>
+                    
+                    {folder.connections.length === 0 ? (
+                      <p className="text-gray-400 text-xs">No connections in this folder.</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {folder.connections.map(connection => (
+                          <li 
+                            key={connection.id}
+                            className={`flex items-center gap-2 p-1 rounded cursor-pointer ${
+                              activeConnectionId === connection.id ? 'bg-blue-900/30' : 'hover:bg-gray-800'
+                            }`}
+                            onClick={() => handleConnectionClick(connection.id, connection.name)}
+                          >
+                            <Database size={14} className="text-blue-500" />
+                            <span className="text-sm">{connection.name}</span>
+                            <span className="text-xs text-gray-500 ml-auto">
+                              {connection.type}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Create Folder Modal */}
+      <Dialog open={isCreateFolderModalOpen} onOpenChange={closeCreateFolderModal}>
+        <DialogContent className="bg-[#1a1a1a] text-white border-gray-800">
+          <DialogHeader>
+            <DialogTitle>Create New Folder</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              placeholder="Folder Name"
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              className="bg-[#222] border-gray-700 text-white"
+              disabled={isLoading}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeCreateFolderModal} className="border-gray-700">
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCreateFolder} 
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                'Create'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Connection Modal */}
+      <Dialog open={isCreateConnectionModalOpen} onOpenChange={closeCreateConnectionModal}>
+        <DialogContent className="bg-[#1a1a1a] text-white border-gray-800">
+          <DialogHeader>
+            <DialogTitle>Add Database Connection</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="connection-name">Database Name</Label>
+              <Input
+                id="connection-name"
+                placeholder="My Database"
+                value={newConnection.name}
+                onChange={(e) => setNewConnection(prev => ({ ...prev, name: e.target.value }))}
+                className="bg-[#222] border-gray-700 text-white"
+                disabled={isLoading}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="connection-type">Database Type</Label>
+              <Select 
+                value={newConnection.type} 
+                onValueChange={(value) => setNewConnection(prev => ({ ...prev, type: value as 'postgres' | 'mongodb' }))}
+                disabled={isLoading}
+              >
+                <SelectTrigger className="bg-[#222] border-gray-700 text-white">
+                  <SelectValue placeholder="Select database type" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#222] border-gray-700 text-white">
+                  <SelectItem value="postgres">PostgreSQL</SelectItem>
+                  <SelectItem value="mongodb">MongoDB</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="connection-url">Connection URL</Label>
+              <Input
+                id="connection-url"
+                placeholder="postgresql://username:password@host:port/database"
+                value={newConnection.url}
+                onChange={(e) => setNewConnection(prev => ({ ...prev, url: e.target.value }))}
+                className="bg-[#222] border-gray-700 text-white"
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeCreateConnectionModal} className="border-gray-700">
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCreateConnection} 
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={isLoading || !newConnection.name}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                'Connect'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+} 
