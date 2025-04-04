@@ -150,36 +150,18 @@ export const useFoldersStore = create<FoldersState>((set, get) => ({
   loadFolders: async (userId) => {
     set({ isLoading: true })
     try {
-      const folders = await getFolders(userId)
-      
-      // Get all connections for this user
-      const response = await fetch(`/api/connections?userId=${userId}`, {
+
+      const response = await fetch(`/api/folders-with-connections?userId=${userId}`, {
         credentials: 'include'
       })
       
       if (!response.ok) {
-        throw new Error('Failed to fetch connections')
+        throw new Error('Failed to fetch folders with connections')
       }
       
-      const connections = await response.json()
+      const foldersWithConnections = await response.json()
       
-      // Map connections to their respective folders
-      const foldersWithConnections = folders.map(folder => {
-        const folderConnections = connections.filter(
-          (conn: any) => conn.folderId === folder.id
-        ).map((conn: any) => ({
-          id: conn.id.toString(),
-          name: conn.connectionName,
-          type: conn.dbType,
-          url: conn.postgresUrl || conn.mongoUrl || ''
-        }))
-        
-        return { 
-          ...folder, 
-          connections: folderConnections 
-        }
-      })
-      
+      // Set the folders with their connections
       set({ folders: foldersWithConnections })
     } catch (error) {
       console.error('Error loading folders:', error)
