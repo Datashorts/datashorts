@@ -31,7 +31,7 @@ type FoldersState = {
   setActiveFolder: (id: number | null) => void
   setActiveConnection: (id: string | null) => void
   addConnectionToFolder: (folderId: number, connection: Connection) => void
-  removeConnectionFromFolder: (folderId: number, connectionId: string) => Promise<void>
+  removeConnectionFromFolder: (folderId: number, connectionId: string) => Promise<boolean>
   openCreateFolderModal: () => void
   closeCreateFolderModal: () => void
   setNewFolderName: (name: string) => void
@@ -69,7 +69,7 @@ export const useFoldersStore = create<FoldersState>((set, get) => ({
   removeFolder: async (id) => {
     set({ isLoading: true })
     try {
-      // Call the API endpoint to delete the folder and its connections
+
       const response = await fetch(`/api/folders/${id}`, {
         method: 'DELETE',
         credentials: 'include'
@@ -80,7 +80,7 @@ export const useFoldersStore = create<FoldersState>((set, get) => ({
         throw new Error(errorData.error || 'Failed to delete folder')
       }
       
-      // Update the local state after successful deletion
+
       set((state) => ({ 
         folders: state.folders.filter(folder => folder.id !== id),
         activeFolderId: state.activeFolderId === id ? null : state.activeFolderId
@@ -109,18 +109,24 @@ export const useFoldersStore = create<FoldersState>((set, get) => ({
   removeConnectionFromFolder: async (folderId, connectionId) => {
     set({ isLoading: true })
     try {
-      // Call the API endpoint to delete the connection
-      const response = await fetch(`/api/connections/${connectionId}`, {
+      console.log(`Deleting connection ${connectionId} from folder ${folderId}`);
+      
+
+      const response = await fetch(`/api/connections/${connectionId}/`, {
         method: 'DELETE',
         credentials: 'include'
       })
       
       if (!response.ok) {
         const errorData = await response.json()
+        console.error('Failed to delete connection:', errorData);
         throw new Error(errorData.error || 'Failed to delete connection')
       }
       
-      // Update the local state after successful deletion
+      const result = await response.json();
+      console.log('Connection deleted successfully:', result);
+      
+
       set((state) => ({
         folders: state.folders.map(folder => 
           folder.id === folderId 
@@ -128,8 +134,11 @@ export const useFoldersStore = create<FoldersState>((set, get) => ({
             : folder
         )
       }))
+      
+      return true;
     } catch (error) {
-      console.error('Error removing connection:', error)
+      console.error('Error removing connection from folder:', error);
+      throw error;
     } finally {
       set({ isLoading: false })
     }
