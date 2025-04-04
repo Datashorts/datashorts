@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useFoldersStore } from '@/app/store/useFoldersStore'
 import { Folder, Connection } from '@/app/store/useFoldersStore'
-import { ChevronDown, ChevronRight, Folder as FolderIcon, Database, Plus, Trash2, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Folder as FolderIcon, Database, Plus, Trash2, Loader2, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -39,6 +39,7 @@ export default function Sidebar() {
   const [expandedFolders, setExpandedFolders] = useState<Record<number, boolean>>({})
   const [isCreateConnectionModalOpen, setIsCreateConnectionModalOpen] = useState(false)
   const [selectedFolderForConnection, setSelectedFolderForConnection] = useState<number | null>(null)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [newConnection, setNewConnection] = useState<Connection>({
     id: '',
     name: '',
@@ -57,6 +58,10 @@ export default function Sidebar() {
       ...prev,
       [folderId]: !prev[folderId]
     }))
+  }
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed(!isSidebarCollapsed)
   }
 
   const handleCreateFolder = async () => {
@@ -161,107 +166,149 @@ export default function Sidebar() {
 
   if (!user) {
     return (
-      <div className="w-64 h-full bg-[#1a1a1a] border-r border-gray-800 p-4 flex items-center justify-center">
+      <div className={`h-full bg-[#1a1a1a] border-r border-gray-800 p-4 flex items-center justify-center transition-all duration-300 ${isSidebarCollapsed ? 'w-12' : 'w-64'}`}>
         <p className="text-gray-400 text-sm">Please sign in to view your folders.</p>
       </div>
     )
   }
 
   return (
-    <div className="w-64 h-full bg-[#1a1a1a] border-r border-gray-800 p-4 flex flex-col">
+    <div className={`h-full bg-[#1a1a1a] border-r border-gray-800 p-4 flex flex-col transition-all duration-300 ${isSidebarCollapsed ? 'w-12' : 'w-64'}`}>
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold">Folders</h2>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={openCreateFolderModal}
-          className="text-blue-500 hover:text-blue-400"
-          disabled={isLoading}
-        >
-          <Plus size={16} />
-        </Button>
+        {!isSidebarCollapsed && <h2 className="text-lg font-semibold">Folders</h2>}
+        <div className="flex items-center gap-2">
+          {!isSidebarCollapsed && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={openCreateFolderModal}
+              className="text-blue-500 hover:text-blue-400"
+              disabled={isLoading}
+            >
+              <Plus size={16} />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleSidebar}
+            className="text-gray-400 hover:text-gray-300"
+          >
+            {isSidebarCollapsed ? <ChevronRightIcon size={16} /> : <ChevronLeft size={16} />}
+          </Button>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-32">
-            <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-          </div>
-        ) : folders.length === 0 ? (
-          <p className="text-gray-400 text-sm">No folders yet. Create one to get started.</p>
-        ) : (
-          <ul className="space-y-2">
-            {folders.map(folder => (
-              <li key={folder.id} className="border border-gray-800 rounded-md">
-                <div 
-                  className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-800"
-                  onClick={() => toggleFolder(folder.id)}
-                >
-                  <div className="flex items-center gap-2">
-                    {expandedFolders[folder.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    <FolderIcon size={16} className="text-blue-500" />
-                    <span>{folder.name}</span>
-                  </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removeFolder(folder.id)
-                    }}
-                    className="text-red-500 hover:text-red-400"
-                    disabled={isLoading}
+      {!isSidebarCollapsed && (
+        <div className="flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+            </div>
+          ) : folders.length === 0 ? (
+            <p className="text-gray-400 text-sm">No folders yet. Create one to get started.</p>
+          ) : (
+            <ul className="space-y-2">
+              {folders.map(folder => (
+                <li key={folder.id} className="border border-gray-800 rounded-md">
+                  <div 
+                    className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-800"
+                    onClick={() => toggleFolder(folder.id)}
                   >
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
-                
-                {expandedFolders[folder.id] && (
-                  <div className="pl-6 pr-2 pb-2">
-                    <div className="flex justify-between items-center mb-2 mt-2">
-                      <h3 className="text-sm font-medium">Connections</h3>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          openCreateConnectionModal(folder.id)
-                        }}
-                        className="text-blue-500 hover:text-blue-400 text-xs"
-                        disabled={isLoading}
-                      >
-                        <Plus size={14} />
-                      </Button>
+                    <div className="flex items-center gap-2">
+                      {expandedFolders[folder.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      <FolderIcon size={16} className="text-blue-500" />
+                      <span>{folder.name}</span>
                     </div>
-                    
-                    {folder.connections.length === 0 ? (
-                      <p className="text-gray-400 text-xs">No connections in this folder.</p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {folder.connections.map(connection => (
-                          <li 
-                            key={connection.id}
-                            className={`flex items-center gap-2 p-1 rounded cursor-pointer ${
-                              activeConnectionId === connection.id ? 'bg-blue-900/30' : 'hover:bg-gray-800'
-                            }`}
-                            onClick={() => handleConnectionClick(connection.id, connection.name)}
-                          >
-                            <Database size={14} className="text-blue-500" />
-                            <span className="text-sm">{connection.name}</span>
-                            <span className="text-xs text-gray-500 ml-auto">
-                              {connection.type}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        removeFolder(folder.id)
+                      }}
+                      className="text-red-500 hover:text-red-400"
+                      disabled={isLoading}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
                   </div>
-                )}
-              </li>
+                  
+                  {expandedFolders[folder.id] && (
+                    <div className="pl-6 pr-2 pb-2">
+                      <div className="flex justify-between items-center mb-2 mt-2">
+                        <h3 className="text-sm font-medium">Connections</h3>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openCreateConnectionModal(folder.id)
+                          }}
+                          className="text-blue-500 hover:text-blue-400 text-xs"
+                          disabled={isLoading}
+                        >
+                          <Plus size={14} />
+                        </Button>
+                      </div>
+                      
+                      {folder.connections.length === 0 ? (
+                        <p className="text-gray-400 text-xs">No connections in this folder.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {folder.connections.map(connection => (
+                            <li 
+                              key={connection.id}
+                              className={`flex items-center gap-2 p-1 rounded cursor-pointer ${
+                                activeConnectionId === connection.id ? 'bg-blue-900/30' : 'hover:bg-gray-800'
+                              }`}
+                              onClick={() => handleConnectionClick(connection.id, connection.name)}
+                            >
+                              <Database size={14} className="text-blue-500" />
+                              <span className="text-sm">{connection.name}</span>
+                              <span className="text-xs text-gray-500 ml-auto">
+                                {connection.type}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {isSidebarCollapsed && (
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={openCreateFolderModal}
+            className="text-blue-500 hover:text-blue-400 mb-4"
+            disabled={isLoading}
+          >
+            <Plus size={16} />
+          </Button>
+          <div className="flex flex-col items-center gap-2">
+            {folders.map(folder => (
+              <Button
+                key={folder.id}
+                variant="ghost"
+                size="sm"
+                onClick={() => toggleFolder(folder.id)}
+                className="text-gray-400 hover:text-gray-300"
+                title={folder.name}
+              >
+                <FolderIcon size={16} className="text-blue-500" />
+              </Button>
             ))}
-          </ul>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Folder Modal */}
       <Dialog open={isCreateFolderModalOpen} onOpenChange={closeCreateFolderModal}>

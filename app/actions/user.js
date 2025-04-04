@@ -1,6 +1,6 @@
 import { db } from "@/configs/db";
 import { eq } from "drizzle-orm";
-import { users } from "@/configs/schema"
+import { users } from "@/configs/schema";
 
 export async function StoreUser(userData) {
   try {
