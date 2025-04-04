@@ -1,7 +1,7 @@
-import { openaiClient } from '../utils/instructorClient';
+import { grokClient } from '@/app/lib/clients';
 
 export const taskManager = async function taskManager(messages) {
-  // Check if it's an SQL query request
+
   const userMessage = messages[messages.length - 1].content.toLowerCase();
   const isSqlRequest = userMessage.includes('sql query') || 
                       userMessage.includes('write sql') || 
@@ -52,8 +52,8 @@ Return JSON format.`
   };
 
   try {
-    // Use Grok-2-latest model
-    const fallbackResponse = await openaiClient.chat.completions.create({
+
+    const fallbackResponse = await grokClient.chat.completions.create({
       model: 'grok-2-latest',
       messages: [systemPrompt, ...messages],
       response_format: { type: 'json_object' },
