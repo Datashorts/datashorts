@@ -7,6 +7,8 @@ import { db } from "@/configs/db";
 import { eq, and } from "drizzle-orm";
 import { chats, dbConnections } from "@/configs/schema";
 import { chunkTableData } from "@/lib/utils/tokenManagement";
+import { taskManager } from "@/lib/agents/taskManager";
+import { inquire } from "@/lib/agents/inquire";
 
 
 export async function embeddings(data) {
@@ -267,18 +269,54 @@ export async function submitChat(userQuery, url) {
   console.log(`Extracted connection ID: ${connectionId}, connection name: ${connectionName}`);
   
   try {
-
-    const embeddingsResult = await getQueryEmbeddings(userQuery, connectionId);
+    // Get query embeddings and analyze intent in parallel
+    const [embeddingsResult, taskResult] = await Promise.all([
+      getQueryEmbeddings(userQuery, connectionId),
+      taskManager([
+        { 
+          role: 'system', 
+          content: 'Initial context. Direct questions about counts, totals, or current state should be analyzed directly.' 
+        },
+        { role: 'user', content: userQuery }
+      ])
+    ]);
+    
+    console.log('Task analysis:', taskResult);
     
 
-    return {
+    const databaseContext = formatDatabaseContext(embeddingsResult.context);
+    
+
+    let inquireResult = null;
+    if (taskResult.next === 'inquire') {
+      console.log('Calling inquire agent with database context and user query');
+      inquireResult = await inquire([
+        { role: 'system', content: databaseContext },
+        { role: 'user', content: userQuery }
+      ]);
+      console.log('Inquire agent response:', inquireResult);
+    }
+    
+    // Prepare the response object
+    const response = {
       success: true,
       embeddings: embeddingsResult.embeddings,
       matches: embeddingsResult.matches,
       connectionId,
       connectionName,
-      context: embeddingsResult.context
+      context: embeddingsResult.context,
+      intent: {
+        intent: taskResult.next,
+        tables: [], 
+        operation: taskResult.reason
+      },
+      inquire: inquireResult
     };
+    
+    // Store the chat in the database
+    await storeChatInDatabase(userQuery, response, connectionId);
+    
+    return response;
   } catch (error) {
     console.error('Error in submitChat:', error);
     return {
@@ -286,5 +324,91 @@ export async function submitChat(userQuery, url) {
       error: error.message
     };
   }
+}
+
+// Function to store chat in the database
+async function storeChatInDatabase(userQuery, response, connectionId) {
+  try {
+    const user = await currentUser();
+    if (!user) {
+      console.error('No authenticated user found');
+      return;
+    }
+    
+    // Check if a chat record already exists for this connection
+    const existingChats = await db
+      .select()
+      .from(chats)
+      .where(eq(chats.connectionId, connectionId));
+    
+    const timestamp = new Date().toISOString();
+    
+    // Prepare the chat entry
+    const chatEntry = {
+      message: userQuery,
+      response: JSON.stringify(response),
+      timestamp
+    };
+    
+    if (existingChats.length > 0) {
+      // Update existing chat record
+      const existingChat = existingChats[0];
+      const conversation = existingChat.conversation || [];
+      
+      // Add the new chat entry to the conversation
+      conversation.push(chatEntry);
+      
+      // Update the chat record
+      await db
+        .update(chats)
+        .set({
+          conversation,
+          updatedAt: new Date()
+        })
+        .where(eq(chats.id, existingChat.id));
+      
+      console.log(`Updated chat record for connection ID: ${connectionId}`);
+    } else {
+      // Create a new chat record
+      await db.insert(chats).values({
+        userId: user.id,
+        connectionId: parseInt(connectionId),
+        conversation: [chatEntry],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      
+      console.log(`Created new chat record for connection ID: ${connectionId}`);
+    }
+  } catch (error) {
+    console.error('Error storing chat in database:', error);
+  }
+}
+
+// Helper function to format database context for the inquire agent
+function formatDatabaseContext(context) {
+  if (!context) return "No database context available.";
+  
+  let formattedContext = "Database Context:\n\n";
+  
+
+  if (context.schema && context.schema.length > 0) {
+    formattedContext += "Schema Information:\n";
+    context.schema.forEach(table => {
+      formattedContext += `Table: ${table.tableName}\n`;
+      formattedContext += `Columns: ${table.columns}\n\n`;
+    });
+  }
+  
+
+  if (context.sampleData && context.sampleData.length > 0) {
+    formattedContext += "Sample Data:\n";
+    context.sampleData.forEach(table => {
+      formattedContext += `Table: ${table.tableName}\n`;
+      formattedContext += `Data: ${JSON.stringify(table.sampleData, null, 2)}\n\n`;
+    });
+  }
+  
+  return formattedContext;
 }
   
