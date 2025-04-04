@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { useUser } from '@clerk/nextjs'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { embeddings } from '@/app/actions/chat'
 // mongodb+srv://karthiknadar1204:u31oziQ2NgYPhzS9@cluster0.eibha1d.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 export default function Sidebar() {
   const router = useRouter()
@@ -107,7 +108,9 @@ export default function Sidebar() {
           ? '/api/connectMongodb' 
           : '/api/connectdb'
         
-
+        console.log('Using API endpoint:', apiEndpoint)
+        
+        // Prepare request body based on database type
         let requestBody;
         if (newConnection.type === 'mongodb') {
           requestBody = {
@@ -140,9 +143,26 @@ export default function Sidebar() {
         
         const data = await response.json()
         
+
+        console.log('Processing embeddings for connection data:', data)
+        
+
+        const connectionId = data.id || (data.connection && data.connection.id)
+        console.log('Extracted connection ID:', connectionId)
+        
+
+        const formattedData = {
+          id: connectionId,
+          connectionName: newConnection.name,
+          dbType: newConnection.type,
+          tables: data.tables || []
+        }
+        
+        await embeddings(formattedData)
+        
         const connectionWithId = {
           ...newConnection,
-          id: data.id || data.connection.id
+          id: connectionId
         }
         
         const connectionEndpoint = generateConnectionEndpoint(connectionWithId.id, connectionWithId.name)
