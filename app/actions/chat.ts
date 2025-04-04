@@ -25,14 +25,14 @@ export async function embeddings(data) {
   
       console.log('Schema text sample:', JSON.stringify(schemaText.slice(0, 2)));
   
-      // Schema embedding remains unchanged
+
       const schemaEmbedding = await openai.embeddings.create({
         model: "text-embedding-ada-002",
         input: JSON.stringify(schemaText)
       });
       console.log('Schema embedding created successfully');
   
-      // Generate embeddings for each table's chunks
+
       async function* generateTableChunks() {
         for (const table of data.tables || data.collections) {
           const tableName = table.tableName || table.collectionName;
@@ -111,4 +111,180 @@ export async function embeddings(data) {
       throw error;
     }
   }
+  
+export async function getQueryEmbeddings(message, connectionId) {
+  console.log(`Getting query embeddings for message: "${message.substring(0, 50)}..." and connection ID: ${connectionId}`);
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+  try {
+    const questionEmbedding = await openai.embeddings.create({
+      model: "text-embedding-ada-002",
+      input: message
+    });
+    console.log('Question embedding created successfully');
+
+    const queryResult = await index.query({
+      vector: questionEmbedding.data[0].embedding,
+      filter: { connectionId: String(connectionId) },
+      topK: 15,
+      includeMetadata: true
+    });
+    console.log(`Retrieved ${queryResult.matches?.length || 0} matches from Pinecone`);
+
+
+    const matches = queryResult.matches || [];
+    console.log('Match scores:', matches.map(m => ({
+      id: m.id,
+      score: m.score,
+      type: m.metadata?.type
+    })));
+
+
+    const schemaInfo = matches.find(m => m.metadata?.type === 'schema')?.metadata?.schema;
+    const dataChunks = matches
+      .filter(m => m.metadata?.type === 'data')
+      .map(m => {
+        try {
+          return JSON.parse(m.metadata?.data);
+        } catch (e) {
+          console.error('Error parsing metadata:', e);
+          return null;
+        }
+      })
+      .filter(Boolean);
+    
+    console.log(`Found ${dataChunks.length} valid data chunks`);
+
+
+    const reconstructedData = [];
+    const rowsByTable = {};
+
+    dataChunks.forEach(chunk => {
+      const tableName = chunk.tableName;
+      rowsByTable[tableName] = rowsByTable[tableName] || {};
+      
+
+      if (chunk.entries && chunk.entries[0]?.pk) {
+        console.log(`Processing PK-attribute format for table ${tableName} with ${chunk.entries.length} entries`);
+        chunk.entries.forEach(entry => {
+          const pkKey = JSON.stringify(entry.pk);
+          rowsByTable[tableName][pkKey] = rowsByTable[tableName][pkKey] || { ...entry.pk };
+          Object.assign(rowsByTable[tableName][pkKey], entry.attribute);
+        });
+      } else if (Array.isArray(chunk.entries)) {
+
+        console.log(`Processing legacy format for table ${tableName} with ${chunk.entries.length} entries`);
+        chunk.entries.forEach(row => {
+          const rowKey = JSON.stringify(row);
+          rowsByTable[tableName][rowKey] = row;
+        });
+      }
+    });
+
+
+    Object.entries(rowsByTable).forEach(([tableName, rows]) => {
+      const rowsArray = Object.values(rows);
+      console.log(`Reconstructed ${rowsArray.length} rows for table ${tableName}`);
+      reconstructedData.push({
+        tableName,
+        sampleData: rowsArray
+      });
+    });
+
+
+    const result = {
+      schema: schemaInfo ? JSON.parse(schemaInfo) : [],
+      sampleData: reconstructedData
+    };
+    
+
+    function formatDatabaseContext(embeddingsData) {
+      return `Current database context:
+Schema Information:
+${embeddingsData.schema.map(table => 
+  `Table: ${table.tableName}
+   Columns: ${table.columns}`
+).join('\n')}
+
+Sample Data:
+${embeddingsData.sampleData.map(table => 
+  `Table: ${table.tableName}
+   Data: ${JSON.stringify(table.sampleData, null, 2)}`
+).join('\n\n')}`;
+    }
+    
+    const formattedContext = formatDatabaseContext(result);
+    console.log('Database Context:');
+    console.log(formattedContext);
+
+
+    return {
+      embeddings: questionEmbedding.data[0].embedding,
+      matches: matches.map(m => ({
+        id: m.id,
+        score: m.score,
+        type: m.metadata?.type
+      })),
+      context: result
+    };
+  } catch (error) {
+    console.error("Error getting embeddings:", error);
+    throw error;
+  }
+}
+
+export async function getChatHistory(connectionId) {
+  const chatHistory = await db
+    .select()
+    .from(chats)
+    .where(eq(chats.connectionId, connectionId))
+    .orderBy(chats.createdAt);
+
+  if (!chatHistory.length) return [];
+
+  return chatHistory[0].conversation.map(chat => {
+    const parsedResponse = JSON.parse(chat.response);
+    return {
+      id: Date.now(),
+      message: chat.message,
+      response: parsedResponse.type === "analysis" ? parsedResponse.data : parsedResponse,
+      timestamp: chat.timestamp,
+      connectionId
+    };
+  });
+}
+
+export async function submitChat(userQuery, url) {
+  console.log('Submitting chat with query:', userQuery);
+  console.log('URL:', url);
+  
+  // Extract connection ID and name from URL
+  // Expected format: http://localhost:3000/chats/11/postgresqltest
+  const urlParts = url.split('/');
+  const connectionId = urlParts[urlParts.length - 2];
+  const connectionName = urlParts[urlParts.length - 1]; 
+  
+  console.log(`Extracted connection ID: ${connectionId}, connection name: ${connectionName}`);
+  
+  try {
+
+    const embeddingsResult = await getQueryEmbeddings(userQuery, connectionId);
+    
+
+    return {
+      success: true,
+      embeddings: embeddingsResult.embeddings,
+      matches: embeddingsResult.matches,
+      connectionId,
+      connectionName,
+      context: embeddingsResult.context
+    };
+  } catch (error) {
+    console.error('Error in submitChat:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
   
