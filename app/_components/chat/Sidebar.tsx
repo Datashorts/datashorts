@@ -107,7 +107,7 @@ export default function Sidebar() {
           ? '/api/connectMongodb' 
           : '/api/connectdb'
         
-        // Prepare request body based on database type
+
         let requestBody;
         if (newConnection.type === 'mongodb') {
           requestBody = {
