@@ -92,28 +92,62 @@ export default function Sidebar() {
     return `/chats/${connectionId}/${encodeURIComponent(dbName)}`
   }
 
-  const handleCreateConnection = () => {
+  const handleCreateConnection = async () => {
     if (newConnection.name && selectedFolderForConnection) {
-      const connectionWithId = {
-        ...newConnection,
-        id: uuidv4()
+      try {
+        // Show loading state
+        useFoldersStore.setState({ isLoading: true })
+        
+        // Make API call to connect to the database
+        const response = await fetch('/api/connectdb', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: newConnection.name,
+            type: newConnection.type,
+            url: newConnection.url
+          }),
+          credentials: 'include'
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to connect to database')
+        }
+        
+        const data = await response.json()
+        
+        // Create the connection with the ID from the API response
+        const connectionWithId = {
+          ...newConnection,
+          id: uuidv4() // Still generate a UUID for the frontend
+        }
+        
+        // Generate the unique endpoint for this connection
+        const endpoint = generateConnectionEndpoint(connectionWithId.id, connectionWithId.name)
+        
+        // Log the connection details
+        console.log('Creating connection:', {
+          folderId: selectedFolderForConnection,
+          connection: connectionWithId,
+          endpoint: endpoint,
+          apiResponse: data
+        })
+        
+        // Add the connection to the folder
+        addConnectionToFolder(selectedFolderForConnection, connectionWithId)
+        
+        // Close the modal and reset the form
+        closeCreateConnectionModal()
+      } catch (error) {
+        console.error('Error creating connection:', error)
+        // You could add a toast notification here to show the error
+      } finally {
+        // Reset loading state
+        useFoldersStore.setState({ isLoading: false })
       }
-      
-      // Generate the unique endpoint for this connection
-      const endpoint = generateConnectionEndpoint(connectionWithId.id, connectionWithId.name)
-      
-      // Log the connection details
-      console.log('Creating connection:', {
-        folderId: selectedFolderForConnection,
-        connection: connectionWithId,
-        endpoint: endpoint
-      })
-      
-      // Add the connection to the folder
-      addConnectionToFolder(selectedFolderForConnection, connectionWithId)
-      
-      // Close the modal and reset the form
-      closeCreateConnectionModal()
     }
   }
 
