@@ -4,6 +4,7 @@ import { dbConnections, tableSyncStatus } from '@/configs/schema';
 import { eq } from 'drizzle-orm';
 import { currentUser } from '@clerk/nextjs/server';
 import { Client } from 'pg';
+import { MongoClient } from 'mongodb';
 import { embeddings } from '@/app/actions/chat';
 
 export async function POST(
@@ -11,6 +12,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   let client;
+  let mongoClient;
   try {
     const user = await currentUser();
     
@@ -48,184 +50,257 @@ export async function POST(
     }
     
     const connection = connections[0];
-    
-    // Only proceed with PostgreSQL connections
-    if (connection.dbType !== 'postgres') {
-      return NextResponse.json(
-        { error: 'Only PostgreSQL connections are supported for syncing' },
-        { status: 400 }
-      );
-    }
-    
-    // Parse the connection string to determine if it includes SSL parameters
-    const hasSSLParam = connection.postgresUrl.includes('sslmode=');
-    
-    // Create connection options
-    let connectionOptions = { 
-      connectionString: connection.postgresUrl,
-      statement_timeout: 30000,
-      query_timeout: 30000
-    };
-    
-    // Only add SSL options if not already specified in the URL
-    if (!hasSSLParam) {
-      // Set SSL mode to 'no-verify'
-      if (connection.postgresUrl.includes('?')) {
-        connectionOptions.connectionString = `${connection.postgresUrl}&sslmode=no-verify`;
-      } else {
-        connectionOptions.connectionString = `${connection.postgresUrl}?sslmode=no-verify`;
-      }
-      
-      // Add SSL configuration object as a fallback
-      connectionOptions.ssl = {
-        rejectUnauthorized: false
-      };
-    }
-    
-    console.log('Attempting to connect with modified connection string...');
-    console.log('SSL parameters configured:', !hasSSLParam);
-    
-    client = new Client(connectionOptions);
-    
-    // Set a node environment variable to disable node's certificate checking
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-    
-    try {
-      await client.connect();
-      console.log('Successfully connected to PostgreSQL database');
-    } catch (connectError) {
-      console.error('Initial connection failed:', connectError);
-      
-      // If first attempt fails, try with different SSL settings
-      console.log('Trying alternative connection method...');
-      await client.end();
-      
-      // Try with direct SSL settings approach
-      connectionOptions = { 
-        connectionString: connection.postgresUrl.split('?')[0], // Remove any existing params
-        statement_timeout: 30000,
-        query_timeout: 30000,
-        ssl: {
-          rejectUnauthorized: false
-        }
-      };
-      
-      client = new Client(connectionOptions);
-      await client.connect();
-      console.log('Connected with alternative method');
-    }
-    
-    // Restore the environment variable after connection
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
-    
-    // Get all tables
-    const tablesResult = await client.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema='public'
-    `);
-    
-    const tables = tablesResult.rows;
-    console.log("Retrieved tables:", tables.length);
-    
-    const CHUNK_SIZE = 5;
-    const tableChunks = chunkArray(tables, CHUNK_SIZE);
-    console.log("Processing tables in chunks of:", CHUNK_SIZE);
-    
     const allTableData = [];
     const updatedTables = [];
-    
-    for (const chunk of tableChunks) {
-      const chunkPromises = chunk.map(async (table) => {
-        const tableName = table.table_name;
-        console.log(`Processing table: ${tableName}`);
+
+    if (connection.dbType === 'postgres') {
+      // PostgreSQL sync logic
+      // ... existing code ...
+      const hasSSLParam = connection.postgresUrl.includes('sslmode=');
+      
+      let connectionOptions = { 
+        connectionString: connection.postgresUrl,
+        statement_timeout: 30000,
+        query_timeout: 30000
+      };
+      
+      if (!hasSSLParam) {
+        if (connection.postgresUrl.includes('?')) {
+          connectionOptions.connectionString = `${connection.postgresUrl}&sslmode=no-verify`;
+        } else {
+          connectionOptions.connectionString = `${connection.postgresUrl}?sslmode=no-verify`;
+        }
+        
+        connectionOptions.ssl = {
+          rejectUnauthorized: false
+        };
+      }
+      
+      console.log('Attempting to connect with modified connection string...');
+      console.log('SSL parameters configured:', !hasSSLParam);
+      
+      client = new Client(connectionOptions);
+      
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      
+      try {
+        await client.connect();
+        console.log('Successfully connected to PostgreSQL database');
+      } catch (connectError) {
+        console.error('Initial connection failed:', connectError);
+        
+        console.log('Trying alternative connection method...');
+        await client.end();
+        
+        connectionOptions = { 
+          connectionString: connection.postgresUrl.split('?')[0],
+          statement_timeout: 30000,
+          query_timeout: 30000,
+          ssl: {
+            rejectUnauthorized: false
+          }
+        };
+        
+        client = new Client(connectionOptions);
+        await client.connect();
+        console.log('Connected with alternative method');
+      }
+      
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+      
+      const tablesResult = await client.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema='public'
+      `);
+      
+      const tables = tablesResult.rows;
+      console.log("Retrieved tables:", tables.length);
+      
+      const CHUNK_SIZE = 5;
+      const tableChunks = chunkArray(tables, CHUNK_SIZE);
+      console.log("Processing tables in chunks of:", CHUNK_SIZE);
+      
+      for (const chunk of tableChunks) {
+        const chunkPromises = chunk.map(async (table) => {
+          const tableName = table.table_name;
+          console.log(`Processing table: ${tableName}`);
+          
+          try {
+            const countResult = await client.query(`
+              SELECT COUNT(*) FROM "${tableName}"
+            `);
+            
+            const currentRowCount = parseInt(countResult.rows[0].count);
+            
+            const syncStatuses = await db
+              .select()
+              .from(tableSyncStatus)
+              .where(
+                eq(tableSyncStatus.connectionId, connectionId) && 
+                eq(tableSyncStatus.tableName, tableName)
+              );
+            
+            const lastSyncStatus = syncStatuses.length > 0 ? syncStatuses[0] : null;
+            const lastRowCount = lastSyncStatus ? lastSyncStatus.lastSyncRowCount : 0;
+            
+            if (currentRowCount > lastRowCount) {
+              console.log(`Table ${tableName} has new data: ${currentRowCount} rows (was ${lastRowCount})`);
+              
+              const [columnsResult, dataResult] = await Promise.all([
+                client.query(`
+                  SELECT column_name, data_type 
+                  FROM information_schema.columns 
+                  WHERE table_schema='public' 
+                  AND table_name=$1
+                `, [tableName]),
+                
+                client.query(`
+                  SELECT * FROM "${tableName}" LIMIT 1000
+                `)
+              ]);
+              
+              console.log(`Table ${tableName}: Found ${columnsResult.rows.length} columns and ${dataResult.rows.length} rows`);
+              
+              if (lastSyncStatus) {
+                await db
+                  .update(tableSyncStatus)
+                  .set({
+                    lastSyncTimestamp: new Date(),
+                    lastSyncRowCount: currentRowCount,
+                    updatedAt: new Date()
+                  })
+                  .where(eq(tableSyncStatus.id, lastSyncStatus.id));
+              } else {
+                await db.insert(tableSyncStatus).values({
+                  connectionId: connectionId,
+                  tableName: tableName,
+                  lastSyncTimestamp: new Date(),
+                  lastSyncRowCount: currentRowCount,
+                  dbType: connection.dbType,
+                  createdAt: new Date(),
+                  updatedAt: new Date()
+                });
+              }
+              
+              updatedTables.push(tableName);
+              
+              return {
+                tableName,
+                columns: columnsResult.rows,
+                data: dataResult.rows
+              };
+            }
+            console.log(`Table ${tableName} has no new data: ${currentRowCount} rows (was ${lastRowCount})`);
+            return null;
+          } catch (tableError) {
+            console.error(`Error processing table ${tableName}:`, tableError);
+            return null;
+          }
+        });
+        
+        const chunkResults = await Promise.all(chunkPromises);
+        allTableData.push(...chunkResults.filter(Boolean));
+      }
+      
+      console.log('Closing database connection...');
+      await client.end();
+      console.log('Database connection closed');
+    } else if (connection.dbType === 'mongodb') {
+      // MongoDB sync logic
+      console.log('Connecting to MongoDB...');
+      mongoClient = new MongoClient(connection.mongoUrl, {
+        connectTimeoutMS: 30000,
+        socketTimeoutMS: 30000
+      });
+      
+      await mongoClient.connect();
+      console.log('Successfully connected to MongoDB');
+      
+      const dbName = connection.mongoUrl.split('/').pop().split('?')[0];
+      const mongoDb = mongoClient.db(dbName);
+      
+      const collections = await mongoDb.listCollections().toArray();
+      console.log("Retrieved collections:", collections.length);
+      
+      for (const collection of collections) {
+        const collectionName = collection.name;
+        console.log(`Processing collection: ${collectionName}`);
         
         try {
-          // Get the current row count for this table
-          const countResult = await client.query(`
-            SELECT COUNT(*) FROM "${tableName}"
-          `);
+          // Get current document count
+          const currentDocCount = await mongoDb.collection(collectionName).countDocuments();
           
-          const currentRowCount = parseInt(countResult.rows[0].count);
-          
-          // Get the last sync status for this table
+          // Get last sync status
           const syncStatuses = await db
             .select()
             .from(tableSyncStatus)
             .where(
               eq(tableSyncStatus.connectionId, connectionId) && 
-              eq(tableSyncStatus.tableName, tableName)
+              eq(tableSyncStatus.tableName, collectionName)
             );
           
           const lastSyncStatus = syncStatuses.length > 0 ? syncStatuses[0] : null;
-          const lastRowCount = lastSyncStatus ? lastSyncStatus.lastSyncRowCount : 0;
+          const lastDocCount = lastSyncStatus ? lastSyncStatus.lastSyncRowCount : 0;
           
-          // Check if there are new rows
-          if (currentRowCount > lastRowCount) {
-            console.log(`Table ${tableName} has new data: ${currentRowCount} rows (was ${lastRowCount})`);
+          if (currentDocCount > lastDocCount) {
+            console.log(`Collection ${collectionName} has new data: ${currentDocCount} documents (was ${lastDocCount})`);
             
-            // Get the schema and data
-            const [columnsResult, dataResult] = await Promise.all([
-              client.query(`
-                SELECT column_name, data_type 
-                FROM information_schema.columns 
-                WHERE table_schema='public' 
-                AND table_name=$1
-              `, [tableName]),
-              
-              client.query(`
-                SELECT * FROM "${tableName}" LIMIT 1000
-              `)
-            ]);
+            // Get sample data and schema
+            const sampleData = await mongoDb.collection(collectionName)
+              .find({})
+              .limit(1000)
+              .toArray();
             
-            console.log(`Table ${tableName}: Found ${columnsResult.rows.length} columns and ${dataResult.rows.length} rows`);
+            // Infer schema from sample data
+            const schema = inferMongoSchema(sampleData);
             
-            // Update the sync status
+            // Update sync status
             if (lastSyncStatus) {
               await db
                 .update(tableSyncStatus)
                 .set({
                   lastSyncTimestamp: new Date(),
-                  lastSyncRowCount: currentRowCount,
+                  lastSyncRowCount: currentDocCount,
                   updatedAt: new Date()
                 })
                 .where(eq(tableSyncStatus.id, lastSyncStatus.id));
             } else {
               await db.insert(tableSyncStatus).values({
                 connectionId: connectionId,
-                tableName: tableName,
+                tableName: collectionName,
                 lastSyncTimestamp: new Date(),
-                lastSyncRowCount: currentRowCount,
+                lastSyncRowCount: currentDocCount,
                 dbType: connection.dbType,
                 createdAt: new Date(),
                 updatedAt: new Date()
               });
             }
             
-            updatedTables.push(tableName);
+            updatedTables.push(collectionName);
             
-            return {
-              tableName,
-              columns: columnsResult.rows,
-              data: dataResult.rows
-            };
+            allTableData.push({
+              tableName: collectionName,
+              columns: schema,
+              data: sampleData
+            });
           } else {
-            console.log(`Table ${tableName} has no new data: ${currentRowCount} rows (was ${lastRowCount})`);
-            return null;
+            console.log(`Collection ${collectionName} has no new data: ${currentDocCount} documents (was ${lastDocCount})`);
           }
-        } catch (tableError) {
-          console.error(`Error processing table ${tableName}:`, tableError);
-          return null;
+        } catch (collectionError) {
+          console.error(`Error processing collection ${collectionName}:`, collectionError);
         }
-      });
+      }
       
-      const chunkResults = await Promise.all(chunkPromises);
-      allTableData.push(...chunkResults.filter(Boolean));
+      console.log('Closing MongoDB connection...');
+      await mongoClient.close();
+      console.log('MongoDB connection closed');
+    } else {
+      return NextResponse.json(
+        { error: 'Unsupported database type' },
+        { status: 400 }
+      );
     }
-    
-    console.log('Closing database connection...');
-    await client.end();
-    console.log('Database connection closed');
     
     // If we have updated tables, update the connection data and generate embeddings
     if (updatedTables.length > 0) {
@@ -235,7 +310,6 @@ export async function POST(
       let currentTableSchema = [];
       let currentTableData = [];
       
-      // Safely parse the JSON data
       try {
         if (connection.tableSchema) {
           currentTableSchema = typeof connection.tableSchema === 'string' 
@@ -258,7 +332,6 @@ export async function POST(
         currentTableData = [];
       }
       
-      // Ensure we have arrays
       if (!Array.isArray(currentTableSchema)) {
         currentTableSchema = [];
       }
@@ -334,14 +407,13 @@ export async function POST(
   } catch (error) {
     console.error('Error syncing database:', error);
     
-    // Reset NODE_TLS_REJECT_UNAUTHORIZED in case of error
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
     
     return NextResponse.json(
       { 
         error: error.message,
         code: error.code,
-        details: 'Check that your PostgreSQL URL is correct and the server is accessible'
+        details: 'Check that your database URL is correct and the server is accessible'
       },
       { status: 500 }
     );
@@ -356,7 +428,16 @@ export async function POST(
       }
     }
     
-    // Final safety reset of NODE_TLS_REJECT_UNAUTHORIZED
+    if (mongoClient) {
+      try {
+        console.log('Ensuring MongoDB connection is closed...');
+        await mongoClient.close();
+        console.log('MongoDB client disconnected');
+      } catch (e) {
+        console.error('Error closing MongoDB client:', e);
+      }
+    }
+    
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
   }
 }
@@ -367,4 +448,21 @@ function chunkArray(array, size) {
     chunks.push(array.slice(i, i + size));
   }
   return chunks;
+}
+
+function inferMongoSchema(documents) {
+  const schema = [];
+  if (documents.length === 0) return schema;
+  
+  const sampleDoc = documents[0];
+  for (const [key, value] of Object.entries(sampleDoc)) {
+    schema.push({
+      column_name: key,
+      data_type: typeof value === 'object' ? 
+        (Array.isArray(value) ? 'array' : 'object') : 
+        typeof value
+    });
+  }
+  
+  return schema;
 } 
