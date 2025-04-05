@@ -1,22 +1,6 @@
 import { grokClient } from '@/app/lib/clients';
 
 export const taskManager = async function taskManager(messages) {
-
-  const userMessage = messages[messages.length - 1].content.toLowerCase();
-  const isSqlRequest = userMessage.includes('sql query') || 
-                      userMessage.includes('write sql') || 
-                      userMessage.includes('generate sql') ||
-                      userMessage.includes('sql statement') ||
-                      userMessage.includes('sql code');
-
-
-  if (isSqlRequest) {
-    return {
-      next: "analyze",
-      reason: "User requested SQL query generation"
-    };
-  }
-
   const systemPrompt = {
     role: 'system',
     content: `You are an AI task manager that determines the next action based on user input and database context.
@@ -52,7 +36,6 @@ Return JSON format.`
   };
 
   try {
-
     const fallbackResponse = await grokClient.chat.completions.create({
       model: 'grok-2-latest',
       messages: [systemPrompt, ...messages],
@@ -64,7 +47,6 @@ Return JSON format.`
   } catch (error) {
     console.error("Error in task manager:", error);
     
-
     return {
       next: "analyze",
       reason: "Defaulting to analysis due to error in task determination"

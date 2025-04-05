@@ -1,45 +1,16 @@
 import { grokClient } from '../utils/grokClient';
 export const researcher = async function researcher(messages) {
-  // Check if it's a simple data query or SQL query request
+  // Check if it's a simple data query
   const userMessage = messages[messages.length - 1].content.toLowerCase();
   const isSimpleQuery = userMessage.includes('group') || 
                        userMessage.includes('count') || 
                        userMessage.includes('show') || 
                        userMessage.includes('list') || 
                        userMessage.includes('tell');
-  const isSqlRequest = userMessage.includes('sql query') || 
-                      userMessage.includes('write sql') || 
-                      userMessage.includes('generate sql') ||
-                      userMessage.includes('sql statement') ||
-                      userMessage.includes('sql code');
 
   const systemPrompt = {
     role: 'system',
-    content: isSqlRequest ? 
-      `You are a SQL expert that provides SQL queries based on user requests. Return results in this strict JSON format:
-      {
-        "type": "analysis",
-        "content": {
-          "summary": string,
-          "details": string[],
-          "metrics": {
-            [key: string]: number | string
-          }
-        },
-        "sqlQuery": {
-          "query": string,
-          "explanation": string,
-          "dialect": string
-        }
-      }
-      
-      The sqlQuery object should contain:
-      - query: A well-formatted, executable SQL query that addresses the user's request
-      - explanation: A brief explanation of what the query does and how it works
-      - dialect: The SQL dialect used (e.g., "PostgreSQL", "MySQL", "SQLite")
-      
-      Return JSON format.` 
-      : isSimpleQuery ? 
+    content: isSimpleQuery ? 
       `You are a data analyst that provides direct answers to data queries. Return results in this strict JSON format:
       {
         "type": "analysis",
