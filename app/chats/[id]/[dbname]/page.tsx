@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { useFoldersStore } from '@/app/store/useFoldersStore'
 import Sidebar from '@/app/_components/chat/Sidebar'
 import { useUser } from '@clerk/nextjs'
 import { submitChat, getChatHistory } from '@/app/actions/chat'
+import AgentResponse from '@/app/_components/chat/AgentResponse'
+import ChatMessage from '@/app/_components/chat/ChatMessage'
 
 export default function ChatWithDbPage() {
   const params = useParams()
@@ -19,6 +21,7 @@ export default function ChatWithDbPage() {
   const [chatResults, setChatResults] = useState<any>(null)
   const [showContext, setShowContext] = useState(false)
   const [chatHistory, setChatHistory] = useState<any[]>([])
+  const chatContainerRef = useRef<HTMLDivElement>(null)
   
   useEffect(() => {
     if (user) {
@@ -36,16 +39,50 @@ export default function ChatWithDbPage() {
       if (connectionId) {
         try {
           const history = await getChatHistory(connectionId)
-          setChatHistory(history)
-          console.log('Loaded chat history:', history)
+          console.log('Raw chat history:', history)
+          
+          // Check if history is an array and has the expected structure
+          if (Array.isArray(history) && history.length > 0) {
+            console.log('First chat item:', history[0])
+            setChatHistory(history)
+          } else {
+            console.log('Chat history is empty or not in the expected format')
+            setChatHistory([])
+          }
         } catch (error) {
           console.error('Error loading chat history:', error)
+          setChatHistory([])
         }
       }
     }
     
     loadChatHistory()
   }, [connectionId])
+  
+
+  useEffect(() => {
+    if (chatResults) {
+      const loadChatHistory = async () => {
+        if (connectionId) {
+          try {
+            const history = await getChatHistory(connectionId)
+            setChatHistory(history)
+          } catch (error) {
+            console.error('Error refreshing chat history:', error)
+          }
+        }
+      }
+      
+      loadChatHistory()
+    }
+  }, [chatResults, connectionId])
+  
+  // Scroll to bottom when chat history or current results change
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [chatHistory, chatResults]);
   
   const handleSubmit = async () => {
     if (!userQuery.trim()) return
@@ -54,18 +91,11 @@ export default function ChatWithDbPage() {
     try {
       const url = window.location.href
       const result = await submitChat(userQuery, url)
+      
+      // Set the current chat results
       setChatResults(result)
       
-      // Add the new chat to the history
-      const newChat = {
-        id: Date.now(),
-        message: userQuery,
-        response: JSON.stringify(result),
-        timestamp: new Date().toISOString(),
-        connectionId
-      }
-      
-      setChatHistory(prevHistory => [...prevHistory, newChat])
+      // Clear the input field
       setUserQuery('')
     } catch (error) {
       console.error('Error submitting chat:', error)
@@ -117,7 +147,7 @@ ${context.sampleData.map((table: any) =>
           <h1 className="text-xl font-semibold">Chat with {dbName}</h1>
         </div>
         
-        <div className="flex-1 p-6 overflow-y-auto">
+        <div className="flex-1 p-6 overflow-y-auto" ref={chatContainerRef}>
           <div className="max-w-3xl mx-auto">
             <div className="bg-[#1a1a1a] p-6 rounded-lg border border-gray-800 mb-6">
               <h2 className="text-lg font-medium mb-2">Welcome to your chat with {dbName}</h2>
@@ -127,123 +157,55 @@ ${context.sampleData.map((table: any) =>
             </div>
             
             <div className="space-y-4">
-              {/* Chat History */}
-              {chatHistory.length > 0 && (
-                <div className="mb-6">
-                  <h3 className="text-md font-medium mb-3">Chat History</h3>
-                  <div className="space-y-4">
-                    {chatHistory.map((chat, index) => {
-                      // Parse the response JSON if it's a string
-                      const responseData = typeof chat.response === 'string' 
-                        ? JSON.parse(chat.response) 
-                        : chat.response;
+              {/* Display previous chat history */}
+              {chatHistory && chatHistory.length > 0 ? (
+                <div className="space-y-4">
+                  {chatHistory.map((chat, index) => (
+                    <div key={index} className="bg-[#1a1a1a] p-4 rounded-lg border border-gray-800">
+                      <ChatMessage 
+                        message={chat.message || ''}
+                        response={chat.response || {}}
+                        timestamp={chat.timestamp || new Date().toISOString()}
+                        isUser={true}
+                      />
                       
-                      return (
-                        <div key={chat.id || index} className="bg-[#1a1a1a] p-4 rounded-lg border border-gray-800">
-                          <div className="flex justify-between items-start mb-2">
-                            <div className="text-sm text-gray-400">
-                              {new Date(chat.timestamp).toLocaleString()}
-                            </div>
-                          </div>
-                          
-                          <div className="mb-3">
-                            <p className="text-sm font-medium text-gray-300">You:</p>
-                            <p className="text-sm text-white">{chat.message}</p>
-                          </div>
-                          
-                          <div>
-                            <p className="text-sm font-medium text-gray-300">Response:</p>
-                            <div className="text-sm text-white">
-                              {/* Agent Response Section */}
-                              {responseData.agentOutput && (
-                                <div className="mt-2 mb-2 p-2 bg-[#222] rounded">
-                                  <p className="text-xs text-gray-400 mb-1">Agent: {responseData.agentType}</p>
-                                  
-                                  {responseData.agentType === 'inquire' && (
-                                    <>
-                                      <p className="font-medium">{responseData.agentOutput.question}</p>
-                                      <p className="text-xs text-gray-400">{responseData.agentOutput.context}</p>
-                                      
-                                      {responseData.agentOutput.options && responseData.agentOutput.options.length > 0 && (
-                                        <div className="mt-2">
-                                          <p className="text-xs text-gray-400 mb-1">Suggested options:</p>
-                                          <div className="flex flex-wrap gap-2">
-                                            {responseData.agentOutput.options.map((option, idx) => (
-                                              <span key={idx} className="text-xs bg-[#333] px-2 py-1 rounded">
-                                                {option}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                      <ChatMessage 
+                        message=""
+                        response={chat.response || {}}
+                        timestamp={chat.timestamp || new Date().toISOString()}
+                        isUser={false}
+                        onOptionClick={setUserQuery}
+                        userQuery={userQuery}
+                        onUserQueryChange={setUserQuery}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-gray-400 py-4">
+                  No previous conversations found. Start a new conversation!
                 </div>
               )}
               
-              {/* Current Query Results */}
+              {/* Display only the current conversation */}
               {chatResults && (
                 <div className="bg-[#1a1a1a] p-4 rounded-lg border border-gray-800">
-                  <h3 className="text-md font-medium mb-2">Query Results</h3>
-                  <div className="text-sm text-gray-300 mb-2">
-                    <p>Connection ID: {chatResults.connectionId}</p>
-                    <p>Connection Name: {chatResults.connectionName}</p>
-                  </div>
+                  <ChatMessage 
+                    message={userQuery}
+                    response={{}}
+                    timestamp={new Date().toISOString()}
+                    isUser={true}
+                  />
                   
-                  {/* Agent Response Section */}
-                  {chatResults.agentOutput && (
-                    <div className="mt-4 mb-4 p-3 bg-[#222] rounded-lg">
-                      <h4 className="text-sm font-medium mb-2">Agent Response</h4>
-                      <div className="bg-[#2a2a2a] p-3 rounded">
-                        <p className="text-xs text-gray-400 mb-2">Agent: {chatResults.agentType}</p>
-                        
-                        {chatResults.agentType === 'inquire' && (
-                          <>
-                            <p className="text-sm font-medium mb-2">{chatResults.agentOutput.question}</p>
-                            <p className="text-xs text-gray-400 mb-3">{chatResults.agentOutput.context}</p>
-                            
-                            {chatResults.agentOutput.options && chatResults.agentOutput.options.length > 0 && (
-                              <div className="mb-3">
-                                <p className="text-xs text-gray-400 mb-1">Suggested options:</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {chatResults.agentOutput.options.map((option, index) => (
-                                    <button 
-                                      key={index}
-                                      className="text-xs bg-[#333] hover:bg-[#444] px-3 py-1 rounded"
-                                      onClick={() => setUserQuery(option)}
-                                    >
-                                      {option}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            
-                            {chatResults.agentOutput.allowCustomInput && (
-                              <div className="mt-2">
-                                <p className="text-xs text-gray-400 mb-1">Or provide your own answer:</p>
-                                <input
-                                  type={chatResults.agentOutput.inputType || "text"}
-                                  className="w-full bg-[#333] text-white text-sm p-2 rounded"
-                                  placeholder="Type your answer here..."
-                                  value={userQuery}
-                                  onChange={(e) => setUserQuery(e.target.value)}
-                                />
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  <ChatMessage 
+                    message=""
+                    response={chatResults}
+                    timestamp={new Date().toISOString()}
+                    isUser={false}
+                    onOptionClick={setUserQuery}
+                    userQuery={userQuery}
+                    onUserQueryChange={setUserQuery}
+                  />
                   
                   {/* Log database context to console instead of displaying it */}
                   {chatResults.context && (

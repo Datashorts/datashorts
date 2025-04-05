@@ -283,27 +283,61 @@ ${embeddingsData.sampleData.map(table =>
 }
 
 export async function getChatHistory(connectionId) {
-  const chatHistory = await db
-    .select()
-    .from(chats)
-    .where(eq(chats.connectionId, connectionId))
-    .orderBy(chats.createdAt);
-
-  if (!chatHistory.length) return [];
-
-  return chatHistory[0].conversation.map(chat => {
-    const parsedResponse = JSON.parse(chat.response);
-    return {
-      id: Date.now(),
-      message: chat.message,
-      response: {
-        agentType: parsedResponse.agentType,
-        agentOutput: parsedResponse.agentOutput
-      },
-      timestamp: chat.timestamp,
-      connectionId
-    };
-  });
+  try {
+    console.log(`Fetching chat history for connection ID: ${connectionId}`);
+    
+    const chatHistory = await db
+      .select()
+      .from(chats)
+      .where(eq(chats.connectionId, connectionId))
+      .orderBy(chats.createdAt);
+    
+    console.log(`Found ${chatHistory.length} chat records for connection ID: ${connectionId}`);
+    
+    if (!chatHistory.length) {
+      console.log('No chat history found, returning empty array');
+      return [];
+    }
+    
+    // Check if conversation exists and is an array
+    if (!chatHistory[0].conversation || !Array.isArray(chatHistory[0].conversation)) {
+      console.log('Conversation is not an array or is missing:', chatHistory[0].conversation);
+      return [];
+    }
+    
+    console.log(`Processing ${chatHistory[0].conversation.length} conversation items`);
+    
+    return chatHistory[0].conversation.map((chat, index) => {
+      try {
+        const parsedResponse = JSON.parse(chat.response);
+        return {
+          id: `${connectionId}-${index}`,
+          message: chat.message,
+          response: {
+            agentType: parsedResponse.agentType,
+            agentOutput: parsedResponse.agentOutput
+          },
+          timestamp: chat.timestamp,
+          connectionId
+        };
+      } catch (error) {
+        console.error(`Error parsing response for chat item ${index}:`, error);
+        return {
+          id: `${connectionId}-${index}`,
+          message: chat.message || '',
+          response: {
+            agentType: 'unknown',
+            agentOutput: 'Error parsing response'
+          },
+          timestamp: chat.timestamp || new Date().toISOString(),
+          connectionId
+        };
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching chat history:', error);
+    return [];
+  }
 }
 
 export async function submitChat(userQuery, url) {
@@ -373,6 +407,10 @@ export async function submitChat(userQuery, url) {
 // Function to store chat in the database
 async function storeChatInDatabase(userQuery, response, connectionId) {
   try {
+    console.log(`Storing chat for connection ID: ${connectionId}`);
+    console.log('User query:', userQuery);
+    console.log('Response:', JSON.stringify(response, null, 2));
+    
     const user = await currentUser();
     if (!user) {
       console.error('No authenticated user found');
@@ -385,6 +423,8 @@ async function storeChatInDatabase(userQuery, response, connectionId) {
       .from(chats)
       .where(eq(chats.connectionId, connectionId));
     
+    console.log(`Found ${existingChats.length} existing chat records for connection ID: ${connectionId}`);
+    
     const timestamp = new Date().toISOString();
     
     // Prepare the chat entry
@@ -394,10 +434,14 @@ async function storeChatInDatabase(userQuery, response, connectionId) {
       timestamp
     };
     
+    console.log('Prepared chat entry:', JSON.stringify(chatEntry, null, 2));
+    
     if (existingChats.length > 0) {
       // Update existing chat record
       const existingChat = existingChats[0];
       const conversation = existingChat.conversation || [];
+      
+      console.log(`Existing conversation has ${conversation.length} entries`);
       
       // Add the new chat entry to the conversation
       conversation.push(chatEntry);

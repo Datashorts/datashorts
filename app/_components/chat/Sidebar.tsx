@@ -143,40 +143,42 @@ export default function Sidebar() {
         
         const data = await response.json()
         
-
-        console.log('Processing embeddings for connection data:', data)
-        
-
         const connectionId = data.id || (data.connection && data.connection.id)
         console.log('Extracted connection ID:', connectionId)
         
-
-        const formattedData = {
-          id: connectionId,
-          connectionName: newConnection.name,
-          dbType: newConnection.type,
-          tables: data.tables || []
-        }
-        
-        await embeddings(formattedData)
-        
+        // Create the connection first
         const connectionWithId = {
           ...newConnection,
           id: connectionId
         }
         
-        const connectionEndpoint = generateConnectionEndpoint(connectionWithId.id, connectionWithId.name)
-        
-        console.log('Creating connection:', {
-          folderId: selectedFolderForConnection,
-          connection: connectionWithId,
-          endpoint: connectionEndpoint,
-          apiResponse: data
-        })
-        
+        // Add connection to folder
         addConnectionToFolder(selectedFolderForConnection, connectionWithId)
         
+        // Close the modal and navigate to the new connection
         closeCreateConnectionModal()
+        const connectionEndpoint = generateConnectionEndpoint(connectionWithId.id, connectionWithId.name)
+        router.push(connectionEndpoint)
+        
+        // Process embeddings after navigation has started
+        try {
+          const formattedData = {
+            id: connectionId,
+            connectionName: newConnection.name,
+            dbType: newConnection.type,
+            tables: data.tables || []
+          }
+          
+          // Process embeddings in the background
+          embeddings(formattedData).catch(error => {
+            console.error('Error processing embeddings:', error)
+            // Don't throw the error since embeddings can be retried later
+          })
+        } catch (error) {
+          console.error('Error formatting data for embeddings:', error)
+          // Don't throw the error since the connection is already created
+        }
+        
       } catch (error) {
         console.error('Error creating connection:', error)
       } finally {
