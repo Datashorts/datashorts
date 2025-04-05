@@ -1,4 +1,5 @@
 import React from 'react';
+import VisualizationRenderer from '@/components/VisualizationRenderer';
 
 interface ResearcherResponseProps {
   content: {
@@ -96,15 +97,7 @@ const ResearcherResponse: React.FC<ResearcherResponseProps> = ({
       {displayVisualization && (
         <div className="bg-[#2a2a2a] p-4 rounded-lg">
           <h3 className="text-lg font-medium mb-2">Visualization</h3>
-          <div className="bg-[#333] p-4 rounded h-64 flex items-center justify-center">
-            <p className="text-gray-400">
-              Chart Type: {displayVisualization.chartType}
-            </p>
-          </div>
-          <div className="mt-2 text-sm text-gray-400">
-            <p>X-Axis: {displayVisualization.config.xAxis.label}</p>
-            <p>Y-Axis: {displayVisualization.config.yAxis.label}</p>
-          </div>
+          <VisualizationRenderer visualization={displayVisualization} />
         </div>
       )}
     </div>

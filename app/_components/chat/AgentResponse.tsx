@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import VisualizationRenderer from '@/components/VisualizationRenderer';
 
 interface AgentResponseProps {
   agentType: string;
@@ -122,8 +123,46 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
     
     case 'visualize':
       return (
-        <div>
-          <p className="font-medium">{agentOutput.visualization || 'Visualization in progress...'}</p>
+        <div className="space-y-4">
+          {agentOutput.content && (
+            <>
+              <div className="bg-[#2a2a2a] p-4 rounded-lg">
+                <h3 className="text-lg font-medium mb-2">{agentOutput.content.title || 'Visualization'}</h3>
+                <p className="text-gray-300">{agentOutput.content.summary}</p>
+              </div>
+              
+              {agentOutput.content.details && agentOutput.content.details.length > 0 && (
+                <div className="bg-[#2a2a2a] p-4 rounded-lg">
+                  <h3 className="text-lg font-medium mb-2">Details</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {agentOutput.content.details.map((detail: string, index: number) => (
+                      <li key={index} className="text-gray-300">{detail}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {agentOutput.content.metrics && Object.keys(agentOutput.content.metrics).length > 0 && (
+                <div className="bg-[#2a2a2a] p-4 rounded-lg">
+                  <h3 className="text-lg font-medium mb-2">Metrics</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    {Object.entries(agentOutput.content.metrics).map(([key, value], index) => (
+                      <div key={index} className="bg-[#333] p-3 rounded">
+                        <p className="text-sm text-gray-400">{key}</p>
+                        <p className="text-lg font-medium">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+          
+          {agentOutput.visualization && (
+            <div className="bg-[#2a2a2a] p-4 rounded-lg">
+              <VisualizationRenderer visualization={agentOutput.visualization} />
+            </div>
+          )}
         </div>
       );
     

@@ -1,5 +1,26 @@
 import { grokClient } from "@/app/lib/clients";
 
+// Helper function to detect if a prompt suggests visualization
+export const isVisualizationRequest = (prompt: string): boolean => {
+  const visualizationKeywords = [
+    'visualize', 'visualise', 'chart', 'graph', 'plot', 'pie', 'bar',
+    'show me', 'display', 'representation', 'distribution'
+  ];
+  
+  return visualizationKeywords.some(keyword => 
+    prompt.toLowerCase().includes(keyword.toLowerCase())
+  );
+};
+
+// Helper function to format data for pie charts
+export const formatPieChartData = (data: any[]): any[] => {
+  return data.map(item => ({
+    label: item.name || item.label,
+    value: Number(item.value) || 0,
+    color: item.color
+  }));
+};
+
 export const visualiser = async function visualiser(messages) {
   const systemPrompt = {
     role: 'system',
@@ -17,7 +38,7 @@ Return results in this strict JSON format:
     }
   },
   "visualization": {
-    "chartType": "bar" | "pie" | "line" | "scatter",
+    "chartType": "bar" | "pie",
     "data": [
       {
         "label": string,

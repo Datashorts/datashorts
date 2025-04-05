@@ -10,6 +10,7 @@ import { chunkTableData } from "@/lib/utils/tokenManagement";
 import { taskManager } from "@/lib/agents/taskManager";
 import { inquire } from "@/lib/agents/inquire";
 import { researcher } from "@/lib/agents/researcher";
+import { visualiser } from "@/lib/agents/visualiser";
 
 
 export async function embeddings(data) {
@@ -211,7 +212,7 @@ export async function getQueryEmbeddings(message, connectionId) {
           rowsByTable[tableName][rowKey] = row;
         });
       } else if (chunk.entries && typeof chunk.entries === 'object') {
-        // Handle MongoDB format where entries might be a single object
+
         console.log(`Processing MongoDB format for table ${tableName}`);
         const rowKey = JSON.stringify(chunk.entries);
         rowsByTable[tableName][rowKey] = chunk.entries;
@@ -377,12 +378,13 @@ export async function submitChat(userQuery, url) {
 
     const taskResult = taskAnalysis;
 
+    // Get database context for all agent types
+    const databaseContext = formatDatabaseContext(embeddingsResult.context);
+    console.log('Database Context:', databaseContext);
 
+    // Handle different agent types based on task result
     if (taskResult.next === 'analyze') {
-      const databaseContext = formatDatabaseContext(embeddingsResult.context);
-      console.log('Database Context:', databaseContext);
-      
-
+      // ... existing analyze code ...
       const formattedHistory = conversationHistory.map(chat => [
         { role: 'user', content: chat.message },
         { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
@@ -407,23 +409,6 @@ Your response should be in the following JSON format:
   "metrics": {
     "metric1": "value1",
     "metric2": "value2"
-  }
-}
-
-If visualization would be helpful, include:
-{
-  "visualization": {
-    "chartType": "bar|line|pie|table",
-    "data": [
-      { "label": "Label 1", "value": 10 },
-      { "label": "Label 2", "value": 20 }
-    ],
-    "config": {
-      "xAxis": { "label": "X Axis Label", "type": "category|time|numeric" },
-      "yAxis": { "label": "Y Axis Label", "type": "numeric" },
-      "legend": true,
-      "stacked": false
-    }
   }
 }`
         },
@@ -452,17 +437,9 @@ If visualization would be helpful, include:
         agentType: 'researcher',
         agentOutput: researcherResult
       };
-    }
-    
-    const databaseContext = formatDatabaseContext(embeddingsResult.context);
-    console.log('Database Context:', databaseContext);
-    
-
-    let inquireResult = null;
-    if (taskResult.next === 'inquire') {
-      console.log('Calling inquire agent with database context and user query');
+    } else if (taskResult.next === 'visualize') {
+      console.log('Calling visualiser agent with database context and user query');
       
-
       const formattedHistory = conversationHistory.map(chat => [
         { role: 'user', content: chat.message },
         { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
@@ -470,24 +447,123 @@ If visualization would be helpful, include:
           : JSON.stringify(chat.response.agentOutput) }
       ]).flat();
       
-      inquireResult = await inquire([
+      const visualiserResult = await visualiser([
+        { 
+          role: 'system', 
+          content: `You are a visualisation agent that creates meaningful visualizations based on data.
+          
+Based on the following database context and user query, create an appropriate visualization in JSON format:
+${databaseContext}
+
+User Query: ${userQuery}
+
+Your response should be in the following JSON format:
+{
+  "type": "visualization",
+  "content": {
+    "title": "Visualization title",
+    "summary": "Brief summary of what the visualization shows",
+    "details": ["Detail point 1", "Detail point 2", ...],
+    "metrics": {
+      "metric1": "value1",
+      "metric2": "value2"
+    }
+  },
+  "visualization": {
+    "chartType": "bar" | "pie",
+    "data": [
+      {
+        "label": "Label 1",
+        "value": 100,
+        "color": "#color" (optional)
+      },
+      ...
+    ],
+    "config": {
+      "title": "Chart title",
+      "description": "Chart description",
+      "xAxis": {
+        "label": "X-axis label",
+        "type": "category" | "time" | "linear"
+      },
+      "yAxis": {
+        "label": "Y-axis label",
+        "type": "number" | "category"
+      },
+      "legend": {
+        "display": true
+      },
+      "stacked": false,
+      "pieConfig": {
+        "donut": false,
+        "showPercentages": true
+      }
+    }
+  }
+}`
+        },
+        ...formattedHistory,
+        { role: 'user', content: userQuery }
+      ]);
+      
+      console.log('Visualiser agent response:', visualiserResult);
+      
+      // Store the chat in the database
+      await storeChatInDatabase(userQuery, {
+        success: true,
+        connectionId,
+        connectionName,
+        agentType: 'visualize',
+        agentOutput: visualiserResult
+      }, connectionId);
+      
+      return {
+        success: true,
+        connectionId,
+        connectionName,
+        agentType: 'visualize',
+        agentOutput: visualiserResult
+      };
+    } else if (taskResult.next === 'inquire') {
+      // ... existing inquire code ...
+      console.log('Calling inquire agent with database context and user query');
+      
+      const formattedHistory = conversationHistory.map(chat => [
+        { role: 'user', content: chat.message },
+        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+          ? chat.response.agentOutput 
+          : JSON.stringify(chat.response.agentOutput) }
+      ]).flat();
+      
+      const inquireResult = await inquire([
         { role: 'system', content: databaseContext },
         ...formattedHistory,
         { role: 'user', content: userQuery }
       ]);
       console.log('Inquire agent response:', inquireResult);
+      
+      const response = {
+        success: true,
+        connectionId,
+        connectionName,
+        agentType: taskResult.next,
+        agentOutput: inquireResult
+      };
+      
+      await storeChatInDatabase(userQuery, response, connectionId);
+      
+      return response;
     }
     
-
+    // Default response if no specific agent was called
     const response = {
       success: true,
       connectionId,
       connectionName,
       agentType: taskResult.next,
-      agentOutput: taskResult.next === 'inquire' ? inquireResult : null
+      agentOutput: null
     };
     
-
     await storeChatInDatabase(userQuery, response, connectionId);
     
     return response;

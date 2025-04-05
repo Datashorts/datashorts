@@ -1,0 +1,32 @@
+{
+  "name": "datachat-sdk",
+  "version": "1.0.0",
+  "description": "SDK for DataChat - A PostgreSQL database interaction library",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "postgresql",
+    "database",
+    "sdk",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "drizzle-orm": "^0.29.3",
+    "pg": "^8.11.3",
+    "postgres": "^3.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.3.3"
+  },
+  "peerDependencies": {
+    "express": "^4.18.2"
+  }
+} 
