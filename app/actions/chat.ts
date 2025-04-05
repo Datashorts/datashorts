@@ -296,7 +296,10 @@ export async function getChatHistory(connectionId) {
     return {
       id: Date.now(),
       message: chat.message,
-      response: parsedResponse.type === "analysis" ? parsedResponse.data : parsedResponse,
+      response: {
+        agentType: parsedResponse.agentType,
+        agentOutput: parsedResponse.agentOutput
+      },
       timestamp: chat.timestamp,
       connectionId
     };
@@ -332,6 +335,7 @@ export async function submitChat(userQuery, url) {
     
 
     const databaseContext = formatDatabaseContext(embeddingsResult.context);
+    console.log('Database Context:', databaseContext);
     
 
     let inquireResult = null;
@@ -344,20 +348,13 @@ export async function submitChat(userQuery, url) {
       console.log('Inquire agent response:', inquireResult);
     }
     
-    // Prepare the response object
+    // Prepare the response object with only essential information
     const response = {
       success: true,
-      embeddings: embeddingsResult.embeddings,
-      matches: embeddingsResult.matches,
       connectionId,
       connectionName,
-      context: embeddingsResult.context,
-      intent: {
-        intent: taskResult.next,
-        tables: [], 
-        operation: taskResult.reason
-      },
-      inquire: inquireResult
+      agentType: taskResult.next,
+      agentOutput: taskResult.next === 'inquire' ? inquireResult : null
     };
     
     // Store the chat in the database

@@ -154,73 +154,30 @@ ${context.sampleData.map((table: any) =>
                           <div>
                             <p className="text-sm font-medium text-gray-300">Response:</p>
                             <div className="text-sm text-white">
-                              {/* Intent Analysis Section */}
-                              {responseData.intent && (
+                              {/* Agent Response Section */}
+                              {responseData.agentOutput && (
                                 <div className="mt-2 mb-2 p-2 bg-[#222] rounded">
-                                  <p><span className="text-gray-400">Intent:</span> {responseData.intent.intent}</p>
-                                  <p><span className="text-gray-400">Operation:</span> {responseData.intent.operation}</p>
-                                </div>
-                              )}
-                              
-                              {/* Inquire Agent Response Section */}
-                              {responseData.inquire && (
-                                <div className="mt-2 mb-2 p-2 bg-[#222] rounded">
-                                  <p className="font-medium">{responseData.inquire.question}</p>
-                                  <p className="text-xs text-gray-400">{responseData.inquire.context}</p>
+                                  <p className="text-xs text-gray-400 mb-1">Agent: {responseData.agentType}</p>
                                   
-                                  {responseData.inquire.options && responseData.inquire.options.length > 0 && (
-                                    <div className="mt-2">
-                                      <p className="text-xs text-gray-400 mb-1">Suggested options:</p>
-                                      <div className="flex flex-wrap gap-2">
-                                        {responseData.inquire.options.map((option, idx) => (
-                                          <span key={idx} className="text-xs bg-[#333] px-2 py-1 rounded">
-                                            {option}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </div>
+                                  {responseData.agentType === 'inquire' && (
+                                    <>
+                                      <p className="font-medium">{responseData.agentOutput.question}</p>
+                                      <p className="text-xs text-gray-400">{responseData.agentOutput.context}</p>
+                                      
+                                      {responseData.agentOutput.options && responseData.agentOutput.options.length > 0 && (
+                                        <div className="mt-2">
+                                          <p className="text-xs text-gray-400 mb-1">Suggested options:</p>
+                                          <div className="flex flex-wrap gap-2">
+                                            {responseData.agentOutput.options.map((option, idx) => (
+                                              <span key={idx} className="text-xs bg-[#333] px-2 py-1 rounded">
+                                                {option}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </>
                                   )}
-                                </div>
-                              )}
-                              
-                              {/* Matches Section */}
-                              {responseData.matches && responseData.matches.length > 0 && (
-                                <div className="mt-2">
-                                  <p className="text-xs text-gray-400">Matches: {responseData.matches.length}</p>
-                                  <div className="max-h-40 overflow-y-auto mt-1">
-                                    {responseData.matches.map((match, idx) => (
-                                      <div key={idx} className="text-xs bg-[#222] p-1 rounded mb-1">
-                                        <p>ID: {match.id}</p>
-                                        <p>Score: {match.score}</p>
-                                        <p>Type: {match.type}</p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {/* Database Context Section */}
-                              {responseData.context && (
-                                <div className="mt-2">
-                                  <div className="flex justify-between items-center">
-                                    <p className="text-xs text-gray-400">Database Context</p>
-                                    <button 
-                                      onClick={() => {
-                                        const contextElement = document.getElementById(`context-${chat.id || index}`);
-                                        if (contextElement) {
-                                          contextElement.classList.toggle('hidden');
-                                        }
-                                      }}
-                                      className="text-xs text-blue-400 hover:text-blue-300"
-                                    >
-                                      Toggle
-                                    </button>
-                                  </div>
-                                  <div id={`context-${chat.id || index}`} className="text-xs bg-[#222] p-2 rounded mt-1 hidden">
-                                    <pre className="whitespace-pre-wrap overflow-x-auto">
-                                      {formatDatabaseContext(responseData.context)}
-                                    </pre>
-                                  </div>
                                 </div>
                               )}
                             </div>
@@ -241,95 +198,57 @@ ${context.sampleData.map((table: any) =>
                     <p>Connection Name: {chatResults.connectionName}</p>
                   </div>
                   
-                  {/* Intent Analysis Section */}
-                  {chatResults.intent && (
+                  {/* Agent Response Section */}
+                  {chatResults.agentOutput && (
                     <div className="mt-4 mb-4 p-3 bg-[#222] rounded-lg">
-                      <h4 className="text-sm font-medium mb-2">Intent Analysis</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <div className="bg-[#2a2a2a] p-2 rounded">
-                          <p className="text-xs text-gray-400">Intent</p>
-                          <p className="text-sm font-medium">{chatResults.intent.intent}</p>
-                        </div>
-                        <div className="bg-[#2a2a2a] p-2 rounded">
-                          <p className="text-xs text-gray-400">Operation</p>
-                          <p className="text-sm font-medium">{chatResults.intent.operation}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Inquire Agent Response Section */}
-                  {chatResults.inquire && (
-                    <div className="mt-4 mb-4 p-3 bg-[#222] rounded-lg">
-                      <h4 className="text-sm font-medium mb-2">Follow-up Question</h4>
+                      <h4 className="text-sm font-medium mb-2">Agent Response</h4>
                       <div className="bg-[#2a2a2a] p-3 rounded">
-                        <p className="text-sm font-medium mb-2">{chatResults.inquire.question}</p>
-                        <p className="text-xs text-gray-400 mb-3">{chatResults.inquire.context}</p>
+                        <p className="text-xs text-gray-400 mb-2">Agent: {chatResults.agentType}</p>
                         
-                        {chatResults.inquire.options && chatResults.inquire.options.length > 0 && (
-                          <div className="mb-3">
-                            <p className="text-xs text-gray-400 mb-1">Suggested options:</p>
-                            <div className="flex flex-wrap gap-2">
-                              {chatResults.inquire.options.map((option, index) => (
-                                <button 
-                                  key={index}
-                                  className="text-xs bg-[#333] hover:bg-[#444] px-3 py-1 rounded"
-                                  onClick={() => setUserQuery(option)}
-                                >
-                                  {option}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {chatResults.inquire.allowCustomInput && (
-                          <div className="mt-2">
-                            <p className="text-xs text-gray-400 mb-1">Or provide your own answer:</p>
-                            <input
-                              type={chatResults.inquire.inputType || "text"}
-                              className="w-full bg-[#333] text-white text-sm p-2 rounded"
-                              placeholder="Type your answer here..."
-                              value={userQuery}
-                              onChange={(e) => setUserQuery(e.target.value)}
-                            />
-                          </div>
+                        {chatResults.agentType === 'inquire' && (
+                          <>
+                            <p className="text-sm font-medium mb-2">{chatResults.agentOutput.question}</p>
+                            <p className="text-xs text-gray-400 mb-3">{chatResults.agentOutput.context}</p>
+                            
+                            {chatResults.agentOutput.options && chatResults.agentOutput.options.length > 0 && (
+                              <div className="mb-3">
+                                <p className="text-xs text-gray-400 mb-1">Suggested options:</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {chatResults.agentOutput.options.map((option, index) => (
+                                    <button 
+                                      key={index}
+                                      className="text-xs bg-[#333] hover:bg-[#444] px-3 py-1 rounded"
+                                      onClick={() => setUserQuery(option)}
+                                    >
+                                      {option}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {chatResults.agentOutput.allowCustomInput && (
+                              <div className="mt-2">
+                                <p className="text-xs text-gray-400 mb-1">Or provide your own answer:</p>
+                                <input
+                                  type={chatResults.agentOutput.inputType || "text"}
+                                  className="w-full bg-[#333] text-white text-sm p-2 rounded"
+                                  placeholder="Type your answer here..."
+                                  value={userQuery}
+                                  onChange={(e) => setUserQuery(e.target.value)}
+                                />
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
                   )}
                   
-                  <div className="mt-4">
-                    <h4 className="text-sm font-medium mb-1">Matches:</h4>
-                    <div className="max-h-60 overflow-y-auto">
-                      {chatResults.matches.map((match: any, index: number) => (
-                        <div key={index} className="text-xs bg-[#222] p-2 rounded mb-1">
-                          <p>ID: {match.id}</p>
-                          <p>Score: {match.score}</p>
-                          <p>Type: {match.type}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  
+                  {/* Log database context to console instead of displaying it */}
                   {chatResults.context && (
-                    <div className="mt-4">
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="text-sm font-medium">Database Context</h4>
-                        <button 
-                          onClick={() => setShowContext(!showContext)}
-                          className="text-xs text-blue-400 hover:text-blue-300"
-                        >
-                          {showContext ? 'Hide' : 'Show'}
-                        </button>
-                      </div>
-                      {showContext && (
-                        <div className="text-xs bg-[#222] p-3 rounded overflow-x-auto">
-                          <pre className="whitespace-pre-wrap">
-                            {formatDatabaseContext(chatResults.context)}
-                          </pre>
-                        </div>
-                      )}
+                    <div className="hidden">
+                      {console.log('Current Query Database Context:', formatDatabaseContext(chatResults.context))}
                     </div>
                   )}
                 </div>
