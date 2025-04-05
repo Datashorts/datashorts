@@ -22,25 +22,25 @@ export async function embeddings(data) {
     try {
       console.log(`Processing ${(data.tables || data.collections)?.length || 0} tables/collections`);
       
-      // Handle different schema structures for MongoDB and PostgreSQL
+
       const schemaText = (data.tables || data.collections).map(t => {
         const tableName = t.tableName || t.collectionName;
         
-        // Check if this is a MongoDB schema (has schema property with column_name)
+
         if (t.schema && Array.isArray(t.schema) && t.schema.length > 0 && 'column_name' in t.schema[0]) {
           return {
             tableName,
             columns: t.schema.map(c => `${c.column_name} (${c.data_type})`).join(', ')
           };
         } 
-        // Check if this is a PostgreSQL schema (has columns property)
+
         else if (t.columns && Array.isArray(t.columns) && t.columns.length > 0 && 'column_name' in t.columns[0]) {
           return {
             tableName,
             columns: t.columns.map(c => `${c.column_name} (${c.data_type})`).join(', ')
           };
         }
-        // Fallback for other structures
+
         else {
           console.log(`Warning: Unrecognized schema structure for table ${tableName}`);
           return {
@@ -65,7 +65,7 @@ export async function embeddings(data) {
           const tableName = table.tableName || table.collectionName;
           console.log(`Processing table: ${tableName} with ${table.data?.length || 0} rows`);
           
-          // Skip if no data
+
           if (!table.data || table.data.length === 0) {
             console.log(`No data found for table ${tableName}, skipping`);
             continue;
@@ -218,7 +218,7 @@ export async function getQueryEmbeddings(message, connectionId) {
       }
     });
 
-    // Convert Grouped Rows to Final Format
+
     Object.entries(rowsByTable).forEach(([tableName, rows]) => {
       const rowsArray = Object.values(rows);
       console.log(`Reconstructed ${rowsArray.length} rows for table ${tableName}`);
@@ -292,7 +292,7 @@ export async function getChatHistory(connectionId) {
       return [];
     }
     
-    // Check if conversation exists and is an array
+
     if (!chatHistory[0].conversation || !Array.isArray(chatHistory[0].conversation)) {
       console.log('Conversation is not an array or is missing:', chatHistory[0].conversation);
       return [];
@@ -346,7 +346,7 @@ export async function submitChat(userQuery, url) {
   console.log(`Extracted connection ID: ${connectionId}, connection name: ${connectionName}`);
   
   try {
-    // Get query embeddings and conversation history in parallel
+
     const [embeddingsResult, conversationHistory] = await Promise.all([
       getQueryEmbeddings(userQuery, connectionId),
       getChatHistory(connectionId)
@@ -354,7 +354,7 @@ export async function submitChat(userQuery, url) {
     
     console.log('Conversation history:', conversationHistory);
     
-    // Format conversation history for the task manager
+
     const formattedHistory = conversationHistory.map(chat => [
       { role: 'user', content: chat.message },
       { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
@@ -362,7 +362,7 @@ export async function submitChat(userQuery, url) {
         : JSON.stringify(chat.response.agentOutput) }
     ]).flat();
     
-    // Analyze intent with conversation history
+
     const taskAnalysis = await taskManager([
       { 
         role: 'system', 
@@ -374,15 +374,15 @@ export async function submitChat(userQuery, url) {
     
     console.log('Task analysis:', taskAnalysis);
     
-    // No need to parse taskAnalysis as it's already an object
+
     const taskResult = taskAnalysis;
 
-    // If the task is analysis, call the researcher agent
+
     if (taskResult.next === 'analyze') {
       const databaseContext = formatDatabaseContext(embeddingsResult.context);
       console.log('Database Context:', databaseContext);
       
-      // Format conversation history for the researcher agent
+
       const formattedHistory = conversationHistory.map(chat => [
         { role: 'user', content: chat.message },
         { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
@@ -462,7 +462,7 @@ If visualization would be helpful, include:
     if (taskResult.next === 'inquire') {
       console.log('Calling inquire agent with database context and user query');
       
-      // Format conversation history for the inquire agent
+
       const formattedHistory = conversationHistory.map(chat => [
         { role: 'user', content: chat.message },
         { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
@@ -478,7 +478,7 @@ If visualization would be helpful, include:
       console.log('Inquire agent response:', inquireResult);
     }
     
-    // Prepare the response object with only essential information
+
     const response = {
       success: true,
       connectionId,
@@ -487,7 +487,7 @@ If visualization would be helpful, include:
       agentOutput: taskResult.next === 'inquire' ? inquireResult : null
     };
     
-    // Store the chat in the database
+
     await storeChatInDatabase(userQuery, response, connectionId);
     
     return response;
@@ -500,7 +500,7 @@ If visualization would be helpful, include:
   }
 }
 
-// Function to store chat in the database
+
 async function storeChatInDatabase(userQuery, response, connectionId) {
   try {
     console.log(`Storing chat for connection ID: ${connectionId}`);
@@ -513,7 +513,7 @@ async function storeChatInDatabase(userQuery, response, connectionId) {
       return;
     }
     
-    // Check if a chat record already exists for this connection
+
     const existingChats = await db
       .select()
       .from(chats)
@@ -523,7 +523,7 @@ async function storeChatInDatabase(userQuery, response, connectionId) {
     
     const timestamp = new Date().toISOString();
     
-    // Prepare the chat entry
+
     const chatEntry = {
       message: userQuery,
       response: JSON.stringify(response),
@@ -533,16 +533,15 @@ async function storeChatInDatabase(userQuery, response, connectionId) {
     console.log('Prepared chat entry:', JSON.stringify(chatEntry, null, 2));
     
     if (existingChats.length > 0) {
-      // Update existing chat record
+
       const existingChat = existingChats[0];
       const conversation = existingChat.conversation || [];
       
       console.log(`Existing conversation has ${conversation.length} entries`);
       
-      // Add the new chat entry to the conversation
+
       conversation.push(chatEntry);
       
-      // Update the chat record
       await db
         .update(chats)
         .set({
@@ -553,7 +552,6 @@ async function storeChatInDatabase(userQuery, response, connectionId) {
       
       console.log(`Updated chat record for connection ID: ${connectionId}`);
     } else {
-      // Create a new chat record
       await db.insert(chats).values({
         userId: user.id,
         connectionId: parseInt(connectionId),
@@ -569,7 +567,7 @@ async function storeChatInDatabase(userQuery, response, connectionId) {
   }
 }
 
-// Helper function to format database context for the inquire agent
+
 function formatDatabaseContext(context) {
   if (!context) return "No database context available.";
   
