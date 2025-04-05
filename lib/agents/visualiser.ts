@@ -31,6 +31,28 @@ export const formatBarChartData = (data: any[]): any[] => {
   }));
 };
 
+// Helper function to validate and fix visualization data
+export const validateVisualizationData = (data: any): any => {
+  // Ensure data is an array
+  if (!Array.isArray(data)) {
+    console.error("Visualization data is not an array:", data);
+    return [{ label: "No Data", value: 0 }];
+  }
+  
+  // Ensure each item has label and value
+  return data.map(item => {
+    if (!item || typeof item !== 'object') {
+      return { label: "Invalid Data", value: 0 };
+    }
+    
+    return {
+      label: item.label || "Unnamed",
+      value: typeof item.value === 'number' ? item.value : 0,
+      color: item.color || undefined
+    };
+  });
+};
+
 export const visualiser = async function visualiser(messages) {
   const systemPrompt = {
     role: 'system',
@@ -111,18 +133,86 @@ Return JSON format.`
   };
 
   try {
+    // Check if the last message contains a request for a specific chart type
+    const lastMessage = messages[messages.length - 1].content;
+    let chartTypeHint = '';
+    
+    if (lastMessage.toLowerCase().includes('pie')) {
+      chartTypeHint = ' Create a pie chart.';
+    } else if (lastMessage.toLowerCase().includes('bar')) {
+      chartTypeHint = ' Create a bar chart.';
+    }
+    
+    // Add a hint to keep the response concise
+    const enhancedMessages = [
+      systemPrompt,
+      ...messages.slice(0, -1),
+      {
+        role: messages[messages.length - 1].role,
+        content: `${messages[messages.length - 1].content}${chartTypeHint} Ensure your JSON is properly formatted.`
+      }
+    ];
+    
     const response = await grokClient.chat.completions.create({
       model: 'grok-2-latest',
-      messages: [systemPrompt, ...messages],
+      messages: enhancedMessages,
       response_format: { type: 'json_object' },
-      temperature: 0.3
+      temperature: 0.3,
+      max_tokens: 1000 // Limit response size
     });
     
-    return JSON.parse(response.choices[0].message.content);
+    // Parse the response to validate it
+    let parsedResponse;
+    try {
+      parsedResponse = JSON.parse(response.choices[0].message.content);
+      
+      // Validate and fix the visualization data if needed
+      if (parsedResponse.visualization && parsedResponse.visualization.data) {
+        parsedResponse.visualization.data = validateVisualizationData(parsedResponse.visualization.data);
+      }
+      
+      // Return the validated and fixed response
+      return parsedResponse;
+    } catch (parseError) {
+      console.error("Error parsing visualization response:", parseError);
+      
+      // Return a simplified error visualization
+      return {
+        type: "visualization",
+        content: {
+          title: "Error",
+          summary: "Error processing your request",
+          details: ["There was an error processing your request. Please try again."],
+          metrics: {}
+        },
+        visualization: {
+          chartType: "bar",
+          data: [
+            { label: "Error", value: 0 }
+          ],
+          config: {
+            title: "Error Visualization",
+            description: "An error occurred while generating the visualization",
+            xAxis: {
+              label: "",
+              type: "category"
+            },
+            yAxis: {
+              label: "",
+              type: "number"
+            },
+            legend: {
+              display: false
+            },
+            stacked: false
+          }
+        }
+      };
+    }
   } catch (error) {
-    console.error("Error in visualiser agent:", error);
+    console.error("Error in visualiser:", error);
     
-
+    // Return a simplified error visualization
     return {
       type: "visualization",
       content: {
@@ -133,7 +223,9 @@ Return JSON format.`
       },
       visualization: {
         chartType: "bar",
-        data: [],
+        data: [
+          { label: "Error", value: 0 }
+        ],
         config: {
           title: "Error Visualization",
           description: "An error occurred while generating the visualization",

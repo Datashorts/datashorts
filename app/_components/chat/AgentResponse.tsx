@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { Bot, Send, User } from 'lucide-react';
 import VisualizationRenderer from '@/components/VisualizationRenderer';
+import ResearcherResponse from './ResearcherResponse';
 
 interface AgentResponseProps {
   agentType: string;
@@ -45,6 +47,85 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
 
   // Render different agent types
   switch (agentType) {
+    case 'multi':
+      return (
+        <div className="space-y-6">
+          <div className="bg-[#2a2a2a] p-4 rounded-lg">
+            <h3 className="text-lg font-medium mb-2">Overview</h3>
+            <p className="text-gray-300">{agentOutput.summary}</p>
+            {agentOutput.details && agentOutput.details.length > 0 && (
+              <ul className="list-disc pl-5 mt-2 space-y-1">
+                {agentOutput.details.map((detail: string, index: number) => (
+                  <li key={index} className="text-gray-300">{detail}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          
+          {agentOutput.tasks && agentOutput.tasks.map((task: any, index: number) => (
+            <div key={index} className="bg-[#2a2a2a] p-4 rounded-lg">
+              <h3 className="text-lg font-medium mb-2">
+                {task.agentType.charAt(0).toUpperCase() + task.agentType.slice(1)} Response
+              </h3>
+              <p className="text-sm text-gray-400 mb-2">Query: {task.query}</p>
+              
+              {task.agentType === 'researcher' && (
+                <ResearcherResponse
+                  content={task.response}
+                  visualization={task.response.visualization}
+                />
+              )}
+              
+              {task.agentType === 'visualize' && (
+                <div>
+                  <VisualizationRenderer visualization={task.response.visualization} />
+                  {task.response.content && (
+                    <div className="mt-4">
+                      <p className="text-gray-300">{task.response.content.summary}</p>
+                      {task.response.content.details && (
+                        <ul className="list-disc pl-5 mt-2 space-y-1">
+                          {task.response.content.details.map((detail: string, idx: number) => (
+                            <li key={idx} className="text-gray-300">{detail}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {task.agentType === 'inquire' && (
+                <div>
+                  <p className="font-medium">{task.response.question}</p>
+                  <p className="text-xs text-gray-400 mb-2">{task.response.context}</p>
+                  
+                  {task.response.options && task.response.options.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs text-gray-400 mb-1">Suggested options:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {task.response.options.map((option: string, idx: number) => (
+                          <button 
+                            key={idx} 
+                            className={`text-xs px-2 py-1 rounded ${
+                              selectedOption === option 
+                                ? 'bg-blue-600 hover:bg-blue-700' 
+                                : 'bg-[#333] hover:bg-[#444]'
+                            }`}
+                            onClick={() => handleOptionSelect(option)}
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    
     case 'inquire':
       return (
         <div>
