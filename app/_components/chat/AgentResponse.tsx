@@ -14,45 +14,34 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
   agentType,
   agentOutput,
   onOptionClick,
-  userQuery = '',
+  userQuery,
   onUserQueryChange,
   onSubmitResponse
 }) => {
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  const [customInput, setCustomInput] = useState<string>(userQuery);
-  
-  // Update customInput when userQuery changes
-  useEffect(() => {
-    setCustomInput(userQuery);
-  }, [userQuery]);
-  
-  if (!agentOutput) return null;
+  const [selectedOption, setSelectedOption] = useState<string>('');
+  const [customInput, setCustomInput] = useState<string>('');
+  const [isSubmitEnabled, setIsSubmitEnabled] = useState<boolean>(false);
 
-  // Handle option selection
+  useEffect(() => {
+    // Enable submit button if an option is selected or custom input is provided
+    setIsSubmitEnabled(selectedOption !== '' || customInput.trim() !== '');
+  }, [selectedOption, customInput]);
+
   const handleOptionSelect = (option: string) => {
     setSelectedOption(option);
-    if (onOptionClick) {
-      onOptionClick(option);
-    }
+    setCustomInput(''); // Clear custom input when an option is selected
   };
-  
-  // Handle custom input change
+
   const handleCustomInputChange = (value: string) => {
     setCustomInput(value);
-    if (onUserQueryChange) {
-      onUserQueryChange(value);
-    }
+    setSelectedOption(''); // Clear selected option when custom input is provided
   };
-  
-  // Handle submit button click
+
   const handleSubmit = () => {
     if (onSubmitResponse) {
       onSubmitResponse(selectedOption || customInput);
     }
   };
-  
-  // Determine if submit button should be enabled
-  const isSubmitEnabled = selectedOption !== null || (customInput && customInput.trim() !== '');
 
   // Render different agent types
   switch (agentType) {
@@ -122,31 +111,51 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
       );
     
     case 'visualize':
+      console.log("Visualize agent output:", agentOutput);
+      
+      // Check if agentOutput is a string (JSON) and parse it
+      let parsedOutput = agentOutput;
+      if (typeof agentOutput === 'string') {
+        try {
+          parsedOutput = JSON.parse(agentOutput);
+          console.log("Parsed agent output:", parsedOutput);
+        } catch (error) {
+          console.error("Error parsing agent output:", error);
+          return <div>Error parsing visualization data</div>;
+        }
+      }
+      
+      // Check if the output has the expected structure
+      if (!parsedOutput.visualization) {
+        console.error("Missing visualization data in agent output");
+        return <div>No visualization data available</div>;
+      }
+      
       return (
         <div className="space-y-4">
-          {agentOutput.content && (
+          {parsedOutput.content &&
             <>
               <div className="bg-[#2a2a2a] p-4 rounded-lg">
-                <h3 className="text-lg font-medium mb-2">{agentOutput.content.title || 'Visualization'}</h3>
-                <p className="text-gray-300">{agentOutput.content.summary}</p>
+                <h3 className="text-lg font-medium mb-2">{parsedOutput.content.title || 'Visualization'}</h3>
+                <p className="text-gray-300">{parsedOutput.content.summary}</p>
               </div>
               
-              {agentOutput.content.details && agentOutput.content.details.length > 0 && (
+              {parsedOutput.content.details && parsedOutput.content.details.length > 0 && (
                 <div className="bg-[#2a2a2a] p-4 rounded-lg">
                   <h3 className="text-lg font-medium mb-2">Details</h3>
                   <ul className="list-disc pl-5 space-y-1">
-                    {agentOutput.content.details.map((detail: string, index: number) => (
+                    {parsedOutput.content.details.map((detail: string, index: number) => (
                       <li key={index} className="text-gray-300">{detail}</li>
                     ))}
                   </ul>
                 </div>
               )}
               
-              {agentOutput.content.metrics && Object.keys(agentOutput.content.metrics).length > 0 && (
+              {parsedOutput.content.metrics && Object.keys(parsedOutput.content.metrics).length > 0 && (
                 <div className="bg-[#2a2a2a] p-4 rounded-lg">
                   <h3 className="text-lg font-medium mb-2">Metrics</h3>
                   <div className="grid grid-cols-2 gap-4">
-                    {Object.entries(agentOutput.content.metrics).map(([key, value], index) => (
+                    {Object.entries(parsedOutput.content.metrics).map(([key, value], index) => (
                       <div key={index} className="bg-[#333] p-3 rounded">
                         <p className="text-sm text-gray-400">{key}</p>
                         <p className="text-lg font-medium">{value}</p>
@@ -156,11 +165,11 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                 </div>
               )}
             </>
-          )}
+          }
           
-          {agentOutput.visualization && (
+          {parsedOutput.visualization && (
             <div className="bg-[#2a2a2a] p-4 rounded-lg">
-              <VisualizationRenderer visualization={agentOutput.visualization} />
+              <VisualizationRenderer visualization={parsedOutput.visualization} />
             </div>
           )}
         </div>

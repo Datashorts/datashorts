@@ -419,7 +419,19 @@ Your response should be in the following JSON format:
       console.log('Researcher response:', researcherResponse);
 
       // Parse the researcher response
-      const researcherResult = JSON.parse(researcherResponse);
+      let researcherResult;
+      try {
+        researcherResult = typeof researcherResponse === 'string' 
+          ? JSON.parse(researcherResponse) 
+          : researcherResponse;
+      } catch (error) {
+        console.error('Error parsing researcher response:', error);
+        researcherResult = {
+          summary: "Error parsing analysis results",
+          details: ["There was an error processing your request. Please try again."],
+          metrics: {}
+        };
+      }
 
       // Store the chat in the database
       await storeChatInDatabase(userQuery, {
@@ -508,13 +520,54 @@ Your response should be in the following JSON format:
       
       console.log('Visualiser agent response:', visualiserResult);
       
+      // Parse the visualiser response if it's a string
+      let parsedVisualiserResult;
+      try {
+        parsedVisualiserResult = typeof visualiserResult === 'string' 
+          ? JSON.parse(visualiserResult) 
+          : visualiserResult;
+      } catch (error) {
+        console.error('Error parsing visualiser response:', error);
+        parsedVisualiserResult = {
+          type: "visualization",
+          content: {
+            title: "Error",
+            summary: "Error processing your request",
+            details: ["There was an error processing your request. Please try again."],
+            metrics: {}
+          },
+          visualization: {
+            chartType: "bar",
+            data: [
+              { label: "Error", value: 0 }
+            ],
+            config: {
+              title: "Error Visualization",
+              description: "An error occurred while generating the visualization",
+              xAxis: {
+                label: "",
+                type: "category"
+              },
+              yAxis: {
+                label: "",
+                type: "number"
+              },
+              legend: {
+                display: false
+              },
+              stacked: false
+            }
+          }
+        };
+      }
+      
       // Store the chat in the database
       await storeChatInDatabase(userQuery, {
         success: true,
         connectionId,
         connectionName,
         agentType: 'visualize',
-        agentOutput: visualiserResult
+        agentOutput: parsedVisualiserResult
       }, connectionId);
       
       return {
@@ -522,7 +575,7 @@ Your response should be in the following JSON format:
         connectionId,
         connectionName,
         agentType: 'visualize',
-        agentOutput: visualiserResult
+        agentOutput: parsedVisualiserResult
       };
     } else if (taskResult.next === 'inquire') {
       // ... existing inquire code ...
@@ -542,12 +595,27 @@ Your response should be in the following JSON format:
       ]);
       console.log('Inquire agent response:', inquireResult);
       
+      // Parse the inquire response if it's a string
+      let parsedInquireResult;
+      try {
+        parsedInquireResult = typeof inquireResult === 'string' 
+          ? JSON.parse(inquireResult) 
+          : inquireResult;
+      } catch (error) {
+        console.error('Error parsing inquire response:', error);
+        parsedInquireResult = {
+          question: "Error processing your request",
+          context: "There was an error processing your request. Please try again.",
+          options: []
+        };
+      }
+      
       const response = {
         success: true,
         connectionId,
         connectionName,
         agentType: taskResult.next,
-        agentOutput: inquireResult
+        agentOutput: parsedInquireResult
       };
       
       await storeChatInDatabase(userQuery, response, connectionId);

@@ -41,10 +41,49 @@ interface VisualizationRendererProps {
 }
 
 const VisualizationRenderer: React.FC<VisualizationRendererProps> = ({ visualization }) => {
+  console.log("VisualizationRenderer received:", visualization);
+  
+  if (!visualization) {
+    console.error("No visualization data provided");
+    return <div>No visualization data available</div>;
+  }
+  
   const { chartType, data, config } = visualization;
 
   if (!data || data.length === 0) {
+    console.error("No data available for visualization");
     return <div>No data available for visualization</div>;
+  }
+
+  // Ensure data has the correct format
+  const formattedData = data.map(item => {
+    // If data already has label/value format
+    if (item.label !== undefined && item.value !== undefined) {
+      return {
+        label: item.label,
+        value: Number(item.value) || 0,
+        color: item.color
+      };
+    }
+    
+    // If data has different keys, use first key as label and second as value
+    const keys = Object.keys(item);
+    if (keys.length >= 2) {
+      return {
+        label: item[keys[0]],
+        value: Number(item[keys[1]]) || 0,
+        color: item.color
+      };
+    }
+    
+    return null;
+  }).filter(Boolean);
+
+  console.log("Formatted data for chart:", formattedData);
+
+  if (!formattedData.length) {
+    console.error("No valid data after formatting");
+    return <div>No valid data available for visualization</div>;
   }
 
   return (
@@ -54,12 +93,12 @@ const VisualizationRenderer: React.FC<VisualizationRendererProps> = ({ visualiza
       
       {chartType === 'pie' ? (
         <PieChart 
-          data={data} 
+          data={formattedData} 
           config={config.pieConfig || {}} 
         />
       ) : (
         <BarChart 
-          data={data} 
+          data={formattedData} 
           config={{
             barThickness: config.barConfig?.barThickness,
             horizontal: config.barConfig?.horizontal,

@@ -35,12 +35,16 @@ interface BarChartProps {
 const BarChart = ({ data, config = {} }: BarChartProps) => {
   if (!data || !data.length) return null;
 
+  console.log("BarChart received data:", data);
+
   // Format data to match Recharts format
   const formattedData = data.map(item => ({
     name: item.label,
     value: item.value,
     color: item.color
   }));
+
+  console.log("Formatted data for Recharts:", formattedData);
 
   const {
     barThickness = 20,
@@ -63,7 +67,7 @@ const BarChart = ({ data, config = {} }: BarChartProps) => {
     if (!active || !payload?.length) return null;
 
     const data = payload[0].payload;
-    const percentage = ((data.value / total) * 100).toFixed(1);
+    const percentage = total > 0 ? ((data.value / total) * 100).toFixed(1) : 0;
 
     return (
       <div className="bg-[#333] p-3 border border-gray-700 rounded shadow-lg text-white">
@@ -98,8 +102,7 @@ const BarChart = ({ data, config = {} }: BarChartProps) => {
           <Bar 
             dataKey="value" 
             fill="#8884d8" 
-            isAnimationActive={true}
-            stackId={stacked ? 'stack' : undefined}
+            radius={[4, 4, 0, 0]}
           >
             {formattedData.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
