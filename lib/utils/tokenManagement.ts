@@ -1,5 +1,18 @@
 export function chunkTableData(tableData) {
-    console.log(`Starting chunking process for ${tableData.length} rows`);
+    console.log(`Starting chunking process for ${tableData?.length || 0} rows`);
+    
+    // Handle null or undefined tableData
+    if (!tableData) {
+      console.log('No table data provided, returning empty chunks');
+      return [];
+    }
+    
+    // Handle non-array data (MongoDB might return a single object)
+    if (!Array.isArray(tableData)) {
+      console.log('Table data is not an array, converting to array');
+      tableData = [tableData];
+    }
+    
     const CHUNK_SIZE = 4000;
     const chunks = [];
     let currentChunk = [];
@@ -16,6 +29,12 @@ export function chunkTableData(tableData) {
     
     // Create PK-attribute pairs for more efficient chunking
     for (const row of tableData) {
+      // Skip null or undefined rows
+      if (!row) {
+        console.log('Skipping null or undefined row');
+        continue;
+      }
+      
       // Extract primary key values
       const pk = potentialPkColumns.reduce((acc, col) => ({ ...acc, [col]: row[col] }), {});
       
@@ -78,12 +97,16 @@ export function chunkTableData(tableData) {
     
     // Initialize with all column names from first row
     const firstRow = tableData[0];
+    if (!firstRow) return [];
+    
     Object.keys(firstRow).forEach(col => {
       columnCounts[col] = new Set();
     });
     
     // Count unique values for each column
     tableData.forEach(row => {
+      if (!row) return;
+      
       Object.entries(row).forEach(([col, val]) => {
         if (columnCounts[col]) {
           columnCounts[col].add(JSON.stringify(val));
@@ -124,6 +147,12 @@ export function chunkTableData(tableData) {
     let currentSize = 0;
     
     for (const row of tableData) {
+      // Skip null or undefined rows
+      if (!row) {
+        console.log('Skipping null or undefined row in fallback chunking');
+        continue;
+      }
+      
       const rowSize = JSON.stringify(row).length;
       
       // If this row would exceed chunk size, start a new chunk

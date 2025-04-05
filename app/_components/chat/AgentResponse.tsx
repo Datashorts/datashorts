@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface AgentResponseProps {
   agentType: string;
@@ -19,6 +19,11 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
 }) => {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [customInput, setCustomInput] = useState<string>(userQuery);
+  
+  // Update customInput when userQuery changes
+  useEffect(() => {
+    setCustomInput(userQuery);
+  }, [userQuery]);
   
   if (!agentOutput) return null;
 

@@ -21,10 +21,34 @@ export async function embeddings(data) {
   
     try {
       console.log(`Processing ${(data.tables || data.collections)?.length || 0} tables/collections`);
-      const schemaText = (data.tables || data.collections).map(t => ({
-        tableName: t.tableName || t.collectionName,
-        columns: t.columns.map(c => `${c.column_name} (${c.data_type})`).join(', ')
-      }));
+      
+      // Handle different schema structures for MongoDB and PostgreSQL
+      const schemaText = (data.tables || data.collections).map(t => {
+        const tableName = t.tableName || t.collectionName;
+        
+        // Check if this is a MongoDB schema (has schema property with column_name)
+        if (t.schema && Array.isArray(t.schema) && t.schema.length > 0 && 'column_name' in t.schema[0]) {
+          return {
+            tableName,
+            columns: t.schema.map(c => `${c.column_name} (${c.data_type})`).join(', ')
+          };
+        } 
+        // Check if this is a PostgreSQL schema (has columns property)
+        else if (t.columns && Array.isArray(t.columns) && t.columns.length > 0 && 'column_name' in t.columns[0]) {
+          return {
+            tableName,
+            columns: t.columns.map(c => `${c.column_name} (${c.data_type})`).join(', ')
+          };
+        }
+        // Fallback for other structures
+        else {
+          console.log(`Warning: Unrecognized schema structure for table ${tableName}`);
+          return {
+            tableName,
+            columns: 'Schema structure not recognized'
+          };
+        }
+      });
   
       console.log('Schema text sample:', JSON.stringify(schemaText.slice(0, 2)));
   
@@ -40,6 +64,12 @@ export async function embeddings(data) {
         for (const table of data.tables || data.collections) {
           const tableName = table.tableName || table.collectionName;
           console.log(`Processing table: ${tableName} with ${table.data?.length || 0} rows`);
+          
+          // Skip if no data
+          if (!table.data || table.data.length === 0) {
+            console.log(`No data found for table ${tableName}, skipping`);
+            continue;
+          }
           
           const chunks = chunkTableData(table.data);
           console.log(`Table ${tableName}: Created ${chunks.length} chunks`);
@@ -161,43 +191,6 @@ export async function getQueryEmbeddings(message, connectionId) {
 
     const reconstructedData = [];
     const rowsByTable = {};
-    // Example dataChunk:
-    // {
-    //   "tableName": "users",
-    //   "entries": [
-    //     {
-    //       "pk": { "id": 1 },
-    //       "attribute": { "name": "Alice" }
-    //     },
-    //     {
-    //       "pk": { "id": 1 },
-    //       "attribute": { "email": "alice@example.com" }
-    //     }
-    //   ]
-    // }
-    // For each chunk, look at each entry.
-
-// Group entries by primary key (converted to string).
-
-// Combine their attributes.
-
-// Example:
-
-// {
-//   pk: { id: 1 },
-//   attribute: { name: "Alice" }
-// }
-// {
-//   pk: { id: 1 },
-//   attribute: { email: "alice@example.com" }
-// }
-// Becomes:
-// {
-//   id: 1,
-//   name: "Alice",
-//   email: "alice@example.com"
-// }
-
     
     dataChunks.forEach(chunk => {
       const tableName = chunk.tableName;
@@ -212,26 +205,20 @@ export async function getQueryEmbeddings(message, connectionId) {
           Object.assign(rowsByTable[tableName][pkKey], entry.attribute);
         });
       } else if (Array.isArray(chunk.entries)) {
-
         console.log(`Processing legacy format for table ${tableName} with ${chunk.entries.length} entries`);
         chunk.entries.forEach(row => {
           const rowKey = JSON.stringify(row);
           rowsByTable[tableName][rowKey] = row;
         });
+      } else if (chunk.entries && typeof chunk.entries === 'object') {
+        // Handle MongoDB format where entries might be a single object
+        console.log(`Processing MongoDB format for table ${tableName}`);
+        const rowKey = JSON.stringify(chunk.entries);
+        rowsByTable[tableName][rowKey] = chunk.entries;
       }
     });
 
     // Convert Grouped Rows to Final Format
-    // [
-    //   {
-    //     tableName: "users",
-    //     sampleData: [
-    //       { id: 1, name: "Alice", email: "alice@example.com" },
-    //       { id: 2, name: "Bob", email: "bob@example.com" }
-    //     ]
-    //   }
-    // ]
-    
     Object.entries(rowsByTable).forEach(([tableName, rows]) => {
       const rowsArray = Object.values(rows);
       console.log(`Reconstructed ${rowsArray.length} rows for table ${tableName}`);
@@ -249,6 +236,11 @@ export async function getQueryEmbeddings(message, connectionId) {
     
 
     function formatDatabaseContext(embeddingsData) {
+      if (!embeddingsData.schema || !embeddingsData.sampleData) {
+        console.log('Missing schema or sample data in embeddings result');
+        return 'Database context not available';
+      }
+      
       return `Current database context:
 Schema Information:
 ${embeddingsData.schema.map(table => 

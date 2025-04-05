@@ -67,15 +67,16 @@ export default function ChatWithDbPage() {
     }
   }, [chatHistory, chatResults]);
   
-  const handleSubmit = async () => {
-    if (!userQuery.trim()) return
+  const handleSubmit = async (customQuery?: string) => {
+    const queryToSubmit = customQuery || userQuery;
+    if (!queryToSubmit.trim()) return
     
     setIsLoading(true)
     
     // Create a temporary user message to display immediately
     const tempUserMessage = {
       id: `temp-${Date.now()}`,
-      message: userQuery,
+      message: queryToSubmit,
       response: {},
       timestamp: new Date().toISOString(),
       connectionId
@@ -89,7 +90,7 @@ export default function ChatWithDbPage() {
     
     try {
       const url = window.location.href
-      const result = await submitChat(userQuery, url)
+      const result = await submitChat(queryToSubmit, url)
       
       // Update the chat history with the real response
       setChatHistory(prev => {
@@ -155,7 +156,15 @@ ${context.sampleData.map((table: any) =>
   }
   
   const handleOptionClick = (option: string) => {
-    setUserQuery(option)
+    // Find the most recent inquire agent response
+    const lastInquireResponseIndex = chatHistory.length - 1;
+    if (lastInquireResponseIndex >= 0) {
+      const lastMessage = chatHistory[lastInquireResponseIndex];
+      if (lastMessage.response && lastMessage.response.agentType === 'inquire') {
+        // Set the option in the message input field for this specific message
+        handleMessageInputChange(lastMessage.id, option);
+      }
+    }
   }
   
   const handleMessageInputChange = (messageId: string, value: string) => {
@@ -166,11 +175,8 @@ ${context.sampleData.map((table: any) =>
   }
   
   const handleSubmitResponse = (response: string) => {
-    // Set the user query to the response
-    setUserQuery(response);
-    
-    // Submit the response as a new message
-    handleSubmit();
+    // Directly submit the response without updating the main input field
+    handleSubmit(response);
   }
   
   if (!user) {
@@ -253,7 +259,7 @@ ${context.sampleData.map((table: any) =>
             />
             <button
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg disabled:opacity-50"
-              onClick={handleSubmit}
+              onClick={() => handleSubmit()}
               disabled={isLoading || !userQuery.trim()}
             >
               {isLoading ? 'Sending...' : 'Send'}
