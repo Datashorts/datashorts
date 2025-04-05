@@ -8,6 +8,9 @@ import { useUser } from '@clerk/nextjs'
 import { submitChat, getChatHistory } from '@/app/actions/chat'
 import AgentResponse from '@/app/_components/chat/AgentResponse'
 import ChatMessage from '@/app/_components/chat/ChatMessage'
+import { Button } from "@/components/ui/button";
+import { Copy, RefreshCw } from "lucide-react";
+import { toast } from "react-hot-toast";
 
 export default function ChatWithDbPage() {
   const params = useParams()
@@ -25,6 +28,7 @@ export default function ChatWithDbPage() {
   const [copySuccess, setCopySuccess] = useState(false)
   const [dbConnectionUrl, setDbConnectionUrl] = useState<string>('')
   const chatContainerRef = useRef<HTMLDivElement>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
   
   useEffect(() => {
     if (user) {
@@ -217,6 +221,35 @@ ${context.sampleData.map((table: any) =>
     });
   };
   
+  const handleSync = async () => {
+    try {
+      setIsSyncing(true);
+      const response = await fetch(`/api/connections/${connectionId}/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to sync database');
+      }
+
+      if (data.updatedTables.length > 0) {
+        toast.success(`Database synced successfully. Updated tables: ${data.updatedTables.join(', ')}`);
+      } else {
+        toast.info('No new data to sync');
+      }
+    } catch (error) {
+      console.error('Error syncing database:', error);
+      toast.error(error.message || 'Failed to sync database');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  
   if (!user) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -232,29 +265,25 @@ ${context.sampleData.map((table: any) =>
     <div className="flex h-screen">
       <Sidebar />
       <div className="flex-1 flex flex-col">
-        <div className="h-16 border-b border-gray-800 flex items-center justify-between px-6">
-          <h1 className="text-xl font-semibold">Chat with {dbName}</h1>
-          <button
-            onClick={handleCopyUrl}
-            className="flex items-center gap-2 bg-[#333] hover:bg-[#444] text-white px-3 py-1.5 rounded text-sm"
-          >
-            {copySuccess ? (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-                Copied!
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
-                  <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
-                </svg>
-                Copy URL
-              </>
-            )}
-          </button>
+        <div className="flex items-center justify-between p-4 border-b">
+          <h1 className="text-xl font-semibold">{params.dbname}</h1>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleSync}
+              disabled={isSyncing}
+            >
+              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleCopyUrl}
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         
         <div className="flex-1 p-6 overflow-y-auto" ref={chatContainerRef}>
