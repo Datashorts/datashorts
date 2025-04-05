@@ -21,6 +21,7 @@ export default function ChatWithDbPage() {
   const [chatResults, setChatResults] = useState<any>(null)
   const [showContext, setShowContext] = useState(false)
   const [chatHistory, setChatHistory] = useState<any[]>([])
+  const [messageInputs, setMessageInputs] = useState<Record<string, string>>({})
   const chatContainerRef = useRef<HTMLDivElement>(null)
   
   useEffect(() => {
@@ -128,6 +129,17 @@ ${context.sampleData.map((table: any) =>
 ).join('\n\n')}`;
   }
   
+  const handleOptionClick = (option: string) => {
+    setUserQuery(option)
+  }
+  
+  const handleMessageInputChange = (messageId: string, value: string) => {
+    setMessageInputs(prev => ({
+      ...prev,
+      [messageId]: value
+    }))
+  }
+  
   if (!user) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -174,9 +186,9 @@ ${context.sampleData.map((table: any) =>
                         response={chat.response || {}}
                         timestamp={chat.timestamp || new Date().toISOString()}
                         isUser={false}
-                        onOptionClick={setUserQuery}
-                        userQuery={userQuery}
-                        onUserQueryChange={setUserQuery}
+                        onOptionClick={handleOptionClick}
+                        userQuery={messageInputs[chat.id] || ''}
+                        onUserQueryChange={(value) => handleMessageInputChange(chat.id, value)}
                       />
                     </div>
                   ))}
@@ -202,9 +214,9 @@ ${context.sampleData.map((table: any) =>
                     response={chatResults}
                     timestamp={new Date().toISOString()}
                     isUser={false}
-                    onOptionClick={setUserQuery}
-                    userQuery={userQuery}
-                    onUserQueryChange={setUserQuery}
+                    onOptionClick={handleOptionClick}
+                    userQuery={messageInputs['current'] || ''}
+                    onUserQueryChange={(value) => handleMessageInputChange('current', value)}
                   />
                   
                   {/* Log database context to console instead of displaying it */}
