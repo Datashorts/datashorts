@@ -6,8 +6,8 @@ export default function Features() {
     <section className="py-20 bg-[#121212]" id="features">
       <div className="container mx-auto px-6 md:px-8 lg:px-12 max-w-7xl">
         <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">Powerful Features, Simplified Data Access</h2>
-          <p className="text-gray-400 max-w-3xl mx-auto">
+          <h2 className="text-4xl md:text-5xl font-bold mb-4">Powerful Features, Simplified Data Access</h2>
+          <p className="text-gray-400 max-w-3xl mx-auto text-lg">
             Query your data with natural language and get intelligent insights without complex SQL knowledge.
           </p>
         </div>
@@ -42,8 +42,8 @@ function FeatureCard({ icon, title, description }: { icon: React.ReactNode; titl
   return (
     <div className="bg-[#1a1a1a] p-6 rounded-lg border border-gray-800">
       <div className="bg-blue-500/10 w-12 h-12 rounded-lg flex items-center justify-center mb-4">{icon}</div>
-      <h3 className="text-xl font-semibold mb-2">{title}</h3>
-      <p className="text-gray-400">{description}</p>
+      <h3 className="text-2xl font-semibold mb-2">{title}</h3>
+      <p className="text-gray-400 text-lg">{description}</p>
     </div>
   )
 }

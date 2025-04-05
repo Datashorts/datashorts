@@ -4,8 +4,8 @@ export default function HowItWorks() {
     <section className="py-20 bg-[#121212]" id="how-it-works">
       <div className="container mx-auto px-6 md:px-8 lg:px-12 max-w-7xl">
         <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">How DataChat Works</h2>
-          <p className="text-gray-400 max-w-3xl mx-auto">
+          <h2 className="text-4xl md:text-5xl font-bold mb-4">How DataChat Works</h2>
+          <p className="text-gray-400 max-w-3xl mx-auto text-lg">
             From question to insight in seconds - no SQL expertise required.
           </p>
         </div>
@@ -64,8 +64,8 @@ function StepCard({
         {number}
       </div>
       <div className="pt-4">
-        <h3 className="text-xl font-semibold mb-2">{title}</h3>
-        <p className="text-gray-400">{description}</p>
+        <h3 className="text-2xl font-semibold mb-2">{title}</h3>
+        <p className="text-gray-400 text-lg">{description}</p>
         {icon}
       </div>
     </div>
