@@ -38,6 +38,7 @@ interface ChatMessageProps {
   onOptionClick?: (option: string) => void;
   userQuery?: string;
   onUserQueryChange?: (value: string) => void;
+  onSubmitResponse?: (response: string) => void;
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({
@@ -47,6 +48,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   onOptionClick,
   userQuery,
   onUserQueryChange,
+  onSubmitResponse,
 }) => {
   // Handle legacy format where message is a string and isUser is used
   if (typeof message === 'string' || isUser !== undefined) {
@@ -99,6 +101,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               onOptionClick={onOptionClick}
               userQuery={userQuery}
               onUserQueryChange={onUserQueryChange}
+              onSubmitResponse={onSubmitResponse}
             />
           ) : (
             <p className="text-gray-300">{messageContent}</p>
@@ -147,6 +150,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             content={message.content}
             userQuery={userQuery}
             onUserQueryChange={onUserQueryChange}
+            onSubmitResponse={onSubmitResponse}
           />
         ) : (
           <ResearcherResponse

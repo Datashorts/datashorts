@@ -165,6 +165,14 @@ ${context.sampleData.map((table: any) =>
     }))
   }
   
+  const handleSubmitResponse = (response: string) => {
+    // Set the user query to the response
+    setUserQuery(response);
+    
+    // Submit the response as a new message
+    handleSubmit();
+  }
+  
   if (!user) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -218,6 +226,7 @@ ${context.sampleData.map((table: any) =>
                         onOptionClick={handleOptionClick}
                         userQuery={messageInputs[chat.id] || ''}
                         onUserQueryChange={(value) => handleMessageInputChange(chat.id, value)}
+                        onSubmitResponse={handleSubmitResponse}
                       />
                     </div>
                   ))}
