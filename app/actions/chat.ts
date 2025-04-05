@@ -11,6 +11,7 @@ import { taskManager } from "@/lib/agents/taskManager";
 import { inquire } from "@/lib/agents/inquire";
 import { researcher } from "@/lib/agents/researcher";
 import { visualiser } from "@/lib/agents/visualiser";
+import { executeTasks } from "@/lib/agents/orchestrator";
 
 
 export async function embeddings(data) {
@@ -382,8 +383,108 @@ export async function submitChat(userQuery, url) {
     const databaseContext = formatDatabaseContext(embeddingsResult.context);
     console.log('Database Context:', databaseContext);
 
-    // Handle different agent types based on task result
-    if (taskResult.next === 'analyze') {
+    if (taskResult.requiresMultiAgent) {
+      console.log('Handling multi-agent request with orchestration plan:', taskResult.orchestrationPlan);
+      
+      const formattedHistory = conversationHistory.map(chat => [
+        { role: 'user', content: chat.message },
+        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+          ? chat.response.agentOutput 
+          : JSON.stringify(chat.response.agentOutput) }
+      ]).flat();
+      
+      try {
+        // Execute all tasks in the orchestration plan with a timeout
+        const taskResults = await Promise.race([
+          executeTasks(taskResult.orchestrationPlan.tasks, [
+            ...formattedHistory,
+            { role: 'user', content: userQuery }
+          ]),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Task execution timed out')), 60000)
+          )
+        ]);
+        
+        // Process and clean up the task results
+        const processedTaskResults = taskResults.map(result => {
+          // Ensure response is properly formatted
+          let processedResponse = result.response;
+          
+          // If response is a string that looks like JSON, parse it
+          if (typeof result.response === 'string' && 
+              (result.response.startsWith('{') || result.response.startsWith('['))) {
+            try {
+              processedResponse = JSON.parse(result.response);
+            } catch (e) {
+              console.error(`Error parsing response for ${result.agentType}:`, e);
+            }
+          }
+          
+          return {
+            agentType: result.agentType,
+            query: result.query,
+            response: processedResponse
+          };
+        });
+        
+        // Combine all responses
+        const combinedResponse = {
+          success: true,
+          connectionId,
+          connectionName,
+          agentType: 'multi',
+          agentOutput: {
+            summary: taskResult.orchestrationPlan.combinedResponse.summary,
+            details: taskResult.orchestrationPlan.combinedResponse.details,
+            tasks: processedTaskResults
+          }
+        };
+        
+        // Store the chat in the database
+        await storeChatInDatabase(userQuery, combinedResponse, connectionId);
+        
+        return combinedResponse;
+      } catch (error) {
+        console.error("Error executing multi-agent tasks:", error);
+        
+        // Check if we have partial results from the orchestration plan
+        let partialResponse = null;
+        
+        // If we have the orchestration plan, we can still provide some information
+        if (taskResult.orchestrationPlan && taskResult.orchestrationPlan.combinedResponse) {
+          partialResponse = {
+            success: true,
+            connectionId,
+            connectionName,
+            agentType: 'multi',
+            agentOutput: {
+              summary: taskResult.orchestrationPlan.combinedResponse.summary,
+              details: taskResult.orchestrationPlan.combinedResponse.details,
+              tasks: [],
+              note: "The full execution timed out, but here's what was planned:"
+            }
+          };
+        } else {
+          // Return a fallback response if task execution fails
+          partialResponse = {
+            success: true,
+            connectionId,
+            connectionName,
+            agentType: 'multi',
+            agentOutput: {
+              summary: "I encountered an issue processing your complex request.",
+              details: ["The multi-agent orchestration timed out or encountered an error."],
+              tasks: []
+            }
+          };
+        }
+        
+        // Store the fallback response in the database
+        await storeChatInDatabase(userQuery, partialResponse, connectionId);
+        
+        return partialResponse;
+      }
+    } else if (taskResult.next === 'analyze') {
       // ... existing analyze code ...
       const formattedHistory = conversationHistory.map(chat => [
         { role: 'user', content: chat.message },
