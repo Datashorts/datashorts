@@ -13,7 +13,7 @@ import { Copy, RefreshCw } from "lucide-react";
 // import { toast } from "react-hot-toast";
 
 export default function ChatWithDbPage() {
-  const params = useParams()
+  const params = useParams() 
   const { user } = useUser()
   const { setActiveConnection, loadFolders } = useFoldersStore()
   
