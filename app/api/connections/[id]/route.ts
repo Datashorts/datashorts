@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/configs/db';
-import { dbConnections, tableSyncStatus } from '@/configs/schema';
+import { dbConnections, tableSyncStatus, chats } from '@/configs/schema';
 import { eq } from 'drizzle-orm';
 import { currentUser } from '@clerk/nextjs/server';
 
@@ -33,21 +33,26 @@ export async function DELETE(
     
     console.log('Parsed connection ID:', connectionId);
     
-
+    // First, delete all chats associated with this connection
+    console.log('Deleting chats for connection ID:', connectionId);
+    await db.delete(chats)
+      .where(eq(chats.connectionId, connectionId));
+    
+    // Then delete all table sync status records for this connection
     console.log('Deleting table sync status records for connection ID:', connectionId);
     await db.delete(tableSyncStatus)
       .where(eq(tableSyncStatus.connectionId, connectionId));
     
-
+    // Finally, delete the connection itself
     console.log('Deleting connection with ID:', connectionId);
     await db.delete(dbConnections)
       .where(eq(dbConnections.id, connectionId));
     
-    console.log('Connection and associated sync status records deleted successfully');
+    console.log('Connection and associated records deleted successfully');
     
     return NextResponse.json({ 
       success: true,
-      message: 'Connection and associated sync status records deleted successfully'
+      message: 'Connection and associated records deleted successfully'
     });
   } catch (error) {
     console.error('Error deleting connection:', error);

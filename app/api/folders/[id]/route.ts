@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/configs/db';
-import { folders, dbConnections, tableSyncStatus } from '@/configs/schema';
+import { folders, dbConnections, tableSyncStatus, chats } from '@/configs/schema';
 import { eq, and } from 'drizzle-orm';
 import { currentUser } from '@clerk/nextjs/server';
 
@@ -31,6 +31,12 @@ export async function DELETE(
     const connections = await db.select()
       .from(dbConnections)
       .where(eq(dbConnections.folderId, folderId));
+    
+    // Delete all chats associated with these connections
+    for (const connection of connections) {
+      await db.delete(chats)
+        .where(eq(chats.connectionId, connection.id));
+    }
     
     // Delete all table sync status records for these connections
     for (const connection of connections) {
