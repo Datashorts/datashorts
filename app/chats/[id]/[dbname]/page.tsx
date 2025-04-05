@@ -269,17 +269,19 @@ ${context.sampleData.map((table: any) =>
           <h1 className="text-xl font-semibold">{params.dbname}</h1>
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
+              variant="secondary"
               size="icon"
               onClick={handleSync}
               disabled={isSyncing}
+              className="text-gray-800 hover:text-gray-900"
             >
               <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
               size="icon"
               onClick={handleCopyUrl}
+              className="text-gray-800 hover:text-gray-900"
             >
               <Copy className="h-4 w-4" />
             </Button>
