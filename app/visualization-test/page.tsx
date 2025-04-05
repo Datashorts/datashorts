@@ -24,8 +24,7 @@ const pieChartData = {
   }
 };
 
-// Bar chart data is commented out for now
-/*
+// Bar chart data
 const barChartData = {
   chartType: 'bar',
   data: [
@@ -40,29 +39,32 @@ const barChartData = {
     description: 'This is a sample bar chart visualization',
     xAxis: {
       label: 'Month',
-      type: 'category'
+      type: 'category',
+      gridLines: true
     },
     yAxis: {
       label: 'Value',
-      type: 'number'
+      type: 'number',
+      gridLines: true
     },
     legend: {
       display: true
     },
-    stacked: false
+    stacked: false,
+    barConfig: {
+      barThickness: 30,
+      horizontal: false
+    }
   }
 };
-*/
 
 export default function VisualizationTestPage() {
-  // We're only showing pie chart for now
-  // const [activeTab, setActiveTab] = useState<'pie' | 'bar'>('pie');
+  const [activeTab, setActiveTab] = useState<'pie' | 'bar'>('pie');
   
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Visualization Test Page</h1>
       
-      {/* Tab buttons are commented out for now
       <div className="flex space-x-4 mb-4">
         <button 
           className={`px-4 py-2 rounded ${activeTab === 'pie' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
@@ -77,19 +79,20 @@ export default function VisualizationTestPage() {
           Bar Chart
         </button>
       </div>
-      */}
       
       <div className="bg-white p-4 rounded shadow">
         <h2 className="text-xl font-semibold mb-2">
-          Pie Chart Example
+          {activeTab === 'pie' ? 'Pie Chart Example' : 'Bar Chart Example'}
         </h2>
         <p className="text-gray-600 mb-4">
-          This is a sample pie chart visualization using the VisualizationRenderer component.
+          {activeTab === 'pie' 
+            ? 'This is a sample pie chart visualization using the VisualizationRenderer component.' 
+            : 'This is a sample bar chart visualization using the VisualizationRenderer component.'}
         </p>
         
         <div className="h-80">
           <VisualizationRenderer 
-            visualization={pieChartData} 
+            visualization={activeTab === 'pie' ? pieChartData : barChartData} 
           />
         </div>
       </div>

@@ -21,6 +21,16 @@ export const formatPieChartData = (data: any[]): any[] => {
   }));
 };
 
+// Helper function to format data for bar charts
+export const formatBarChartData = (data: any[]): any[] => {
+  return data.map(item => ({
+    label: item.name || item.label,
+    value: Number(item.value) || 0,
+    color: item.color,
+    group: item.group
+  }));
+};
+
 export const visualiser = async function visualiser(messages) {
   const systemPrompt = {
     role: 'system',

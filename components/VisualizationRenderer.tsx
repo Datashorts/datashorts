@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react';
-// import BarChart from './BarChart';
+import BarChart from './BarChart';
 import PieChart from './PieChart';
 
 interface VisualizationRendererProps {
@@ -28,6 +28,14 @@ interface VisualizationRendererProps {
         categoryPercentage?: number;
         horizontal?: boolean;
       };
+      stacked?: boolean;
+      xAxis?: {
+        gridLines?: boolean;
+        label?: string;
+      };
+      yAxis?: {
+        label?: string;
+      };
     };
   };
 }
@@ -50,9 +58,17 @@ const VisualizationRenderer: React.FC<VisualizationRendererProps> = ({ visualiza
           config={config.pieConfig || {}} 
         />
       ) : (
-        <div className="p-4 bg-yellow-100 text-yellow-800 rounded">
-          Bar chart visualization is currently not available. Please use pie chart instead.
-        </div>
+        <BarChart 
+          data={data} 
+          config={{
+            barThickness: config.barConfig?.barThickness,
+            horizontal: config.barConfig?.horizontal,
+            stacked: config.stacked,
+            showGridLines: config.xAxis?.gridLines,
+            xAxisLabel: config.xAxis?.label,
+            yAxisLabel: config.yAxis?.label
+          }}
+        />
       )}
     </div>
   );
