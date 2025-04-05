@@ -9,6 +9,7 @@ import { chats, dbConnections } from "@/configs/schema";
 import { chunkTableData } from "@/lib/utils/tokenManagement";
 import { taskManager } from "@/lib/agents/taskManager";
 import { inquire } from "@/lib/agents/inquire";
+import { researcher } from "@/lib/agents/researcher";
 
 
 export async function embeddings(data) {
@@ -354,7 +355,7 @@ export async function submitChat(userQuery, url) {
   
   try {
     // Get query embeddings and analyze intent in parallel
-    const [embeddingsResult, taskResult] = await Promise.all([
+    const [embeddingsResult, taskAnalysis] = await Promise.all([
       getQueryEmbeddings(userQuery, connectionId),
       taskManager([
         { 
@@ -365,9 +366,79 @@ export async function submitChat(userQuery, url) {
       ])
     ]);
     
-    console.log('Task analysis:', taskResult);
+    console.log('Task analysis:', taskAnalysis);
     
+    // No need to parse taskAnalysis as it's already an object
+    const taskResult = taskAnalysis;
 
+    // If the task is analysis, call the researcher agent
+    if (taskResult.next === 'analyze') {
+      const databaseContext = formatDatabaseContext(embeddingsResult.context);
+      console.log('Database Context:', databaseContext);
+      
+      const researcherResponse = await researcher([
+        { 
+          role: 'system', 
+          content: `You are a researcher agent that analyzes data and provides insights.
+          
+Based on the following database context and user query, provide a detailed analysis in JSON format:
+${databaseContext}
+
+User Query: ${userQuery}
+
+Your response should be in the following JSON format:
+{
+  "summary": "A concise summary of the analysis",
+  "details": ["Detail point 1", "Detail point 2", ...],
+  "metrics": {
+    "metric1": "value1",
+    "metric2": "value2"
+  }
+}
+
+If visualization would be helpful, include:
+{
+  "visualization": {
+    "chartType": "bar|line|pie|table",
+    "data": [
+      { "label": "Label 1", "value": 10 },
+      { "label": "Label 2", "value": 20 }
+    ],
+    "config": {
+      "xAxis": { "label": "X Axis Label", "type": "category|time|numeric" },
+      "yAxis": { "label": "Y Axis Label", "type": "numeric" },
+      "legend": true,
+      "stacked": false
+    }
+  }
+}`
+        },
+        { role: 'user', content: userQuery }
+      ]);
+
+      console.log('Researcher response:', researcherResponse);
+
+      // Parse the researcher response
+      const researcherResult = JSON.parse(researcherResponse);
+
+      // Store the chat in the database
+      await storeChatInDatabase(userQuery, {
+        success: true,
+        connectionId,
+        connectionName,
+        agentType: 'researcher',
+        agentOutput: researcherResult
+      }, connectionId);
+
+      return {
+        success: true,
+        connectionId,
+        connectionName,
+        agentType: 'researcher',
+        agentOutput: researcherResult
+      };
+    }
+    
     const databaseContext = formatDatabaseContext(embeddingsResult.context);
     console.log('Database Context:', databaseContext);
     

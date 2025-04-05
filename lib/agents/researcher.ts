@@ -1,4 +1,4 @@
-import { grokClient } from '../utils/grokClient';
+import { grokClient } from '@/app/lib/clients';
 export const researcher = async function researcher(messages) {
   // Check if it's a simple data query
   const userMessage = messages[messages.length - 1].content.toLowerCase();
@@ -6,62 +6,26 @@ export const researcher = async function researcher(messages) {
                        userMessage.includes('count') || 
                        userMessage.includes('show') || 
                        userMessage.includes('list') || 
-                       userMessage.includes('tell');
+                       userMessage.includes('tell') ||
+                       userMessage.includes('how many') ||
+                       userMessage.includes('what is') ||
+                       userMessage.includes('describe');
 
   const systemPrompt = {
     role: 'system',
-    content: isSimpleQuery ? 
-      `You are a data analyst that provides direct answers to data queries. Return results in this strict JSON format:
-      {
-        "type": "analysis",
-        "content": {
-          "summary": string,
-          "details": string[],
-          "metrics": {
-            [key: string]: number | string
-          }
-        }
+    content: `You are a data analyst that provides direct answers to data queries. Return results in this strict JSON format:
+    {
+      "summary": string,
+      "details": string[],
+      "metrics": {
+        [key: string]: number | string
       }
-      
-      Return JSON format.` 
-      : // Visualization-focused prompt
-      `You are an AI research assistant that provides detailed analysis and insights based on database schema and data.
-
-Return results in this strict JSON format:
-{
-  "type": "visualization", 
-  "content": {
-    "title": string,
-    "summary": string,
-    "details": string[],
-    "metrics": {
-      [key: string]: number | string
     }
-  },
-  "visualization": {
-    "chartType": string,
-    "data": [
-      {
-        "label": string,
-        "value": number
-      }
-    ],
-    "config": {
-      "xAxis": {
-        "label": string,
-        "type": "category"
-      },
-      "yAxis": {
-        "label": string,
-        "type": "number"
-      },
-      "legend": boolean,
-      "stacked": boolean
-    }
-  }
-}
-
-Return JSON format.`
+    
+    For simple questions like "how many tables are there" or "what is the schema", provide a direct answer.
+    Focus on providing clear, concise information without visualizations.
+    
+    Return JSON format.`
   };
 
   try {
@@ -73,18 +37,15 @@ Return JSON format.`
       temperature: 0.3
     });
     
-    return JSON.parse(fallbackResponse.choices[0].message.content);
+    return fallbackResponse.choices[0].message.content;
   } catch (error) {
     console.error("Error in researcher agent:", error);
     
     // Return a simple error response in the expected format
-    return {
-      type: "analysis",
-      content: {
-        summary: "Error processing your request",
-        details: ["There was an error processing your request. Please try again."],
-        metrics: {}
-      }
-    };
+    return JSON.stringify({
+      summary: "Error processing your request",
+      details: ["There was an error processing your request. Please try again."],
+      metrics: {}
+    });
   }
 };

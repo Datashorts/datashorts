@@ -174,13 +174,17 @@ ${context.sampleData.map((table: any) =>
                 <div className="space-y-4">
                   {chatHistory.map((chat, index) => (
                     <div key={index} className="bg-[#1a1a1a] p-4 rounded-lg border border-gray-800">
+                      {/* User message */}
                       <ChatMessage 
                         message={chat.message || ''}
                         response={chat.response || {}}
                         timestamp={chat.timestamp || new Date().toISOString()}
                         isUser={true}
+                        userQuery={messageInputs[chat.id] || ''}
+                        onUserQueryChange={(value) => handleMessageInputChange(chat.id, value)}
                       />
                       
+                      {/* Agent response */}
                       <ChatMessage 
                         message=""
                         response={chat.response || {}}
@@ -202,13 +206,17 @@ ${context.sampleData.map((table: any) =>
               {/* Display only the current conversation */}
               {chatResults && (
                 <div className="bg-[#1a1a1a] p-4 rounded-lg border border-gray-800">
+                  {/* User message */}
                   <ChatMessage 
                     message={userQuery}
                     response={{}}
                     timestamp={new Date().toISOString()}
                     isUser={true}
+                    userQuery={messageInputs['current'] || ''}
+                    onUserQueryChange={(value) => handleMessageInputChange('current', value)}
                   />
                   
+                  {/* Agent response */}
                   <ChatMessage 
                     message=""
                     response={chatResults}
