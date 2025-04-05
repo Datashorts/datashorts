@@ -10,7 +10,7 @@ import AgentResponse from '@/app/_components/chat/AgentResponse'
 import ChatMessage from '@/app/_components/chat/ChatMessage'
 import { Button } from "@/components/ui/button";
 import { Copy, RefreshCw } from "lucide-react";
-import { toast } from "react-hot-toast";
+// import { toast } from "react-hot-toast";
 
 export default function ChatWithDbPage() {
   const params = useParams()
@@ -238,13 +238,13 @@ ${context.sampleData.map((table: any) =>
       }
 
       if (data.updatedTables.length > 0) {
-        toast.success(`Database synced successfully. Updated tables: ${data.updatedTables.join(', ')}`);
+        console.log(`Database synced successfully. Updated tables: ${data.updatedTables.join(', ')}`);
       } else {
-        toast.info('No new data to sync');
+        console.log('No new data to sync');
       }
     } catch (error) {
       console.error('Error syncing database:', error);
-      toast.error(error.message || 'Failed to sync database');
+
     } finally {
       setIsSyncing(false);
     }
