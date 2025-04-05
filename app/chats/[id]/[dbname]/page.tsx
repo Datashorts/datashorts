@@ -60,24 +60,6 @@ export default function ChatWithDbPage() {
     loadChatHistory()
   }, [connectionId])
   
-
-  useEffect(() => {
-    if (chatResults) {
-      const loadChatHistory = async () => {
-        if (connectionId) {
-          try {
-            const history = await getChatHistory(connectionId)
-            setChatHistory(history)
-          } catch (error) {
-            console.error('Error refreshing chat history:', error)
-          }
-        }
-      }
-      
-      loadChatHistory()
-    }
-  }, [chatResults, connectionId])
-  
   // Scroll to bottom when chat history or current results change
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -89,17 +71,60 @@ export default function ChatWithDbPage() {
     if (!userQuery.trim()) return
     
     setIsLoading(true)
+    
+    // Create a temporary user message to display immediately
+    const tempUserMessage = {
+      id: `temp-${Date.now()}`,
+      message: userQuery,
+      response: {},
+      timestamp: new Date().toISOString(),
+      connectionId
+    };
+    
+    // Add the temporary message to the chat history
+    setChatHistory(prev => [...prev, tempUserMessage]);
+    
+    // Clear the input field immediately
+    setUserQuery('');
+    
     try {
       const url = window.location.href
       const result = await submitChat(userQuery, url)
       
-      // Set the current chat results
-      setChatResults(result)
-      
-      // Clear the input field
-      setUserQuery('')
+      // Update the chat history with the real response
+      setChatHistory(prev => {
+        // Remove the temporary message
+        const filteredHistory = prev.filter(msg => msg.id !== tempUserMessage.id);
+        
+        // Add the real message and response
+        return [...filteredHistory, {
+          id: `${connectionId}-${Date.now()}`,
+          message: tempUserMessage.message,
+          response: result,
+          timestamp: new Date().toISOString(),
+          connectionId
+        }];
+      });
     } catch (error) {
       console.error('Error submitting chat:', error)
+      
+      // Update the chat history to show the error
+      setChatHistory(prev => {
+        // Remove the temporary message
+        const filteredHistory = prev.filter(msg => msg.id !== tempUserMessage.id);
+        
+        // Add the error message
+        return [...filteredHistory, {
+          id: `${connectionId}-${Date.now()}`,
+          message: tempUserMessage.message,
+          response: {
+            agentType: 'error',
+            agentOutput: 'An error occurred while processing your request.'
+          },
+          timestamp: new Date().toISOString(),
+          connectionId
+        }];
+      });
     } finally {
       setIsLoading(false)
     }
@@ -169,7 +194,7 @@ ${context.sampleData.map((table: any) =>
             </div>
             
             <div className="space-y-4">
-              {/* Display previous chat history */}
+              {/* Display chat history */}
               {chatHistory && chatHistory.length > 0 ? (
                 <div className="space-y-4">
                   {chatHistory.map((chat, index) => (
@@ -200,39 +225,6 @@ ${context.sampleData.map((table: any) =>
               ) : (
                 <div className="text-center text-gray-400 py-4">
                   No previous conversations found. Start a new conversation!
-                </div>
-              )}
-              
-              {/* Display only the current conversation */}
-              {chatResults && (
-                <div className="bg-[#1a1a1a] p-4 rounded-lg border border-gray-800">
-                  {/* User message */}
-                  <ChatMessage 
-                    message={userQuery}
-                    response={{}}
-                    timestamp={new Date().toISOString()}
-                    isUser={true}
-                    userQuery={messageInputs['current'] || ''}
-                    onUserQueryChange={(value) => handleMessageInputChange('current', value)}
-                  />
-                  
-                  {/* Agent response */}
-                  <ChatMessage 
-                    message=""
-                    response={chatResults}
-                    timestamp={new Date().toISOString()}
-                    isUser={false}
-                    onOptionClick={handleOptionClick}
-                    userQuery={messageInputs['current'] || ''}
-                    onUserQueryChange={(value) => handleMessageInputChange('current', value)}
-                  />
-                  
-                  {/* Log database context to console instead of displaying it */}
-                  {chatResults.context && (
-                    <div className="hidden">
-                      {console.log('Current Query Database Context:', formatDatabaseContext(chatResults.context))}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
