@@ -354,16 +354,30 @@ export async function submitChat(userQuery, url) {
   console.log(`Extracted connection ID: ${connectionId}, connection name: ${connectionName}`);
   
   try {
-    // Get query embeddings and analyze intent in parallel
-    const [embeddingsResult, taskAnalysis] = await Promise.all([
+    // Get query embeddings and conversation history in parallel
+    const [embeddingsResult, conversationHistory] = await Promise.all([
       getQueryEmbeddings(userQuery, connectionId),
-      taskManager([
-        { 
-          role: 'system', 
-          content: 'Initial context. Direct questions about counts, totals, or current state should be analyzed directly.' 
-        },
-        { role: 'user', content: userQuery }
-      ])
+      getChatHistory(connectionId)
+    ]);
+    
+    console.log('Conversation history:', conversationHistory);
+    
+    // Format conversation history for the task manager
+    const formattedHistory = conversationHistory.map(chat => [
+      { role: 'user', content: chat.message },
+      { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+        ? chat.response.agentOutput 
+        : JSON.stringify(chat.response.agentOutput) }
+    ]).flat();
+    
+    // Analyze intent with conversation history
+    const taskAnalysis = await taskManager([
+      { 
+        role: 'system', 
+        content: 'Initial context. Direct questions about counts, totals, or current state should be analyzed directly.' 
+      },
+      ...formattedHistory,
+      { role: 'user', content: userQuery }
     ]);
     
     console.log('Task analysis:', taskAnalysis);
@@ -375,6 +389,14 @@ export async function submitChat(userQuery, url) {
     if (taskResult.next === 'analyze') {
       const databaseContext = formatDatabaseContext(embeddingsResult.context);
       console.log('Database Context:', databaseContext);
+      
+      // Format conversation history for the researcher agent
+      const formattedHistory = conversationHistory.map(chat => [
+        { role: 'user', content: chat.message },
+        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+          ? chat.response.agentOutput 
+          : JSON.stringify(chat.response.agentOutput) }
+      ]).flat();
       
       const researcherResponse = await researcher([
         { 
@@ -413,6 +435,7 @@ If visualization would be helpful, include:
   }
 }`
         },
+        ...formattedHistory,
         { role: 'user', content: userQuery }
       ]);
 
@@ -446,8 +469,18 @@ If visualization would be helpful, include:
     let inquireResult = null;
     if (taskResult.next === 'inquire') {
       console.log('Calling inquire agent with database context and user query');
+      
+      // Format conversation history for the inquire agent
+      const formattedHistory = conversationHistory.map(chat => [
+        { role: 'user', content: chat.message },
+        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+          ? chat.response.agentOutput 
+          : JSON.stringify(chat.response.agentOutput) }
+      ]).flat();
+      
       inquireResult = await inquire([
         { role: 'system', content: databaseContext },
+        ...formattedHistory,
         { role: 'user', content: userQuery }
       ]);
       console.log('Inquire agent response:', inquireResult);
