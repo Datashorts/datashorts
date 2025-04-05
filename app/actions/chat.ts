@@ -385,7 +385,33 @@ export async function submitChat(userQuery, url) {
     // Handle different agent types based on task result
     if (taskResult.next === 'analyze') {
       // ... existing analyze code ...
+      const formattedHistory = conversationHistory.map(chat => [
+        { role: 'user', content: chat.message },
+        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+          ? chat.response.agentOutput 
+          : JSON.stringify(chat.response.agentOutput) }
+      ]).flat();
+      
       const researcherResponse = await researcher([
+        { 
+          role: 'system', 
+          content: `You are a researcher agent that analyzes data and provides insights.
+          
+Based on the following database context and user query, provide a detailed analysis in JSON format:
+${databaseContext}
+
+User Query: ${userQuery}
+
+Your response should be in the following JSON format:
+{
+  "summary": "A concise summary of the analysis",
+  "details": ["Detail point 1", "Detail point 2", ...],
+  "metrics": {
+    "metric1": "value1",
+    "metric2": "value2"
+  }
+}`
+        },
         ...formattedHistory,
         { role: 'user', content: userQuery }
       ]);
@@ -414,7 +440,68 @@ export async function submitChat(userQuery, url) {
     } else if (taskResult.next === 'visualize') {
       console.log('Calling visualiser agent with database context and user query');
       
+      const formattedHistory = conversationHistory.map(chat => [
+        { role: 'user', content: chat.message },
+        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+          ? chat.response.agentOutput 
+          : JSON.stringify(chat.response.agentOutput) }
+      ]).flat();
+      
       const visualiserResult = await visualiser([
+        { 
+          role: 'system', 
+          content: `You are a visualisation agent that creates meaningful visualizations based on data.
+          
+Based on the following database context and user query, create an appropriate visualization in JSON format:
+${databaseContext}
+
+User Query: ${userQuery}
+
+Your response should be in the following JSON format:
+{
+  "type": "visualization",
+  "content": {
+    "title": "Visualization title",
+    "summary": "Brief summary of what the visualization shows",
+    "details": ["Detail point 1", "Detail point 2", ...],
+    "metrics": {
+      "metric1": "value1",
+      "metric2": "value2"
+    }
+  },
+  "visualization": {
+    "chartType": "bar" | "pie",
+    "data": [
+      {
+        "label": "Label 1",
+        "value": 100,
+        "color": "#color" (optional)
+      },
+      ...
+    ],
+    "config": {
+      "title": "Chart title",
+      "description": "Chart description",
+      "xAxis": {
+        "label": "X-axis label",
+        "type": "category" | "time" | "linear"
+      },
+      "yAxis": {
+        "label": "Y-axis label",
+        "type": "number" | "category"
+      },
+      "legend": {
+        "display": true
+      },
+      "stacked": false,
+      "pieConfig": {
+        "donut": false,
+        "showPercentages": true
+      }
+    }
+  }
+}`
+        },
         ...formattedHistory,
         { role: 'user', content: userQuery }
       ]);
@@ -441,7 +528,15 @@ export async function submitChat(userQuery, url) {
       // ... existing inquire code ...
       console.log('Calling inquire agent with database context and user query');
       
+      const formattedHistory = conversationHistory.map(chat => [
+        { role: 'user', content: chat.message },
+        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+          ? chat.response.agentOutput 
+          : JSON.stringify(chat.response.agentOutput) }
+      ]).flat();
+      
       const inquireResult = await inquire([
+        { role: 'system', content: databaseContext },
         ...formattedHistory,
         { role: 'user', content: userQuery }
       ]);
