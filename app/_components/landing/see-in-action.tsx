@@ -13,12 +13,7 @@ export default function SeeInAction() {
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
           <div className="relative h-[300px] md:h-[400px] rounded-lg overflow-hidden">
-            <Image
-              src="/placeholder.svg?height=400&width=600"
-              alt="Person typing on laptop"
-              fill
-              className="object-cover"
-            />
+          <Image src="/test.png" alt="arrow-right" width={580} height={10}/>
             <div className="absolute bottom-2 left-2 text-xs text-gray-400">Photo by Glenn Carstens-Peters</div>
           </div>
           <div className="bg-[#1a1a1a] p-6 rounded-lg border border-gray-800">
