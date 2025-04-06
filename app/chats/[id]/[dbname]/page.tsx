@@ -311,6 +311,7 @@ ${context.sampleData.map((table: any) =>
                         isUser={true}
                         userQuery={messageInputs[chat.id] || ''}
                         onUserQueryChange={(value) => handleMessageInputChange(chat.id, value)}
+                        isLoading={isLoading && index === chatHistory.length - 1 && !chat.response.agentType}
                       />
                       
                       {/* Agent response */}
@@ -323,6 +324,7 @@ ${context.sampleData.map((table: any) =>
                         userQuery={messageInputs[chat.id] || ''}
                         onUserQueryChange={(value) => handleMessageInputChange(chat.id, value)}
                         onSubmitResponse={handleSubmitResponse}
+                        isLoading={isLoading && index === chatHistory.length - 1 && !chat.response.agentType}
                       />
                     </div>
                   ))}

@@ -1,7 +1,7 @@
 import React from 'react';
 import AgentResponse from './AgentResponse';
 import ResearcherResponse from './ResearcherResponse';
-import { Bot } from 'lucide-react';
+import { Bot, Loader2 } from 'lucide-react';
 import { UserButton } from '@clerk/nextjs';
 
 interface ChatMessageProps {
@@ -35,6 +35,7 @@ interface ChatMessageProps {
   };
   response?: any;
   isUser?: boolean;
+  isLoading?: boolean;
   onOptionClick?: (option: string) => void;
   userQuery?: string;
   onUserQueryChange?: (value: string) => void;
@@ -45,6 +46,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   message,
   response,
   isUser,
+  isLoading = false,
   onOptionClick,
   userQuery,
   onUserQueryChange,
@@ -89,7 +91,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             <p className="text-xs text-gray-400">{formattedTime}</p>
           </div>
           
-          {response && response.agentType === 'researcher' ? (
+          {isLoading ? (
+            <div className="flex items-center space-x-2 text-gray-300">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Processing your request...</span>
+            </div>
+          ) : response && response.agentType === 'researcher' ? (
             <ResearcherResponse
               content={response.agentOutput}
               visualization={response.agentOutput.visualization}
@@ -145,7 +152,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           <p className="text-xs text-gray-400">{formattedTime}</p>
         </div>
         
-        {typeof message.content === 'string' ? (
+        {isLoading ? (
+          <div className="flex items-center space-x-2 text-gray-300">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Processing your request...</span>
+          </div>
+        ) : typeof message.content === 'string' ? (
           <AgentResponse
             content={message.content}
             userQuery={userQuery}
