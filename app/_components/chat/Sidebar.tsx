@@ -42,6 +42,7 @@ export default function Sidebar() {
   const [isCreateConnectionModalOpen, setIsCreateConnectionModalOpen] = useState(false)
   const [selectedFolderForConnection, setSelectedFolderForConnection] = useState<number | null>(null)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [selectedPipeline, setSelectedPipeline] = useState<'karthik' | 'shive'>('karthik')
   const [newConnection, setNewConnection] = useState<Connection>({
     id: '',
     name: '',
@@ -104,6 +105,24 @@ export default function Sidebar() {
       try {
         useFoldersStore.setState({ isLoading: true })
         
+        if (selectedPipeline === 'shive') {
+          // Pipeline 2 workflow
+          const response = await fetch(`/api/pipeline2?dbUrl=${encodeURIComponent(newConnection.url)}`, {
+            method: 'GET',
+            credentials: 'include'
+          })
+          
+          if (!response.ok) {
+            const errorData = await response.json()
+            throw new Error(errorData.error || 'Failed to process pipeline 2')
+          }
+          
+          console.log('Pipeline 2 completed successfully')
+          closeCreateConnectionModal()
+          return
+        }
+        
+        // Existing karthik workflow
         const apiEndpoint = newConnection.type === 'mongodb' 
           ? '/api/connectMongodb' 
           : '/api/connectdb'
@@ -401,6 +420,23 @@ export default function Sidebar() {
             <DialogTitle>Add Database Connection</DialogTitle>
           </DialogHeader>
           <div className="py-4 space-y-4">
+            <div className="flex items-center justify-center space-x-4">
+              <Button
+                variant={selectedPipeline === 'karthik' ? 'default' : 'outline'}
+                onClick={() => setSelectedPipeline('karthik')}
+                className="w-24"
+              >
+                Karthik
+              </Button>
+              <Button
+                variant={selectedPipeline === 'shive' ? 'default' : 'outline'}
+                onClick={() => setSelectedPipeline('shive')}
+                className="w-24"
+              >
+                Shive
+              </Button>
+            </div>
+            
             <div className="space-y-2">
               <Label htmlFor="connection-name">Database Name</Label>
               <Input
@@ -454,10 +490,10 @@ export default function Sidebar() {
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Connecting...
+                  {selectedPipeline === 'shive' ? 'Processing...' : 'Connecting...'}
                 </>
               ) : (
-                'Connect'
+                selectedPipeline === 'shive' ? 'Process' : 'Connect'
               )}
             </Button>
           </DialogFooter>
