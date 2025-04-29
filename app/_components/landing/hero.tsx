@@ -25,8 +25,7 @@ export default function Hero() {
 
   const handleGetStarted = () => {
     if (user) {
-      const chatId = uuidv4()
-      router.push(`/chats/${chatId}`)
+      router.push('/stats')
     }
   }
 
