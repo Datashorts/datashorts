@@ -1,4 +1,4 @@
-# DataChat
+# DataChat--->new name is datashorts
 
 DataChat is a modern web application that allows you to interact with your database using natural language. Ask questions about your data in plain English and get instant answers without writing any SQL.
 
