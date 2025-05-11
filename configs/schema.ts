@@ -37,7 +37,8 @@ export const dbConnections = pgTable('db_connections', {
   mongoUrl: text('mongo_url'),
   dbType: varchar('db_type', { length: 50 }).notNull(), 
   tableSchema: json('table_schema').notNull(),
-  tableData: json('table_data').notNull(),     
+  tableData: json('table_data'),     
+  pipeline: varchar('pipeline', { length: 50 }).notNull().default('pipeline1'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({

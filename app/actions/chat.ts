@@ -12,6 +12,7 @@ import { inquire } from "@/lib/agents/inquire";
 import { researcher } from "@/lib/agents/researcher";
 import { visualiser } from "@/lib/agents/visualiser";
 import { executeTasks } from "@/lib/agents/orchestrator";
+import { processPipeline2Query } from "./pipeline2Query";
 
 
 export async function embeddings(data) {
@@ -340,7 +341,6 @@ export async function submitChat(userQuery, url) {
   console.log('URL:', url);
   
   // Extract connection ID and name from URL
-  // Expected format: http://localhost:3000/chats/11/postgresqltest
   const urlParts = url.split('/');
   const connectionId = urlParts[urlParts.length - 2];
   const connectionName = urlParts[urlParts.length - 1]; 
@@ -348,7 +348,46 @@ export async function submitChat(userQuery, url) {
   console.log(`Extracted connection ID: ${connectionId}, connection name: ${connectionName}`);
   
   try {
+    // Get the connection details directly from the database
+    const connectionDetails = await db
+      .select()
+      .from(dbConnections)
+      .where(eq(dbConnections.id, parseInt(connectionId)))
+      .limit(1);
 
+    if (!connectionDetails || connectionDetails.length === 0) {
+      throw new Error('Connection not found');
+    }
+
+    const connection = connectionDetails[0];
+    console.log('Connection details:', connection);
+    
+    // Check if this is a pipeline 2 connection
+    if (connection.pipeline === 'pipeline2') {
+      console.log('Processing pipeline 2 query');
+      
+      // Process the query using pipeline 2 embeddings
+      const result = await processPipeline2Query(userQuery, connectionId);
+      
+      // Store the chat in the database
+      await storeChatInDatabase(userQuery, {
+        success: true,
+        connectionId,
+        connectionName,
+        agentType: 'pipeline2',
+        agentOutput: result
+      }, connectionId);
+      
+      return {
+        success: true,
+        connectionId,
+        connectionName,
+        agentType: 'pipeline2',
+        agentOutput: result
+      };
+    }
+
+    // Continue with existing pipeline 1 logic
     const [embeddingsResult, conversationHistory] = await Promise.all([
       getQueryEmbeddings(userQuery, connectionId),
       getChatHistory(connectionId)

@@ -256,6 +256,20 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
         </div>
       );
     
+    case 'pipeline2':
+      return (
+        <div>
+          <p className="text-sm text-gray-300 mb-2">Relevant Schema Information:</p>
+          {agentOutput.reconstructedSchema && agentOutput.reconstructedSchema.map((schema: any, index: number) => (
+            <div key={index} className="mb-4 p-3 bg-[#2a2a2a] rounded-lg">
+              <p className="font-medium text-blue-400">{schema.tableName}</p>
+              <p className="text-sm text-gray-400 mt-1">{schema.text}</p>
+              <p className="text-xs text-gray-500 mt-1">Relevance score: {schema.score.toFixed(2)}</p>
+            </div>
+          ))}
+        </div>
+      );
+    
     default:
       return (
         <div>

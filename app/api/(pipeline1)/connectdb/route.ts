@@ -155,6 +155,7 @@ export async function POST(request: NextRequest) {
       connectionName: name,
       postgresUrl: url,
       dbType: type,
+      pipeline: 'pipeline1',
       tableSchema: JSON.stringify(allTableData.map(t => ({
         tableName: t.tableName,
         columns: t.columns

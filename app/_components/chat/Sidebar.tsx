@@ -13,6 +13,7 @@ import { useUser } from '@clerk/nextjs'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { embeddings } from '@/app/actions/chat'
+import { processPipeline2Embeddings } from '@/app/actions/pipeline2Embeddings'
 // mongodb+srv://karthiknadar1204:u31oziQ2NgYPhzS9@cluster0.eibha1d.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 export default function Sidebar() {
   const router = useRouter()
@@ -106,30 +107,70 @@ export default function Sidebar() {
         useFoldersStore.setState({ isLoading: true })
         
         if (selectedPipeline === 'shive') {
-          // Pipeline 2 workflow
-          const response = await fetch(`/api/pipeline2?dbUrl=${encodeURIComponent(newConnection.url)}`, {
-            method: 'GET',
-            credentials: 'include'
+
+          const response = await fetch('/api/connectdb-persistent', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              name: newConnection.name,
+              type: newConnection.type,
+              url: newConnection.url,
+              folderId: selectedFolderForConnection
+            })
           })
           
           if (!response.ok) {
             const errorData = await response.json()
-            throw new Error(errorData.error || 'Failed to process pipeline 2')
+            throw new Error(errorData.error || 'Failed to establish persistent connection')
           }
           
-          console.log('Pipeline 2 completed successfully')
-          closeCreateConnectionModal()
+          const data = await response.json()
+          console.log('Persistent connection established successfully:', data)
+          
+
+          try {
+            const formattedData = {
+              id: data.connection.id,
+              connectionName: data.connection.name,
+              dbType: data.connection.type,
+              schema: data.schema
+            }
+            
+            processPipeline2Embeddings(formattedData).catch(error => {
+              console.error('Error processing pipeline 2 embeddings:', error)
+            })
+
+
+            const connectionWithId = {
+              ...newConnection,
+              id: data.connection.id
+            }
+            
+
+            addConnectionToFolder(selectedFolderForConnection, connectionWithId)
+            
+
+            closeCreateConnectionModal()
+            const connectionEndpoint = generateConnectionEndpoint(connectionWithId.id, connectionWithId.name)
+            router.push(connectionEndpoint)
+          } catch (error) {
+            console.error('Error formatting data for pipeline 2 embeddings:', error)
+
+          }
+          
           return
         }
         
-        // Existing karthik workflow
+
         const apiEndpoint = newConnection.type === 'mongodb' 
           ? '/api/connectMongodb' 
           : '/api/connectdb'
         
         console.log('Using API endpoint:', apiEndpoint)
         
-        // Prepare request body based on database type
+
         let requestBody;
         if (newConnection.type === 'mongodb') {
           requestBody = {
@@ -165,21 +206,21 @@ export default function Sidebar() {
         const connectionId = data.id || (data.connection && data.connection.id)
         console.log('Extracted connection ID:', connectionId)
         
-        // Create the connection first
+
         const connectionWithId = {
           ...newConnection,
           id: connectionId
         }
         
-        // Add connection to folder
+
         addConnectionToFolder(selectedFolderForConnection, connectionWithId)
         
-        // Close the modal and navigate to the new connection
+
         closeCreateConnectionModal()
         const connectionEndpoint = generateConnectionEndpoint(connectionWithId.id, connectionWithId.name)
         router.push(connectionEndpoint)
         
-        // Process embeddings after navigation has started
+
         try {
           const formattedData = {
             id: connectionId,
@@ -188,14 +229,14 @@ export default function Sidebar() {
             tables: data.tables || []
           }
           
-          // Process embeddings in the background
+
           embeddings(formattedData).catch(error => {
             console.error('Error processing embeddings:', error)
-            // Don't throw the error since embeddings can be retried later
+
           })
         } catch (error) {
           console.error('Error formatting data for embeddings:', error)
-          // Don't throw the error since the connection is already created
+
         }
         
       } catch (error) {

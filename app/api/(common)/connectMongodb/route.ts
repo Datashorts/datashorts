@@ -25,6 +25,7 @@ export async function POST(request) {
       connectionName: connectionName,
       mongoUrl: mongoUrl,
       dbType: 'mongodb',
+      pipeline: 'pipeline1',
       tableSchema: JSON.stringify(allCollectionData.map(t => ({
         tableName: t.collectionName,
         columns: t.schema
