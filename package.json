@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "db:push": "npx drizzle-kit push",
-    "db:studio": "npx drizzle-kit studio"
+    "db:studio": "npx drizzle-kit studio",
+    "legacy-peer": "npm install --legacy-peer-deps"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.13.0",
@@ -49,6 +50,7 @@
     "date-fns": "^4.1.0",
     "drizzle-orm": "^0.41.0",
     "embla-carousel-react": "^8.5.2",
+    "framer-motion": "^12.10.5",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.487.0",
     "mongodb": "^6.15.0",
@@ -61,6 +63,7 @@
     "react-day-picker": "^8.10.1",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.55.0",
+    "react-icons": "^5.5.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.2",
     "sonner": "^2.0.3",

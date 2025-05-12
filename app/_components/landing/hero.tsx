@@ -1,61 +1,65 @@
-'use client'
+'use client';
 
-import { SignInButton, SignedIn, SignedOut, useUser } from '@clerk/nextjs'
-import { useEffect } from 'react'
-import { StoreUser } from '@/app/actions/user'
-import { useRouter } from 'next/navigation'
-import { v4 as uuidv4 } from 'uuid'
+import { SignInButton, SignedIn, SignedOut, useUser } from "@clerk/nextjs";
+import { useEffect } from "react";
+import { StoreUser } from "@/app/actions/user";
+import { useRouter } from "next/navigation";
 
 export default function Hero() {
-  const { user, isLoaded } = useUser()
-  const router = useRouter()
+  const { user } = useUser();
+  const router = useRouter();
 
   useEffect(() => {
-    const syncUser = async () => {
-      if (user) {
-        await StoreUser({
-          id: user.id,
-          email: user.emailAddresses[0].emailAddress,
-          name: user.fullName,
-        })
-      }
+    if (user) {
+      StoreUser({
+        id: user.id,
+        email: user.emailAddresses[0].emailAddress,
+        name: user.fullName,
+      });
     }
-    syncUser()
-  }, [user])
+  }, [user]);
 
   const handleGetStarted = () => {
-    if (user) {
-      router.push('/stats')
-    }
-  }
+    router.push(user ? "/stats" : "#features");
+  };
 
   return (
-    <div className="relative isolate overflow-hidden bg-[#121212]">
-      <div className="mx-auto max-w-7xl px-4 pb-24 pt-10 sm:pb-32 lg:flex lg:px-4 lg:py-40">
-        <div className="mx-auto max-w-2xl flex-shrink-0 lg:mx-0 lg:max-w-2xl lg:pt-8 lg:pl-0">
-          <div className="mt-24 sm:mt-32 lg:mt-16">
-            <a href="#" className="inline-flex space-x-6">
-              <span className="rounded-full bg-blue-500/10 px-3 py-1 text-sm font-semibold leading-6 text-blue-400 ring-1 ring-inset ring-blue-500/20">
-                What's new
-              </span>
-              <span className="inline-flex items-center space-x-2 text-sm font-medium leading-6 text-gray-300">
-                <span>Just shipped v1.0</span>
-                <svg className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-                </svg>
-              </span>
-            </a>
-          </div>
-          <h1 className="mt-10 text-6xl font-bold tracking-tight text-white sm:text-8xl">
-            Chat with your database using natural language
+    <section className="relative bg-[#121212] overflow-hidden">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 lg:py-24 flex flex-col-reverse lg:flex-row items-center gap-12">
+        {/* Left column (40%) */}
+        <div className="w-full lg:w-2/5 space-y-6 text-center lg:text-left">
+          {/* ... your CTA, heading, etc. (unchanged) ... */}
+          <a
+            href="#"
+            className="inline-flex items-center rounded-full bg-blue-500/10 px-4 py-1 text-sm font-semibold text-blue-400 ring-1 ring-inset ring-blue-500/20"
+          >
+            What's new&nbsp;&nbsp;
+            {/* chevron icon */}
+            <svg
+              className="h-4 w-4 shrink-0 text-blue-400"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </a>
+
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight">
+            Natural Language for Data Insights
           </h1>
-          <p className="mt-6 text-2xl leading-8 text-gray-300">
-            Ask questions about your data in plain English and get instant answers. No SQL required.
+          <p className="text-lg sm:text-xl text-gray-300 max-w-2xl lg:max-w-none mx-auto lg:mx-0">
+            Ask questions about your data in plain English and get instant answers.
+            No SQL required.
           </p>
-          <div className="mt-10 flex items-center gap-x-6">
+
+          <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 sm:gap-6 mt-4">
             <SignedOut>
               <SignInButton mode="modal">
-                <button className="rounded-md bg-blue-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                <button className="w-full sm:w-auto rounded-md bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600">
                   Get Started
                 </button>
               </SignInButton>
@@ -63,29 +67,101 @@ export default function Hero() {
             <SignedIn>
               <button
                 onClick={handleGetStarted}
-                className="rounded-md bg-blue-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                className="w-full sm:w-auto rounded-md bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600"
               >
                 Go to Dashboard
               </button>
             </SignedIn>
-            <a href="#features" className="text-sm font-semibold leading-6 text-white">
-              Learn more <span aria-hidden="true">→</span>
+            <a
+              href="#features"
+              className="text-sm font-medium text-white hover:underline"
+            >
+              Learn more →
             </a>
           </div>
         </div>
-        <div className="mx-auto mt-16 flex max-w-2xl sm:mt-24 lg:ml-0 lg:mr-0 lg:mt-0 lg:max-w-none lg:flex-none xl:ml-16">
-          <div className="max-w-3xl flex-none sm:max-w-5xl lg:max-w-none">
-            <img
-              src="https://cdn.pixabay.com/photo/2017/09/28/22/43/database-search-2797375_1280.png"
-              alt="App screenshot"
-              width={2432}
-              height={1442}
-              className="w-[50rem] md:w-[60rem] lg:w-[65rem] rounded-md bg-white/5 shadow-2xl ring-1 ring-white/10"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
+        {/* Right column (60%) with inline SVG */}
+<div className="w-full lg:w-3/5 flex justify-end">
+  <div
+    className="
+      relative
+      transform
+      w-[32rem]
+      sm:w-[48rem]
+      md:w-[64rem]
+      lg:w-[96rem]
+      xl:w-[120rem]
+      lg:-mr-32
+      lg:translate-x-12
+    "
+  >
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 500 300"
+      className="w-full h-auto"
+    >
+      {/* Chart bars */}
+      <rect x="70"  y="170" width="40" height="60"  rx="5" fill="#3b82f6" opacity="0.7" />
+      <rect x="120" y="150" width="40" height="80"  rx="5" fill="#60a5fa" opacity="0.8" />
+      <rect x="170" y="120" width="40" height="110" rx="5" fill="#93c5fd" opacity="0.9" />
+
+      {/* Animated trend line */}
+      <path
+        d="M70 180 L120 170 L170 140 L210 120"
+        stroke="#ffffff"
+        strokeWidth="8"
+        fill="none"
+        strokeDasharray="200"
+        strokeDashoffset="200"
+      >
+        <animate
+          attributeName="stroke-dashoffset"
+          from="200"
+          to="0"
+          dur="1.5s"
+          begin="0s"
+          fill="freeze"
+        />
+      </path>
+
+      {/* Endpoint dot */}
+      <circle cx="210" cy="120" r="10" fill="#ffffff" opacity="0">
+        <animate
+          attributeName="opacity"
+          from="0"
+          to="1"
+          dur="0.3s"
+          begin="1.3s"
+          fill="freeze"
+        />
+      </circle>
+
+      {/* Data Shorts label */}
+      <text
+        x="240"
+        y="170"
+        fontFamily="Arial, sans-serif"
+        fontSize="48"
+        fontWeight="700"
+        fill="#ffffff"
+      >
+        Data
+      </text>
+      <text
+        x="240"
+        y="230"
+        fontFamily="Arial, sans-serif"
+        fontSize="48"
+        fontWeight="700"
+        fill="#ffffff"
+      >
+        Shorts
+      </text>
+    </svg>
+  </div>
+</div>
+      </div>
+    </section>
+  );
+}
