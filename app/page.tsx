@@ -8,7 +8,8 @@ import HowItWorks from "./_components/landing/how-it-works";
 import MoreFeatures from "./_components/landing/more-features";
 import SeeInAction from "./_components/landing/see-in-action";
 import Visualizations from "./_components/landing/visualizations";
-import { TextParallax } from "./_components/landing/textParallax";
+
+import VerticalSlideFeatures from "./_components/landing/textParallax";
 
 export default function Home() {
   return (
@@ -16,10 +17,9 @@ export default function Home() {
       <Header />
       <Hero />
       <Features />
-      <HowItWorks />
+      <VerticalSlideFeatures />
       <Visualizations />
       <SeeInAction />
-      <TextParallax />
       <MoreFeatures />
       <FAQ />
       <CTA />

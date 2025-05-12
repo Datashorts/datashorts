@@ -1,148 +1,193 @@
-'use client'
+'use client';
 
-import React, { ReactNode, useRef } from 'react'
-import { motion, useScroll, useTransform, Variants } from 'framer-motion'
-import { FiArrowUpRight } from 'react-icons/fi'
+import { motion, useInView } from 'framer-motion';
+import { useEffect, useRef, useState, FC } from 'react';
+import { FiDollarSign, FiEye, FiPlay, FiSearch } from 'react-icons/fi';
+import type { IconType } from 'react-icons';
+import Image from 'next/image';
 
-export const TextParallax: React.FC = () => {
-  return (
-    <div className="bg-white">
-      <TextParallaxContent
-        imgUrl="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=2671&auto=format&fit=crop&ixlib=rb-4.0.3"
-        subheading="Collaborate"
-        heading="Built for all of us."
-      >
-        <ExampleContent />
-      </TextParallaxContent>
-
-      <TextParallaxContent
-        imgUrl="https://images.unsplash.com/photo-1530893609608-32a9af3aa95c?q=80&w=2564&auto=format&fit=crop&ixlib=rb-4.0.3"
-        subheading="Quality"
-        heading="Never compromise."
-      >
-        <ExampleContent />
-      </TextParallaxContent>
-
-      <TextParallaxContent
-        imgUrl="https://images.unsplash.com/photo-1504610926078-a1611febcad3?q=80&w=2416&auto=format&fit=crop&ixlib=rb-4.0.3"
-        subheading="Modern"
-        heading="Dress for the best."
-      >
-        <ExampleContent />
-      </TextParallaxContent>
-    </div>
-  )
+interface Feature {
+  id: number;
+  callout: string;
+  title: string;
+  description: string;
+  contentPosition: 'l' | 'r';
+  Icon: IconType;
+  image: string;
 }
 
-interface TextParallaxContentProps {
-  imgUrl: string
-  subheading: string
-  heading: string
-  children: ReactNode
-}
+const features: Feature[] = [
+  {
+    id: 1,
+    callout: "It's Easy to Get Started",
+    title: "Connect in seconds",
+    description:
+      "Just paste your database connection string, choose your DB type, and you're in. No setup headaches, no manual configs—just pure productivity.",
+    contentPosition: 'r',
+    Icon: FiEye,
+    image: '/get_started.png',
+  },
+  {
+    id: 2,
+    callout: 'Your thoughts, translated.',
+    title: "Natural Language to SQL",
+    description:
+      'Type what you need in plain English—“show all published forms by users”—and DataChat gives you optimized, production-ready SQL instantly.',
+    contentPosition: 'l',
+    Icon: FiSearch,
+    image: '/sql_query.jpeg',
+  },
+  {
+    id: 3,
+    callout: 'Natural language meets database intelligence.',
+    title: "Ask Anything, Get Agentic Responses",
+    description:
+      'Ask questions like “how many?” and our smart agent guides you to clarity—automatically understanding intent and context across tables.',
+    contentPosition: 'r',
+    Icon: FiPlay,
+    image: '/agentic.jpeg',
+  },
+  {
+    id: 4,
+    callout: 'From tables to charts—automagically.',
+    title: 'Auto-Generated Visualizations',
+    description:
+      'Whether it’s column distribution or schema stats, DataChat instantly transforms your query results into interactive visuals like pie charts.',
+    contentPosition: 'l',
+    Icon: FiDollarSign,
+    image: '/pie_chart.jpeg',
+  },
+];
 
-const IMG_PADDING = 12
-
-const TextParallaxContent: React.FC<TextParallaxContentProps> = ({
-  imgUrl,
-  subheading,
-  heading,
-  children,
-}) => {
+const Example: FC = () => {
   return (
-    <div style={{ paddingLeft: IMG_PADDING, paddingRight: IMG_PADDING }}>
-      <div className="relative h-[150vh]">
-        <StickyImage imgUrl={imgUrl} />
-        <OverlayCopy heading={heading} subheading={subheading} />
+    <>
+      <div className="text-center my-20">
+        <h2 className="text-4xl md:text-5xl font-bold text-white">How DataShorts Works</h2>
+        <p className="text-gray-400 text-lg mt-4 max-w-xl mx-auto">
+          From connection to visualization—understand your data in seconds.
+        </p>
       </div>
-      {children}
-    </div>
-  )
-}
+      <SwapColumnFeatures />
+    </>
+  );
+};
 
-interface StickyImageProps {
-  imgUrl: string
-}
-
-const StickyImage: React.FC<StickyImageProps> = ({ imgUrl }) => {
-  const targetRef = useRef<HTMLDivElement>(null)
-  const { scrollYProgress } = useScroll({
-    target: targetRef,
-    offset: ['end end', 'end start'],
-  })
-
-  const scale = useTransform(scrollYProgress, [0, 1], [1, 0.85])
-  const opacity = useTransform(scrollYProgress, [0, 1], [1, 0])
+const SwapColumnFeatures: FC = () => {
+  const [featureInView, setFeatureInView] = useState<Feature>(features[0]);
 
   return (
-    <motion.div
-      ref={targetRef}
+    <section className="relative mx-auto max-w-7xl">
+      <SlidingFeatureDisplay featureInView={featureInView} />
+      <div className="-mt-[100vh] hidden md:block" />
+      {features.map((s) => (
+        <Content
+          key={s.id}
+          feature={s}
+          setFeatureInView={setFeatureInView}
+        />
+      ))}
+    </section>
+  );
+};
+
+interface SlidingFeatureDisplayProps {
+  featureInView: Feature;
+}
+
+const SlidingFeatureDisplay: FC<SlidingFeatureDisplayProps> = ({ featureInView }) => {
+  return (
+    <div
       style={{
-        backgroundImage: `url(${imgUrl})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        height: `calc(100vh - ${IMG_PADDING * 2}px)`,
-        top: IMG_PADDING,
-        scale,
+        justifyContent:
+          featureInView.contentPosition === 'l' ? 'flex-end' : 'flex-start',
       }}
-      className="sticky z-0 overflow-hidden rounded-3xl"
+      className="pointer-events-none sticky top-0 z-10 hidden h-screen w-full items-center justify-center md:flex"
     >
       <motion.div
-        className="absolute inset-0 bg-neutral-950/70"
-        style={{ opacity }}
-      />
-    </motion.div>
-  )
+        layout
+        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+        className="h-fit w-3/5 rounded-xl p-8"
+      >
+        <ExampleFeature feature={featureInView} />
+      </motion.div>
+    </div>
+  );
+};
+
+interface ContentProps {
+  feature: Feature;
+  setFeatureInView: (f: Feature) => void;
 }
 
-interface OverlayCopyProps {
-  subheading: string
-  heading: string
-}
+const Content: FC<ContentProps> = ({ feature, setFeatureInView }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { margin: '-150px' });
 
-const OverlayCopy: React.FC<OverlayCopyProps> = ({ subheading, heading }) => {
-  const targetRef = useRef<HTMLDivElement>(null)
-  const { scrollYProgress } = useScroll({
-    target: targetRef,
-    offset: ['start end', 'end start'],
-  })
-
-  const y = useTransform(scrollYProgress, [0, 1], [250, -250])
-  const opacity = useTransform(scrollYProgress, [0.25, 0.5, 0.75], [0, 1, 0])
+  useEffect(() => {
+    if (isInView) {
+      setFeatureInView(feature);
+    }
+  }, [isInView, feature, setFeatureInView]);
 
   return (
-    <motion.div
-      ref={targetRef}
-      style={{ y, opacity }}
-      className="absolute left-0 top-0 flex h-screen w-full flex-col items-center justify-center text-white"
+    <section
+      ref={ref}
+      className="relative z-0 flex h-fit md:h-screen"
+      style={{
+        justifyContent:
+          feature.contentPosition === 'l' ? 'flex-start' : 'flex-end',
+      }}
     >
-      <p className="mb-2 text-center text-xl md:mb-4 md:text-3xl">
-        {subheading}
-      </p>
-      <p className="text-center text-4xl font-bold md:text-7xl">{heading}</p>
-    </motion.div>
-  )
+      <div className="grid h-full w-full place-content-center px-4 py-12 md:w-2/5 md:px-8 md:py-8">
+        <motion.div
+          initial={{ opacity: 0, y: 25 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: 'easeInOut' }}
+        >
+          <span className="rounded-full bg-indigo-600 px-2 py-1.5 text-xs font-medium text-white">
+            {feature.callout}
+          </span>
+          <p className="my-3 text-5xl font-bold text-white">{feature.title}</p>
+          <p className="text-slate-400">{feature.description}</p>
+        </motion.div>
+        <motion.div
+          initial={{ opacity: 0, y: 25 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: 'easeInOut' }}
+          className="mt-8 block md:hidden"
+        >
+          <ExampleFeature feature={feature} />
+        </motion.div>
+      </div>
+    </section>
+  );
+};
+
+interface ExampleFeatureProps {
+  feature: Feature;
 }
 
-const ExampleContent: React.FC = () => (
-  <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 px-4 pb-24 pt-12 md:grid-cols-12">
-    <h2 className="col-span-1 text-3xl font-bold md:col-span-4">
-      Additional content explaining the above card here
-    </h2>
-    <div className="col-span-1 md:col-span-8">
-      <p className="mb-4 text-xl text-neutral-600 md:text-2xl">
-        Lorem ipsum dolor sit amet consectetur adipisicing elit. Quasi,
-        blanditiis soluta eius quam modi aliquam quaerat odit deleniti minima
-        maiores voluptate est ut saepe accusantium maxime doloremque nulla
-        consectetur possimus.
-      </p>
-      <p className="mb-8 text-xl text-neutral-600 md:text-2xl">
-        Lorem ipsum dolor sit amet consectetur adipisicing elit. Accusantium
-        reiciendis blanditiis aliquam aut fugit sint.
-      </p>
-      <button className="w-full rounded bg-neutral-900 px-9 py-4 text-xl text-white transition-colors hover:bg-neutral-700 md:w-fit">
-        Learn more <FiArrowUpRight className="inline" />
-      </button>
+const ExampleFeature: FC<ExampleFeatureProps> = ({ feature }) => {
+  const { Icon, image } = feature;
+  return (
+    <div className="relative min-h-[28rem] w-full rounded-xl bg-slate-800 shadow-xl overflow-hidden">
+      <div className="flex w-full gap-1.5 rounded-t-xl bg-slate-900 p-3 z-10 relative">
+        <div className="h-3 w-3 rounded-full bg-red-500" />
+        <div className="h-3 w-3 rounded-full bg-yellow-500" />
+        <div className="h-3 w-3 rounded-full bg-green-500" />
+      </div>
+      <div className="absolute inset-0">
+        <Image
+          src={image}
+          alt={feature.title}
+          fill
+          className="object-contain"
+        />
+      </div>
+      <div className="relative p-4 z-10"></div>
     </div>
-  </div>
-)
+  );
+};
+
+export default Example;
