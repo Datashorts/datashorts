@@ -9,6 +9,7 @@ import { getExistingPool, getPool } from '@/app/lib/db/pool';
 import { currentUser } from '@clerk/nextjs/server';
 import { taskManager } from '@/lib/agents2/taskManager';
 import { researcher } from '@/lib/agents2/researcher';
+import { visualizer } from '@/lib/agents2/visualizer';
 
 
 const openai = new OpenAI({
@@ -265,9 +266,14 @@ export async function processPipeline2Query(query: string, connectionId: string)
     let analysisResult;
     if (taskResult.next === 'researcher') {
       analysisResult = await researcher(query, reconstructedSchema, connectionId);
+    } else if (taskResult.next === 'visualizer') {
+      // Create messages array for context
+      const messages = [
+        { role: 'user', content: query }
+      ];
+      analysisResult = await visualizer(messages, reconstructedSchema, connectionId);
     } else {
-      // TODO: Implement visualizer
-      throw new Error('Visualizer not implemented yet');
+      throw new Error('Invalid task manager result');
     }
 
     const tablesUsed = reconstructedSchema.map(table => table.tableName);

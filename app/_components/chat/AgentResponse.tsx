@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Bot, Send, User } from 'lucide-react';
 import VisualizationRenderer from '@/components/VisualizationRenderer';
 import ResearcherResponse from './ResearcherResponse';
+import PieChart from '@/components/PieChart';
+import BarChart from '@/components/BarChart';
 
 interface AgentResponseProps {
   agentType: string;
@@ -269,97 +271,177 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
           {/* Analysis Result */}
           {agentOutput.analysisResult && (
             <div className="space-y-4">
-              {/* Summary */}
-              <div className="bg-white p-4 rounded-lg border">
-                <h3 className="text-sm font-medium text-gray-700 mb-2">Summary</h3>
-                <p className="text-sm text-gray-600">{agentOutput.analysisResult.summary}</p>
-              </div>
+              {agentOutput.taskResult?.next === 'visualizer' ? (
+                // Visualizer Output Format
+                <>
+                  {/* Content Section */}
+                  <div className="bg-white p-6 rounded-lg shadow-sm border">
+                    <h2 className="text-2xl font-bold mb-4">{agentOutput.analysisResult.content.title}</h2>
+                    <p className="text-gray-600 mb-4">{agentOutput.analysisResult.content.summary}</p>
 
-              {/* Details */}
-              {agentOutput.analysisResult.details && agentOutput.analysisResult.details.length > 0 && (
-                <div className="bg-white p-4 rounded-lg border">
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">Details</h3>
-                  <ul className="list-disc list-inside space-y-1">
-                    {agentOutput.analysisResult.details.map((detail: string, index: number) => (
-                      <li key={index} className="text-sm text-gray-600">{detail}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Metrics */}
-              {agentOutput.analysisResult.metrics && Object.keys(agentOutput.analysisResult.metrics).length > 0 && (
-                <div className="bg-white p-4 rounded-lg border">
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">Metrics</h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(agentOutput.analysisResult.metrics).map(([key, value]) => (
-                      <div key={key} className="text-sm">
-                        <span className="font-medium text-gray-700">{key}:</span>{' '}
-                        <span className="text-gray-600">{value}</span>
+                    {/* Details */}
+                    {agentOutput.analysisResult.content.details && agentOutput.analysisResult.content.details.length > 0 && (
+                      <div className="mb-6">
+                        <h3 className="text-lg font-semibold mb-2">Key Insights</h3>
+                        <ul className="list-disc list-inside space-y-2">
+                          {agentOutput.analysisResult.content.details.map((detail: string, index: number) => (
+                            <li key={index} className="text-gray-600">{detail}</li>
+                          ))}
+                        </ul>
                       </div>
-                    ))}
+                    )}
+
+                    {/* Metrics */}
+                    {agentOutput.analysisResult.content.metrics && Object.keys(agentOutput.analysisResult.content.metrics).length > 0 && (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        {Object.entries(agentOutput.analysisResult.content.metrics).map(([key, value]) => (
+                          value !== undefined && (
+                            <div key={key} className="bg-gray-50 p-4 rounded-lg">
+                              <p className="text-sm text-gray-500 capitalize">{key}</p>
+                              <p className="text-xl font-semibold">{value}</p>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
 
-              {/* SQL Query */}
-              {agentOutput.analysisResult.sqlQuery && (
-                <div className="bg-white p-4 rounded-lg border">
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">SQL Query</h3>
-                  <pre className="bg-gray-50 p-2 rounded text-sm overflow-x-auto">
-                    <code>{agentOutput.analysisResult.sqlQuery}</code>
-                  </pre>
-                </div>
-              )}
+                  {/* Visualization Section */}
+                  <div className="bg-white p-6 rounded-lg shadow-sm border">
+                    <h3 className="text-xl font-bold mb-2">{agentOutput.analysisResult.visualization.config.title}</h3>
+                    <p className="text-gray-600 mb-4">{agentOutput.analysisResult.visualization.config.description}</p>
 
-              {/* Query Results */}
-              {agentOutput.analysisResult.queryResult && (
-                <div className="bg-white p-4 rounded-lg border">
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">Query Results</h3>
-                  {agentOutput.analysisResult.queryResult.success ? (
-                    <div className="space-y-2">
-                      <div className="text-sm text-gray-600">
-                        Rows returned: {agentOutput.analysisResult.queryResult.rowCount}
+                    <div className="visualization-container">
+                      {agentOutput.analysisResult.visualization.chartType === 'pie' ? (
+                        <PieChart
+                          data={agentOutput.analysisResult.visualization.data} 
+                          config={{
+                            donut: false,
+                            showPercentages: true,
+                            ...agentOutput.analysisResult.visualization.config.pieConfig
+                          }} 
+                        />
+                      ) : (
+                        <BarChart 
+                          data={agentOutput.analysisResult.visualization.data} 
+                          config={{
+                            barThickness: 40,
+                            horizontal: false,
+                            showGridLines: true,
+                            xAxisLabel: agentOutput.analysisResult.visualization.config.xAxis,
+                            yAxisLabel: agentOutput.analysisResult.visualization.config.yAxis
+                          }}
+                        />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* SQL Query Section */}
+                  {agentOutput.analysisResult.sqlQuery && (
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">SQL Query</h3>
+                      <pre className="bg-gray-100 p-3 rounded text-sm overflow-x-auto">
+                        <code>{agentOutput.analysisResult.sqlQuery}</code>
+                      </pre>
+                    </div>
+                  )}
+                </>
+              ) : (
+                // Researcher Output Format
+                <>
+                  {/* Summary */}
+                  <div className="bg-white p-4 rounded-lg border">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Summary</h3>
+                    <p className="text-sm text-gray-600">{agentOutput.analysisResult.summary}</p>
+                  </div>
+
+                  {/* Details */}
+                  {agentOutput.analysisResult.details && agentOutput.analysisResult.details.length > 0 && (
+                    <div className="bg-white p-4 rounded-lg border">
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Details</h3>
+                      <ul className="list-disc list-inside space-y-1">
+                        {agentOutput.analysisResult.details.map((detail: string, index: number) => (
+                          <li key={index} className="text-sm text-gray-600">{detail}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Metrics */}
+                  {agentOutput.analysisResult.metrics && Object.keys(agentOutput.analysisResult.metrics).length > 0 && (
+                    <div className="bg-white p-4 rounded-lg border">
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Metrics</h3>
+                      <div className="grid grid-cols-2 gap-2">
+                        {Object.entries(agentOutput.analysisResult.metrics).map(([key, value]) => (
+                          <div key={key} className="text-sm">
+                            <span className="font-medium text-gray-700">{key}:</span>{' '}
+                            <span className="text-gray-600">{value}</span>
+                          </div>
+                        ))}
                       </div>
-                      {agentOutput.analysisResult.queryResult.rows && agentOutput.analysisResult.queryResult.rows.length > 0 && (
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                {Object.keys(agentOutput.analysisResult.queryResult.rows[0]).map((header) => (
-                                  <th
-                                    key={header}
-                                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                                  >
-                                    {header}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                              {agentOutput.analysisResult.queryResult.rows.map((row: any, index: number) => (
-                                <tr key={index}>
-                                  {Object.values(row).map((value: any, i: number) => (
-                                    <td
-                                      key={i}
-                                      className="px-3 py-2 text-sm text-gray-500 whitespace-nowrap"
-                                    >
-                                      {value}
-                                    </td>
+                    </div>
+                  )}
+
+                  {/* SQL Query */}
+                  {agentOutput.analysisResult.sqlQuery && (
+                    <div className="bg-white p-4 rounded-lg border">
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">SQL Query</h3>
+                      <pre className="bg-gray-50 p-2 rounded text-sm overflow-x-auto">
+                        <code>{agentOutput.analysisResult.sqlQuery}</code>
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Query Results */}
+                  {agentOutput.analysisResult.queryResult && (
+                    <div className="bg-white p-4 rounded-lg border">
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Query Results</h3>
+                      {agentOutput.analysisResult.queryResult.success ? (
+                        <div className="space-y-2">
+                          <div className="text-sm text-gray-600">
+                            Rows returned: {agentOutput.analysisResult.queryResult.rowCount}
+                          </div>
+                          {agentOutput.analysisResult.queryResult.rows && agentOutput.analysisResult.queryResult.rows.length > 0 && (
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    {Object.keys(agentOutput.analysisResult.queryResult.rows[0]).map((header) => (
+                                      <th
+                                        key={header}
+                                        className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                      >
+                                        {header}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                  {agentOutput.analysisResult.queryResult.rows.map((row: any, index: number) => (
+                                    <tr key={index}>
+                                      {Object.values(row).map((value: any, i: number) => (
+                                        <td
+                                          key={i}
+                                          className="px-3 py-2 text-sm text-gray-500 whitespace-nowrap"
+                                        >
+                                          {value}
+                                        </td>
+                                      ))}
+                                    </tr>
                                   ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-red-600">
+                          Error: {agentOutput.analysisResult.queryResult.error}
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="text-sm text-red-600">
-                      Error: {agentOutput.analysisResult.queryResult.error}
-                    </div>
                   )}
-                </div>
+                </>
               )}
             </div>
           )}
