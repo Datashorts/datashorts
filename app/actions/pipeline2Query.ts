@@ -67,42 +67,101 @@ async function executeSQLQuery(connectionId: string, sqlQuery: string) {
  */
 export async function generateSQLQuery(schema: any[], userQuery: string) {
   try {
-    const prompt = `Given the following database schema and user query, generate a SQL query to answer the question. IMPORTANT: Always use double quotes around table and column names in PostgreSQL.
+    // Analyze schema to identify relationships and key columns
+    const schemaAnalysis = schema.reduce((acc, table) => {
+      const columns = table.columns.split(',').map(col => {
+        const [name, type] = col.trim().split('(');
+        const colName = name.trim();
+        return {
+          name: colName,
+          type: type ? type.replace(')', '').trim() : '',
+          isId: colName.toLowerCase().endsWith('id'),
+          isPrimaryKey: colName.toLowerCase() === 'id',
+          isForeignKey: colName.toLowerCase().endsWith('id') && colName.toLowerCase() !== 'id',
+          referencesTable: colName.toLowerCase().endsWith('id') ? 
+            colName.toLowerCase().slice(0, -2).trim() : null,
+          isNameColumn: colName.toLowerCase().includes('name') || 
+                       colName.toLowerCase().includes('title') ||
+                       colName.toLowerCase().includes('description')
+        };
+      });
 
-Database Schema:
-${schema.map(table => `
-Table: "${table.tableName}"
-Columns: ${table.columns}
+      acc[table.tableName] = {
+        columns,
+        primaryKey: columns.find(col => col.isPrimaryKey),
+        foreignKeys: columns.filter(col => col.isForeignKey),
+        nameColumns: columns.filter(col => col.isNameColumn),
+        referencedBy: [] // Will be populated below
+      };
+      return acc;
+    }, {});
+
+    // Populate referencedBy relationships
+    Object.entries(schemaAnalysis).forEach(([tableName, analysis]) => {
+      analysis.foreignKeys.forEach(fk => {
+        const referencedTable = fk.referencesTable;
+        if (referencedTable && schemaAnalysis[referencedTable]) {
+          schemaAnalysis[referencedTable].referencedBy.push({
+            table: tableName,
+            foreignKey: fk.name
+          });
+        }
+      });
+    });
+
+    // Analyze user query to identify relevant tables and relationships
+    const queryAnalysis = {
+      mentionedTables: Object.keys(schemaAnalysis).filter(tableName => 
+        userQuery.toLowerCase().includes(tableName.toLowerCase())
+      ),
+      searchTerms: userQuery.toLowerCase().split(/\s+/).filter(term => 
+        term.length > 3 && !['what', 'when', 'where', 'which', 'that', 'this', 'have', 'does', 'doesn\'t'].includes(term)
+      )
+    };
+
+    const prompt = `Given the following database schema analysis and user query, generate a SQL query to answer the question. IMPORTANT: 
+1. Always use double quotes around table and column names in PostgreSQL
+2. Use ILIKE for case-insensitive text matching
+3. When searching for names or text, use ILIKE with wildcards to handle variations
+4. For text searches, use: column ILIKE '%term%' to match partial text
+5. Consider common variations and typos
+6. Use appropriate JOINs based on the schema relationships
+7. Consider all relevant table relationships when generating the query
+8. Use table aliases for better readability
+9. Only include necessary columns in the SELECT clause
+
+Schema Analysis:
+${Object.entries(schemaAnalysis).map(([tableName, analysis]) => `
+Table: "${tableName}"
+- Primary Key: ${analysis.primaryKey?.name || 'None'}
+- Foreign Keys: ${analysis.foreignKeys.map(fk => `${fk.name} (references ${fk.referencesTable})`).join(', ') || 'None'}
+- Referenced By: ${analysis.referencedBy.map(ref => `${ref.table} (via ${ref.foreignKey})`).join(', ') || 'None'}
+- Name/Text Columns: ${analysis.nameColumns.map(col => col.name).join(', ') || 'None'}
+- All Columns: ${analysis.columns.map(col => `${col.name} (${col.type})`).join(', ')}
 `).join('\n')}
+
+Query Analysis:
+- Mentioned Tables: ${queryAnalysis.mentionedTables.join(', ') || 'None'}
+- Search Terms: ${queryAnalysis.searchTerms.join(', ') || 'None'}
 
 User Query: ${userQuery}
 
-Please generate a SQL query that will answer this question. Only return the SQL query without any explanation. Remember to use double quotes around table and column names.`;
+Please generate a SQL query that will answer this question. Only return the SQL query without any explanation. Remember to use double quotes around table and column names and ILIKE for text matching.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
         {
           role: "system",
-          content: `You are a SQL expert. Generate only the SQL query without any explanation or additional text. Follow these rules:
-
-1. Always use double quotes around table and column names in PostgreSQL
-2. For case-insensitive comparisons:
-   - Use LOWER() or UPPER() functions
-   - Example: WHERE LOWER(column_name) = LOWER('value')
-3. For LIKE/ILIKE patterns:
-   - Use ILIKE for case-insensitive pattern matching
-   - Example: WHERE column_name ILIKE '%pattern%'
-4. For exact matches:
-   - Use = for case-sensitive matches
-   - Use LOWER() for case-insensitive matches
-5. For sorting:
-   - Use ORDER BY LOWER(column_name) for case-insensitive sorting
-6. For aggregations:
-   - Consider case sensitivity in GROUP BY clauses
-   - Use LOWER() when grouping by text columns
-
-Remember to handle case sensitivity appropriately based on the query requirements.`
+          content: `You are a SQL expert. Generate only the SQL query without any explanation or additional text. 
+Consider the following when generating the query:
+1. Use appropriate JOINs based on the schema relationships
+2. For text searches, use ILIKE with wildcards
+3. Consider all possible relationships between tables
+4. Use table aliases for better readability
+5. Only include necessary columns in the SELECT clause
+6. Use the actual table and column names from the schema
+7. Consider both direct and indirect relationships between tables`
         },
         {
           role: "user",
@@ -113,7 +172,62 @@ Remember to handle case sensitivity appropriately based on the query requirement
       max_tokens: 150
     });
 
-    return response.choices[0].message.content.trim();
+    let sqlQuery = response.choices[0].message.content.trim();
+    
+    // Validate and enhance the generated query
+    const queryValidation = {
+      hasJoins: sqlQuery.toLowerCase().includes('join'),
+      hasWhere: sqlQuery.toLowerCase().includes('where'),
+      hasIlike: sqlQuery.toLowerCase().includes('ilike'),
+      mentionedTables: Object.keys(schemaAnalysis).filter(table => 
+        sqlQuery.toLowerCase().includes(`"${table.toLowerCase()}"`)
+      )
+    };
+
+    // If the query is missing necessary joins based on the schema relationships
+    if (!queryValidation.hasJoins && queryValidation.mentionedTables.length > 1) {
+      const tables = queryValidation.mentionedTables;
+      const relationships = [];
+      
+      // Find relationships between mentioned tables
+      for (let i = 0; i < tables.length; i++) {
+        for (let j = i + 1; j < tables.length; j++) {
+          const table1 = schemaAnalysis[tables[i]];
+          const table2 = schemaAnalysis[tables[j]];
+          
+          // Check direct relationships
+          const directRelationship = table1.foreignKeys.find(fk => 
+            fk.referencesTable === tables[j]
+          ) || table2.foreignKeys.find(fk => 
+            fk.referencesTable === tables[i]
+          );
+          
+          if (directRelationship) {
+            relationships.push({
+              table1: tables[i],
+              table2: tables[j],
+              foreignKey: directRelationship.name
+            });
+          }
+        }
+      }
+      
+      // Add necessary joins
+      if (relationships.length > 0) {
+        const baseTable = relationships[0].table1;
+        let joinClause = `FROM "${baseTable}"`;
+        
+        relationships.forEach(rel => {
+          const joinTable = rel.table1 === baseTable ? rel.table2 : rel.table1;
+          const fkColumn = rel.foreignKey;
+          joinClause += ` JOIN "${joinTable}" ON "${baseTable}"."${fkColumn}" = "${joinTable}"."id"`;
+        });
+        
+        sqlQuery = sqlQuery.replace(/FROM\s+"[^"]+"/i, joinClause);
+      }
+    }
+
+    return sqlQuery;
   } catch (error) {
     console.error('Error generating SQL query:', error);
     throw new Error('Failed to generate SQL query');
@@ -164,20 +278,10 @@ export async function processPipeline2Query(query: string, connectionId: string)
     const queryEmbedding = await generateQueryEmbeddings(query);
     console.log('Generated query embeddings, length:', queryEmbedding.length);
 
-
-    const namespaceStats = await pinecone.describeIndexStats({
-      filter: {
-        connectionId: connectionId,
-        pipeline: 'pipeline2',
-        type: 'schema'
-      }
-    });
-    console.log('Pinecone namespace stats:', namespaceStats);
-
-
+    // Get all relevant tables for the query
     const queryResponse = await pinecone.query({
       vector: queryEmbedding,
-      topK: 5,
+      topK: 10, // Increased from 5 to get more context
       filter: {
         connectionId: connectionId,
         pipeline: 'pipeline2',
@@ -203,7 +307,7 @@ export async function processPipeline2Query(query: string, connectionId: string)
       };
     }
 
-
+    // Enhanced table matching logic
     const tableMatches = new Map();
     queryResponse.matches.forEach(match => {
       console.log('Processing match:', match);
@@ -213,46 +317,39 @@ export async function processPipeline2Query(query: string, connectionId: string)
         return;
       }
 
-
       let relevanceScore = match.score;
       
-
+      // Boost score for tables mentioned in the query
       if (query.toLowerCase().includes(tableName.toLowerCase())) {
         relevanceScore += 0.2;
         console.log(`Boosted score for table ${tableName} due to name match`);
       }
 
-
+      // Boost score for tables with relationships to other matched tables
       const columns = match.metadata?.columns || '';
-      const columnMatches = columns.toLowerCase().split(',').filter(col => 
-        query.toLowerCase().includes(col.split('(')[0].trim().toLowerCase())
-      );
+      const columnMatches = columns.toLowerCase().split(',').filter(col => {
+        const colName = col.split('(')[0].trim().toLowerCase();
+        return query.toLowerCase().includes(colName) || 
+               colName.includes('id') || // Foreign key columns
+               colName.includes('user') || // User-related columns
+               colName.includes('post'); // Post-related columns
+      });
+
       if (columnMatches.length > 0) {
         relevanceScore += 0.1 * columnMatches.length;
         console.log(`Boosted score for table ${tableName} due to column matches:`, columnMatches);
       }
 
-      if (!tableMatches.has(tableName)) {
+      // Store the best match for each table
+      if (!tableMatches.has(tableName) || relevanceScore > tableMatches.get(tableName).score) {
         tableMatches.set(tableName, {
           tableName,
           text: match.metadata?.text,
           columns: match.metadata?.columns,
           score: relevanceScore
         });
-      } else {
-
-        const existing = tableMatches.get(tableName);
-        if (relevanceScore > existing.score) {
-          tableMatches.set(tableName, {
-            tableName,
-            text: match.metadata?.text,
-            columns: match.metadata?.columns,
-            score: relevanceScore
-          });
-        }
       }
     });
-
 
     const reconstructedSchema = Array.from(tableMatches.values())
       .sort((a, b) => b.score - a.score);
@@ -266,8 +363,20 @@ export async function processPipeline2Query(query: string, connectionId: string)
     let analysisResult;
     if (taskResult.next === 'researcher') {
       analysisResult = await researcher(query, reconstructedSchema, connectionId);
+      
+      // Enhance the analysis result with more context
+      if (analysisResult && analysisResult.queryResult && analysisResult.queryResult.rows) {
+        const rows = analysisResult.queryResult.rows;
+        if (rows.length === 0) {
+          analysisResult.details.push(
+            "Note: The query returned no results. This could mean either:",
+            "1. The user doesn't exist in the database",
+            "2. The user exists but has no posts",
+            "3. The query might need to be adjusted to better match the database schema"
+          );
+        }
+      }
     } else if (taskResult.next === 'visualizer') {
-      // Create messages array for context
       const messages = [
         { role: 'user', content: query }
       ];
