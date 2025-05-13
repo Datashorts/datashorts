@@ -3,9 +3,12 @@
 import OpenAI from 'openai';
 import { index as pinecone } from '@/app/lib/pinecone';
 import { db } from '@/configs/db';
-import { dbConnections } from '@/configs/schema';
+import { dbConnections, chats } from '@/configs/schema';
 import { eq } from 'drizzle-orm';
 import { getExistingPool, getPool } from '@/app/lib/db/pool';
+import { currentUser } from '@clerk/nextjs/server';
+import { taskManager } from '@/lib/agents2/taskManager';
+import { researcher } from '@/lib/agents2/researcher';
 
 
 const openai = new OpenAI({
@@ -61,7 +64,7 @@ async function executeSQLQuery(connectionId: string, sqlQuery: string) {
  * @param userQuery The original user query
  * @returns The generated SQL query
  */
-async function generateSQLQuery(schema: any[], userQuery: string) {
+export async function generateSQLQuery(schema: any[], userQuery: string) {
   try {
     const prompt = `Given the following database schema and user query, generate a SQL query to answer the question. IMPORTANT: Always use double quotes around table and column names in PostgreSQL.
 
@@ -80,7 +83,25 @@ Please generate a SQL query that will answer this question. Only return the SQL 
       messages: [
         {
           role: "system",
-          content: "You are a SQL expert. Generate only the SQL query without any explanation or additional text. Always use double quotes around table and column names in PostgreSQL."
+          content: `You are a SQL expert. Generate only the SQL query without any explanation or additional text. Follow these rules:
+
+1. Always use double quotes around table and column names in PostgreSQL
+2. For case-insensitive comparisons:
+   - Use LOWER() or UPPER() functions
+   - Example: WHERE LOWER(column_name) = LOWER('value')
+3. For LIKE/ILIKE patterns:
+   - Use ILIKE for case-insensitive pattern matching
+   - Example: WHERE column_name ILIKE '%pattern%'
+4. For exact matches:
+   - Use = for case-sensitive matches
+   - Use LOWER() for case-insensitive matches
+5. For sorting:
+   - Use ORDER BY LOWER(column_name) for case-insensitive sorting
+6. For aggregations:
+   - Consider case sensitivity in GROUP BY clauses
+   - Use LOWER() when grouping by text columns
+
+Remember to handle case sensitivity appropriately based on the query requirements.`
         },
         {
           role: "user",
@@ -134,6 +155,10 @@ export async function processPipeline2Query(query: string, connectionId: string)
     console.log('Processing Pipeline 2 query:', query);
     console.log('Connection ID:', connectionId);
     
+    const user = await currentUser();
+    if (!user) {
+      throw new Error('No authenticated user found');
+    }
 
     const queryEmbedding = await generateQueryEmbeddings(query);
     console.log('Generated query embeddings, length:', queryEmbedding.length);
@@ -233,20 +258,62 @@ export async function processPipeline2Query(query: string, connectionId: string)
 
     console.log('Final reconstructed schema:', reconstructedSchema);
 
+    // Determine whether to route to researcher or visualizer
+    const taskResult = await taskManager(query, reconstructedSchema);
+    console.log('Task manager result:', taskResult);
 
-    const sqlQuery = await generateSQLQuery(reconstructedSchema, query);
-    console.log('Generated SQL query:', sqlQuery);
+    let analysisResult;
+    if (taskResult.next === 'researcher') {
+      analysisResult = await researcher(query, reconstructedSchema, connectionId);
+    } else {
+      // TODO: Implement visualizer
+      throw new Error('Visualizer not implemented yet');
+    }
 
+    const tablesUsed = reconstructedSchema.map(table => table.tableName);
+    const chatEntry = {
+      message: query,
+      response: {
+        taskResult,
+        analysisResult,
+        tablesUsed,
+        timestamp: new Date().toISOString()
+      }
+    };
 
-    const queryResult = await executeSQLQuery(connectionId, sqlQuery);
-    console.log('SQL query execution result:', queryResult);
+    const existingChats = await db
+      .select()
+      .from(chats)
+      .where(eq(chats.connectionId, parseInt(connectionId)));
+
+    if (existingChats.length > 0) {
+      const existingChat = existingChats[0];
+      const conversation = existingChat.conversation || [];
+      conversation.push(chatEntry);
+      
+      await db
+        .update(chats)
+        .set({
+          conversation,
+          updatedAt: new Date()
+        })
+        .where(eq(chats.id, existingChat.id));
+    } else {
+      await db.insert(chats).values({
+        userId: user.id,
+        connectionId: parseInt(connectionId),
+        conversation: [chatEntry],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    }
 
     return {
       success: true,
       reconstructedSchema,
       matches: queryResponse.matches,
-      sqlQuery,
-      queryResult,
+      taskResult,
+      analysisResult,
       debug: {
         message: 'Query processed successfully',
         connectionId,

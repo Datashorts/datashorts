@@ -23,6 +23,7 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
   const [selectedOption, setSelectedOption] = useState<string>('');
   const [customInput, setCustomInput] = useState<string>('');
   const [isSubmitEnabled, setIsSubmitEnabled] = useState<boolean>(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
     // Enable submit button if an option is selected or custom input is provided
@@ -258,15 +259,131 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
     
     case 'pipeline2':
       return (
-        <div>
-          <p className="text-sm text-gray-300 mb-2">Relevant Schema Information:</p>
-          {agentOutput.reconstructedSchema && agentOutput.reconstructedSchema.map((schema: any, index: number) => (
-            <div key={index} className="mb-4 p-3 bg-[#2a2a2a] rounded-lg">
-              <p className="font-medium text-blue-400">{schema.tableName}</p>
-              <p className="text-sm text-gray-400 mt-1">{schema.text}</p>
-              <p className="text-xs text-gray-500 mt-1">Relevance score: {schema.score.toFixed(2)}</p>
+        <div className="space-y-4">
+          {/* Task Manager Result */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="text-sm font-medium text-gray-700 mb-2">Task Analysis</h3>
+            <p className="text-sm text-gray-600">{agentOutput.taskResult?.reason}</p>
+          </div>
+
+          {/* Analysis Result */}
+          {agentOutput.analysisResult && (
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="bg-white p-4 rounded-lg border">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">Summary</h3>
+                <p className="text-sm text-gray-600">{agentOutput.analysisResult.summary}</p>
+              </div>
+
+              {/* Details */}
+              {agentOutput.analysisResult.details && agentOutput.analysisResult.details.length > 0 && (
+                <div className="bg-white p-4 rounded-lg border">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">Details</h3>
+                  <ul className="list-disc list-inside space-y-1">
+                    {agentOutput.analysisResult.details.map((detail: string, index: number) => (
+                      <li key={index} className="text-sm text-gray-600">{detail}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Metrics */}
+              {agentOutput.analysisResult.metrics && Object.keys(agentOutput.analysisResult.metrics).length > 0 && (
+                <div className="bg-white p-4 rounded-lg border">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">Metrics</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(agentOutput.analysisResult.metrics).map(([key, value]) => (
+                      <div key={key} className="text-sm">
+                        <span className="font-medium text-gray-700">{key}:</span>{' '}
+                        <span className="text-gray-600">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* SQL Query */}
+              {agentOutput.analysisResult.sqlQuery && (
+                <div className="bg-white p-4 rounded-lg border">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">SQL Query</h3>
+                  <pre className="bg-gray-50 p-2 rounded text-sm overflow-x-auto">
+                    <code>{agentOutput.analysisResult.sqlQuery}</code>
+                  </pre>
+                </div>
+              )}
+
+              {/* Query Results */}
+              {agentOutput.analysisResult.queryResult && (
+                <div className="bg-white p-4 rounded-lg border">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">Query Results</h3>
+                  {agentOutput.analysisResult.queryResult.success ? (
+                    <div className="space-y-2">
+                      <div className="text-sm text-gray-600">
+                        Rows returned: {agentOutput.analysisResult.queryResult.rowCount}
+                      </div>
+                      {agentOutput.analysisResult.queryResult.rows && agentOutput.analysisResult.queryResult.rows.length > 0 && (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                {Object.keys(agentOutput.analysisResult.queryResult.rows[0]).map((header) => (
+                                  <th
+                                    key={header}
+                                    className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                  >
+                                    {header}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {agentOutput.analysisResult.queryResult.rows.map((row: any, index: number) => (
+                                <tr key={index}>
+                                  {Object.values(row).map((value: any, i: number) => (
+                                    <td
+                                      key={i}
+                                      className="px-3 py-2 text-sm text-gray-500 whitespace-nowrap"
+                                    >
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-red-600">
+                      Error: {agentOutput.analysisResult.queryResult.error}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          ))}
+          )}
+
+          {/* Debug Information */}
+          {agentOutput.debug && (
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">Debug Info</h3>
+              <div className="text-sm text-gray-600">
+                <p>Message: {agentOutput.debug.message}</p>
+                <p>Connection ID: {agentOutput.debug.connectionId}</p>
+                <p>Query: {agentOutput.debug.query}</p>
+                <p>Match Count: {agentOutput.debug.matchCount}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Expand/Collapse Button */}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="text-sm text-blue-600 hover:text-blue-800"
+          >
+            {isExpanded ? 'Show Less' : 'Show More'}
+          </button>
         </div>
       );
     
