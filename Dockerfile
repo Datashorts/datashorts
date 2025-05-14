@@ -79,4 +79,4 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/package.json ./package.json
 
 EXPOSE 3000
-CMD ["npm", "start"]
+CMD ["npm", "run", "dev"]
