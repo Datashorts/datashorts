@@ -4,7 +4,7 @@ import { folders, dbConnections } from '@/configs/schema';
 import { currentUser } from '@clerk/nextjs/server';
 import { eq } from 'drizzle-orm';
 
-export async function GET(request) {
+export async function GET(request: Request) {
   try {
     const user = await currentUser();
     

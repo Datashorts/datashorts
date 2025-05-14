@@ -4,10 +4,17 @@ import { dbConnections } from '@/configs/schema';
 import { currentUser } from '@clerk/nextjs/server';
 import { connectToMongoDB } from '@/configs/mongoDB';
 
-export async function POST(request) {
+export async function POST(request: Request) {
   try {
     const user = await currentUser();
     const { mongoUrl, connectionName, folderId } = await request.json();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
 
     if (!mongoUrl || !connectionName) {
       return NextResponse.json(
@@ -44,7 +51,7 @@ export async function POST(request) {
   } catch (error) {
     console.error('Database connection error:', error);
     return NextResponse.json(
-      { error: error.message },
+      { error: error instanceof Error ? error.message : 'An unknown error occurred' },
       { status: 500 }
     );
   }

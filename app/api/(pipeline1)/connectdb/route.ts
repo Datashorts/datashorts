@@ -4,13 +4,21 @@ import { db } from '@/configs/db';
 import { dbConnections } from '@/configs/schema';
 import { currentUser } from '@clerk/nextjs/server';
 import { NextRequest } from 'next/server';
-import { auth } from '@clerk/nextjs';
+import { auth } from '@clerk/nextjs/server';
+import { MongoClient } from 'mongodb';
 
 export async function POST(request: NextRequest) {
-  let client;
+  let client: Client | undefined;
   try {
     const user = await currentUser();
     const { name, type, url, folderId } = await request.json();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
 
     if (!url || !name) {
       return NextResponse.json(
@@ -31,7 +39,14 @@ export async function POST(request: NextRequest) {
     const hasSSLParam = url.includes('sslmode=');
     
     // Create connection options - trying a more forceful approach to disable SSL checking
-    let connectionOptions = { 
+    let connectionOptions: {
+      connectionString: string;
+      statement_timeout: number;
+      query_timeout: number;
+      ssl?: {
+        rejectUnauthorized: boolean;
+      };
+    } = { 
       connectionString: url,
       statement_timeout: 30000,
       query_timeout: 30000
@@ -98,17 +113,20 @@ export async function POST(request: NextRequest) {
     console.log("Retrieved tables:", tables.length);
     
     const CHUNK_SIZE = 5;
-    const tableChunks = chunkArray(tables, CHUNK_SIZE);
+    const tableChunks = chunkArray<{ table_name: string }>(tables, CHUNK_SIZE);
     console.log("Processing tables in chunks of:", CHUNK_SIZE);
     
     const allTableData = [];
 
     for (const chunk of tableChunks) {
-      const chunkPromises = chunk.map(async (table) => {
+      const chunkPromises = chunk.map(async (table: { table_name: string }) => {
         const tableName = table.table_name;
         console.log(`Processing table: ${tableName}`);
         
         try {
+          if (!client) {
+            throw new Error('Database client is not initialized');
+          }
           const [columnsResult, dataResult] = await Promise.all([
             client.query(`
               SELECT column_name, data_type 
@@ -135,7 +153,7 @@ export async function POST(request: NextRequest) {
             tableName,
             columns: [],
             data: [],
-            error: tableError.message
+            error: tableError instanceof Error ? tableError.message : 'An unknown error occurred'
           };
         }
       });
@@ -193,8 +211,8 @@ export async function POST(request: NextRequest) {
     // More descriptive error response
     return NextResponse.json(
       { 
-        error: error.message,
-        code: error.code,
+        error: error instanceof Error ? error.message : 'An unknown error occurred',
+        code: error instanceof Error && 'code' in error ? error.code : undefined,
         details: 'Check that your PostgreSQL URL is correct and the server is accessible'
       },
       { status: 500 }
@@ -215,8 +233,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function chunkArray(array, size) {
-  const chunks = [];
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = [];
   for (let i = 0; i < array.length; i += size) {
     chunks.push(array.slice(i, i + size));
   }
