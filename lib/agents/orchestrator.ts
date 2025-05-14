@@ -2,7 +2,6 @@ import { grokClient } from '@/app/lib/clients';
 import { researcher } from './researcher';
 import { visualiser } from './visualiser';
 import { inquire } from './inquire';
-import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 
 interface AgentTask {
   agentType: 'researcher' | 'visualize' | 'inquire';
@@ -20,8 +19,8 @@ interface OrchestratorResponse {
   };
 }
 
-export const orchestrator = async function orchestrator(messages: ChatCompletionMessageParam[]): Promise<OrchestratorResponse> {
-  const systemPrompt: ChatCompletionMessageParam = {
+export const orchestrator = async function orchestrator(messages: any[]): Promise<OrchestratorResponse> {
+  const systemPrompt = {
     role: 'system',
     content: `You are an AI orchestrator that splits complex queries into multiple tasks for different specialized agents.
 
@@ -89,12 +88,7 @@ Return JSON format.`
       temperature: 0.1
     });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('No content in response');
-    }
-    
-    return JSON.parse(content);
+    return JSON.parse(response.choices[0].message.content);
   } catch (error) {
     console.error("Error in orchestrator:", error);
     return {
@@ -107,62 +101,173 @@ Return JSON format.`
   }
 };
 
-export const executeTasks = async function executeTasks(tasks: AgentTask[], messages: ChatCompletionMessageParam[]): Promise<OrchestratorResponse> {
-  const systemPrompt: ChatCompletionMessageParam = {
-    role: 'system',
-    content: `You are an AI orchestrator that coordinates multiple agents to complete complex tasks.
-
-Your role is to analyze the user's request and create a plan for executing multiple tasks in sequence or parallel.
-
-Your response should be a JSON object with the following structure:
-{
-  "orchestrationPlan": {
-    "tasks": [
-      {
-        "agentType": string,  // The type of agent to use
-        "query": string,      // The specific query for this task
-        "dependencies": string[]  // Optional: IDs of tasks this depends on
+export const executeTasks = async function executeTasks(tasks: AgentTask[], messages: any[]) {
+  const results = [];
+  
+  // Sort tasks by priority
+  const sortedTasks = [...tasks].sort((a, b) => a.priority - b.priority);
+  
+  // Process tasks in parallel with individual timeouts
+  const taskPromises = sortedTasks.map(async (task) => {
+    try {
+      // Set a timeout for each individual task - longer timeout for visualization tasks
+      const timeoutDuration = task.agentType === 'visualize' ? 45000 : 20000;
+      
+      const taskPromise = new Promise(async (resolve, reject) => {
+        try {
+          let agentResponse;
+          
+          switch (task.agentType) {
+            case 'researcher':
+              agentResponse = await researcher([
+                ...messages,
+                { role: 'user', content: task.query }
+              ]);
+              break;
+            case 'visualize':
+              // For visualization tasks, add a hint to keep responses concise
+              const visualizeQuery = `${task.query} (Keep the response concise and focused on the visualization data)`;
+              agentResponse = await visualiser([
+                ...messages,
+                { role: 'user', content: visualizeQuery }
+              ]);
+              break;
+            case 'inquire':
+              agentResponse = await inquire([
+                ...messages,
+                { role: 'user', content: task.query }
+              ]);
+              break;
+            default:
+              console.error(`Unknown agent type: ${task.agentType}`);
+              agentResponse = {
+                type: 'error',
+                content: {
+                  title: 'Error',
+                  summary: `Unknown agent type: ${task.agentType}`,
+                  details: ['The requested agent type is not supported.']
+                }
+              };
+          }
+          
+          resolve({
+            agentType: task.agentType,
+            query: task.query,
+            response: agentResponse
+          });
+        } catch (error) {
+          reject(error);
+        }
+      });
+      
+      // Set a timeout for each task
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error(`Task execution timed out for ${task.agentType}`)), timeoutDuration)
+      );
+      
+      // Race between the task and the timeout
+      const result = await Promise.race([taskPromise, timeoutPromise]);
+      
+      // Ensure the response is properly formatted
+      let formattedResponse = result.response;
+      
+      // If the response is a string, try to parse it as JSON
+      if (typeof result.response === 'string') {
+        try {
+          if (result.response.startsWith('{') || result.response.startsWith('[')) {
+            formattedResponse = JSON.parse(result.response);
+          } else {
+            // If it's not JSON, wrap it in a proper structure
+            formattedResponse = {
+              type: task.agentType,
+              content: {
+                summary: result.response,
+                details: [result.response]
+              }
+            };
+          }
+        } catch (e) {
+          console.error(`Error parsing response for ${task.agentType}:`, e);
+          formattedResponse = {
+            type: task.agentType,
+            content: {
+              summary: result.response,
+              details: [result.response]
+            }
+          };
+        }
       }
-    ],
-    "combinedResponse": {
-      "summary": string,      // Overall summary of the results
-      "details": string[]     // Detailed points from each task
-    }
-  }
-}
-
-Guidelines:
-1. Break down complex requests into smaller, manageable tasks
-2. Consider dependencies between tasks
-3. Use appropriate agents for each task type
-4. Provide clear instructions for each task
-5. Plan how to combine results into a coherent response
-
-Return JSON format.`
-  };
-
-  try {
-    const response = await grokClient.chat.completions.create({
-      model: 'grok-2-latest',
-      messages: [systemPrompt, ...messages],
-      response_format: { type: 'json_object' },
-      temperature: 0.1
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('No content in response');
-    }
-    
-    return JSON.parse(content);
-  } catch (error) {
-    console.error("Error in orchestrator:", error);
-    return {
-      tasks: [],
-      combinedResponse: {
-        summary: "Error creating orchestration plan",
-        details: ["Failed to process the request. Please try again."]
+      
+      return {
+        agentType: task.agentType,
+        query: task.query,
+        response: formattedResponse
+      };
+    } catch (error) {
+      console.error(`Error executing task for ${task.agentType}:`, error);
+      
+      // For visualization tasks that time out, provide a fallback visualization
+      if (task.agentType === 'visualize' && error.message.includes('timed out')) {
+        console.log(`Providing fallback visualization for timed out task: ${task.query}`);
+        return {
+          agentType: task.agentType,
+          query: task.query,
+          response: {
+            type: 'visualization',
+            content: {
+              title: 'Simplified Visualization',
+              summary: 'A simplified visualization due to processing constraints',
+              details: ['The full visualization could not be generated within the time limit. This is a simplified version.']
+            },
+            visualization: {
+              chartType: 'bar',
+              data: [
+                { label: 'Sample Data', value: 100 }
+              ],
+              config: {
+                title: 'Simplified Chart',
+                description: 'This is a simplified visualization due to processing constraints',
+                xAxis: {
+                  label: 'Category',
+                  type: 'category'
+                },
+                yAxis: {
+                  label: 'Value',
+                  type: 'number'
+                },
+                legend: {
+                  display: false
+                },
+                stacked: false
+              }
+            }
+          }
+        };
       }
-    };
-  }
+      
+      // Return an error response for this task
+      return {
+        agentType: task.agentType,
+        query: task.query,
+        response: {
+          type: 'error',
+          content: {
+            title: 'Error',
+            summary: `Error processing ${task.agentType} task`,
+            details: [error.message || 'An unknown error occurred']
+          }
+        }
+      };
+    }
+  });
+  
+  // Wait for all tasks to complete (or fail)
+  const taskResults = await Promise.all(taskPromises);
+  
+  // Sort results by original task priority
+  return taskResults.sort((a, b) => {
+    const aIndex = sortedTasks.findIndex(t => t.agentType === a.agentType && t.query === a.query);
+    const bIndex = sortedTasks.findIndex(t => t.agentType === b.agentType && t.query === b.query);
+    return aIndex - bIndex;
+  });
 }; 

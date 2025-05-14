@@ -1,19 +1,14 @@
 import { grokClient } from '@/app/lib/clients';
-import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 
-type Message = {
+interface Message {
   role: 'system' | 'user' | 'assistant' | 'function';
   content: string;
   name?: string;
-  function_call?: {
-    name: string;
-    arguments: string;
-  };
 }
 
-export const inquire = async function inquire(messages: ChatCompletionMessageParam[]) {
-  const systemPrompt: ChatCompletionMessageParam = {
-    role: 'system',
+export const inquire = async function inquire(messages: Message[]) {
+  const systemPrompt = {
+    role: 'system' as const,
     content: `You are an AI assistant that generates follow-up questions to gather necessary details from users.
 
 Your role is to analyze the provided database context and user query to generate relevant follow-up questions that will help gather missing information needed to fulfill the user's request.
@@ -41,6 +36,7 @@ Return JSON format.`
   };
 
   try {
+
     const fallbackResponse = await grokClient.chat.completions.create({
       model: 'grok-2-latest',
       messages: [systemPrompt, ...messages],
@@ -48,12 +44,7 @@ Return JSON format.`
       temperature: 0.1
     });
     
-    const content = fallbackResponse.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('No content in response');
-    }
-    
-    return JSON.parse(content);
+    return JSON.parse(fallbackResponse.choices[0].message.content);
   } catch (error) {
     console.error("Error in inquire agent:", error);
     

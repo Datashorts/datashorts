@@ -1,87 +1,152 @@
 import { grokClient } from '@/app/lib/clients';
-import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
-
-// Type guard to check if content part is text
-function isTextContent(part: any): part is { text: string } {
-  return part && typeof part.text === 'string';
-}
-
-export const researcher = async function researcher(messages: ChatCompletionMessageParam[]) {
+export const researcher = async function researcher(messages) {
   // Check if it's a simple data query
-  const lastMessage = messages[messages.length - 1];
-  if (!lastMessage || !lastMessage.content) {
-    throw new Error('No valid message content found');
-  }
-
-  // Ensure content is a string
-  const content = typeof lastMessage.content === 'string' 
-    ? lastMessage.content 
-    : Array.isArray(lastMessage.content)
-      ? lastMessage.content.map(part => {
-          if (typeof part === 'string') return part;
-          if (isTextContent(part)) return part.text;
-          return '';
-        }).join(' ')
-      : '';
-
-  if (!content) {
-    throw new Error('No valid text content found in message');
-  }
-  
-  const userMessage = content.toLowerCase();
+  const userMessage = messages[messages.length - 1].content.toLowerCase();
   const isSimpleQuery = userMessage.includes('group') || 
-    userMessage.includes('count') || 
-    userMessage.includes('sum') || 
-    userMessage.includes('average') || 
-    userMessage.includes('min') || 
-    userMessage.includes('max');
+                       userMessage.includes('count') || 
+                       userMessage.includes('show') || 
+                       userMessage.includes('list') || 
+                       userMessage.includes('tell') ||
+                       userMessage.includes('how many') ||
+                       userMessage.includes('what is') ||
+                       userMessage.includes('describe');
+  
+  // Check if it's a visualization request
+  const isVisualizationRequest = userMessage.includes('visualize') || 
+                                userMessage.includes('visualise') || 
+                                userMessage.includes('chart') || 
+                                userMessage.includes('graph') || 
+                                userMessage.includes('plot') || 
+                                userMessage.includes('bar') || 
+                                userMessage.includes('pie');
 
-  const systemPrompt: ChatCompletionMessageParam = {
+  const systemPrompt = {
     role: 'system',
-    content: `You are a researcher agent that analyzes data and provides insights.
-
-Your role is to analyze the provided database context and user query to generate meaningful insights and analysis.
-
-Your response should be a JSON object with the following structure:
-{
-  "summary": string,      // A concise summary of the analysis
-  "details": string[],    // Detailed points from the analysis
-  "metrics": {           // Optional: Key metrics and their values
-    "metric1": value1,
-    "metric2": value2
-  }
-}
-
-Guidelines:
-1. Focus on providing clear, actionable insights
-2. Use appropriate statistical methods when needed
-3. Consider trends and patterns in the data
-4. Highlight significant findings
-5. Provide context for your analysis
-
-Return JSON format.`
+    content: isVisualizationRequest ? 
+      `You are a data analyst that provides visualizations based on data queries. Return results in this strict JSON format:
+      {
+        "type": "visualization",
+        "content": {
+          "title": string,
+          "summary": string,
+          "details": string[],
+          "metrics": {
+            [key: string]: number | string
+          }
+        },
+        "visualization": {
+          "chartType": "bar" | "pie",
+          "data": [
+            {
+              "label": string,
+              "value": number,
+              "color": string (optional)
+            }
+          ],
+          "config": {
+            "title": string,
+            "description": string,
+            "xAxis": {
+              "label": string,
+              "type": "category" | "time" | "linear"
+            },
+            "yAxis": {
+              "label": string,
+              "type": "number" | "category"
+            },
+            "legend": {
+              "display": boolean
+            },
+            "stacked": boolean,
+            "barConfig": {
+              "barThickness": number (optional),
+              "horizontal": boolean (optional)
+            }
+          }
+        }
+      }
+      
+      For bar charts:
+      - Use "chartType": "bar"
+      - Ensure data has "label" and "value" properties
+      - Set appropriate axis labels
+      
+      Return JSON format.` 
+      : isSimpleQuery ? 
+      `You are a data analyst that provides direct answers to data queries. Return results in this strict JSON format:
+      {
+        "summary": string,
+        "details": string[],
+        "metrics": {
+          [key: string]: number | string
+        }
+      }
+      
+      For simple questions like "how many tables are there" or "what is the schema", provide a direct answer.
+      Focus on providing clear, concise information without visualizations.
+      
+      Return JSON format.` 
+      : // Default analysis prompt
+      `You are a data analyst that provides detailed analysis based on data queries. Return results in this strict JSON format:
+      {
+        "summary": string,
+        "details": string[],
+        "metrics": {
+          [key: string]: number | string
+        }
+      }
+      
+      Provide a comprehensive analysis of the data, including key insights and trends.
+      
+      Return JSON format.`
   };
 
   try {
-    const response = await grokClient.chat.completions.create({
+    // Use standard OpenAI client instead of Instructor for now
+    const fallbackResponse = await grokClient.chat.completions.create({
       model: 'grok-2-latest',
       messages: [systemPrompt, ...messages],
       response_format: { type: 'json_object' },
-      temperature: 0.1
+      temperature: 0.3
     });
-
-    const responseContent = response.choices[0]?.message?.content;
-    if (!responseContent) {
-      throw new Error('No content in response');
-    }
     
-    return JSON.parse(responseContent);
+    return fallbackResponse.choices[0].message.content;
   } catch (error) {
-    console.error("Error in researcher:", error);
-    return {
-      summary: "Error processing your request",
-      details: ["There was an error processing your request. Please try again."],
-      metrics: {}
-    };
+    console.error("Error in researcher agent:", error);
+    
+    // Return a simple error response in the expected format
+    return JSON.stringify({
+      type: isVisualizationRequest ? "visualization" : "analysis",
+      content: {
+        title: "Error",
+        summary: "Error processing your request",
+        details: ["There was an error processing your request. Please try again."],
+        metrics: {}
+      },
+      ...(isVisualizationRequest ? {
+        visualization: {
+          chartType: "bar",
+          data: [
+            { label: "Error", value: 0 }
+          ],
+          config: {
+            title: "Error Visualization",
+            description: "An error occurred while generating the visualization",
+            xAxis: {
+              label: "",
+              type: "category"
+            },
+            yAxis: {
+              label: "",
+              type: "number"
+            },
+            legend: {
+              display: false
+            },
+            stacked: false
+          }
+        }
+      } : {})
+    });
   }
 };
