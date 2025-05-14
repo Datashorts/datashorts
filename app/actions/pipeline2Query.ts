@@ -28,7 +28,7 @@ async function executeSQLQuery(connectionId: string, sqlQuery: string) {
     const [connection] = await db
       .select()
       .from(dbConnections)
-      .where(eq(dbConnections.id, connectionId));
+      .where(eq(dbConnections.id, Number(connectionId)));
 
     if (!connection) {
       throw new Error('Connection not found');
@@ -38,6 +38,9 @@ async function executeSQLQuery(connectionId: string, sqlQuery: string) {
     let pool = getExistingPool(connectionId);
     if (!pool) {
       console.log('No existing pool found, creating new pool for connection:', connectionId);
+      if (!connection.postgresUrl) {
+        throw new Error('Database connection URL is missing');
+      }
       pool = getPool(connectionId, connection.postgresUrl);
     }
 
@@ -54,7 +57,7 @@ async function executeSQLQuery(connectionId: string, sqlQuery: string) {
     console.error('Error executing SQL query:', error);
     return {
       success: false,
-      error: error.message
+      error: error instanceof Error ? error.message : 'An unknown error occurred'
     };
   }
 }
@@ -68,8 +71,26 @@ async function executeSQLQuery(connectionId: string, sqlQuery: string) {
 export async function generateSQLQuery(schema: any[], userQuery: string) {
   try {
     // Analyze schema to identify relationships and key columns
-    const schemaAnalysis = schema.reduce((acc, table) => {
-      const columns = table.columns.split(',').map(col => {
+    type SchemaAnalysis = {
+      [key: string]: {
+        columns: Array<{
+          name: string;
+          type: string;
+          isId: boolean;
+          isPrimaryKey: boolean;
+          isForeignKey: boolean;
+          referencesTable: string | null;
+          isNameColumn: boolean;
+        }>;
+        primaryKey: { name: string } | undefined;
+        foreignKeys: Array<{ name: string; referencesTable: string | null }>;
+        nameColumns: Array<{ name: string }>;
+        referencedBy: Array<{ table: string; foreignKey: string }>;
+      };
+    };
+
+    const schemaAnalysis = schema.reduce<SchemaAnalysis>((acc, table) => {
+      const columns = table.columns.split(',').map((col: string) => {
         const [name, type] = col.trim().split('(');
         const colName = name.trim();
         return {
@@ -88,9 +109,12 @@ export async function generateSQLQuery(schema: any[], userQuery: string) {
 
       acc[table.tableName] = {
         columns,
-        primaryKey: columns.find(col => col.isPrimaryKey),
-        foreignKeys: columns.filter(col => col.isForeignKey),
-        nameColumns: columns.filter(col => col.isNameColumn),
+        primaryKey: columns.find((col: { isPrimaryKey: boolean }) => col.isPrimaryKey),
+        foreignKeys: columns.filter((col: { isForeignKey: boolean }) => col.isForeignKey).map((fk: { name: string; referencesTable: string | null }) => ({
+          name: fk.name,
+          referencesTable: fk.referencesTable
+        })),
+        nameColumns: columns.filter((col: { isNameColumn: boolean }) => col.isNameColumn),
         referencedBy: [] // Will be populated below
       };
       return acc;
@@ -171,6 +195,10 @@ Consider the following when generating the query:
       temperature: 0.1,
       max_tokens: 150
     });
+
+    if (!response.choices?.[0]?.message?.content) {
+      throw new Error('No response content from OpenAI');
+    }
 
     let sqlQuery = response.choices[0].message.content.trim();
     
@@ -317,16 +345,16 @@ export async function processPipeline2Query(query: string, connectionId: string)
         return;
       }
 
-      let relevanceScore = match.score;
+      let relevanceScore = match.score || 0;
       
       // Boost score for tables mentioned in the query
-      if (query.toLowerCase().includes(tableName.toLowerCase())) {
+      if (query.toLowerCase().includes(String(tableName).toLowerCase())) {
         relevanceScore += 0.2;
         console.log(`Boosted score for table ${tableName} due to name match`);
       }
 
       // Boost score for tables with relationships to other matched tables
-      const columns = match.metadata?.columns || '';
+      const columns = String(match.metadata?.columns || '');
       const columnMatches = columns.toLowerCase().split(',').filter(col => {
         const colName = col.split('(')[0].trim().toLowerCase();
         return query.toLowerCase().includes(colName) || 
@@ -403,7 +431,16 @@ export async function processPipeline2Query(query: string, connectionId: string)
 
     if (existingChats.length > 0) {
       const existingChat = existingChats[0];
-      const conversation = existingChat.conversation || [];
+      type ChatEntry = {
+        message: string;
+        response: {
+          taskResult: any;
+          analysisResult: any;
+          tablesUsed: string[];
+          timestamp: string;
+        };
+      };
+      const conversation = (existingChat.conversation as ChatEntry[]) || [];
       conversation.push(chatEntry);
       
       await db
@@ -440,7 +477,7 @@ export async function processPipeline2Query(query: string, connectionId: string)
     console.error('Error processing Pipeline 2 query:', error);
     return {
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : 'An unknown error occurred',
       debug: {
         message: 'Error occurred during query processing',
         connectionId,
