@@ -7,15 +7,14 @@ import { Client } from 'pg';
 import { MongoClient } from 'mongodb';
 import { embeddings } from '@/app/actions/chat';
 
-export async function POST(
+export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
-  let client;
-  let mongoClient;
   try {
     const user = await currentUser();
-    
+    const params = await props.params;
+
     if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },

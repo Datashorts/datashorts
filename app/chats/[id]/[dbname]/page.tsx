@@ -262,48 +262,50 @@ ${context.sampleData.map((table: any) =>
   }
   
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen bg-[#0a0a0a]">
       <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h1 className="text-xl font-semibold">{params.dbname}</h1>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={handleSync}
-              disabled={isSyncing}
-              className="text-gray-800 hover:text-gray-900"
-            >
-              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={handleCopyUrl}
-              className="text-gray-800 hover:text-gray-900"
-            >
-              <Copy className="h-4 w-4" />
-            </Button>
+      <div className="flex-1 flex flex-col min-h-screen">
+        <div className="border-b border-blue-500/20 p-3 sm:p-4">
+          <div className="max-w-3xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h1 className="text-lg sm:text-xl font-semibold text-gray-200">Chat with {dbName}</h1>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCopyUrl}
+                className="border-blue-500/20 text-gray-300 hover:bg-blue-500/10 hover:text-white transition-colors"
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                {copySuccess ? 'Copied!' : 'Copy URL'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSync}
+                disabled={isSyncing}
+                className="border-blue-500/20 text-gray-300 hover:bg-blue-500/10 hover:text-white transition-colors"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Syncing...' : 'Sync DB'}
+              </Button>
+            </div>
           </div>
         </div>
         
-        <div className="flex-1 p-6 overflow-y-auto" ref={chatContainerRef}>
+        <div className="flex-1 p-3 sm:p-4 md:p-6 overflow-y-auto" ref={chatContainerRef}>
           <div className="max-w-3xl mx-auto">
-            <div className="bg-[#1a1a1a] p-6 rounded-lg border border-gray-800 mb-6">
-              <h2 className="text-lg font-medium mb-2">Welcome to your chat with {dbName}</h2>
-              <p className="text-gray-400">
+            <div className="bg-[#0a0a0a] p-4 sm:p-6 rounded-lg border border-blue-500/20 mb-6">
+              <h2 className="text-base sm:text-lg font-medium mb-2 text-gray-200">Welcome to your chat with {dbName}</h2>
+              <p className="text-sm sm:text-base text-gray-400">
                 You can ask questions about your database and get instant answers.
               </p>
             </div>
             
             <div className="space-y-4">
-              {/* Display chat history */}
               {chatHistory && chatHistory.length > 0 ? (
                 <div className="space-y-4">
                   {chatHistory.map((chat, index) => (
-                    <div key={index} className="bg-[#1a1a1a] p-4 rounded-lg border border-gray-800">
-                      {/* User message */}
+                    <div key={index} className="bg-[#0a0a0a] p-3 sm:p-4 md:p-6 rounded-lg border border-blue-500/20">
                       <ChatMessage 
                         message={chat.message || ''}
                         response={chat.response || {}}
@@ -314,7 +316,6 @@ ${context.sampleData.map((table: any) =>
                         isLoading={isLoading && index === chatHistory.length - 1 && !chat.response.agentType}
                       />
                       
-                      {/* Agent response */}
                       <ChatMessage 
                         message=""
                         response={chat.response || {}}
@@ -338,24 +339,26 @@ ${context.sampleData.map((table: any) =>
           </div>
         </div>
         
-        <div className="border-t border-gray-800 p-4">
-          <div className="max-w-3xl mx-auto flex gap-2">
-            <textarea
-              className="flex-1 bg-[#1a1a1a] text-white p-3 rounded-lg border border-gray-800 resize-none"
-              placeholder="Ask a question about your database..."
-              rows={2}
-              value={userQuery}
-              onChange={(e) => setUserQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={isLoading}
-            />
-            <button
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg disabled:opacity-50"
-              onClick={() => handleSubmit()}
-              disabled={isLoading || !userQuery.trim()}
-            >
-              {isLoading ? 'Sending...' : 'Send'}
-            </button>
+        <div className="border-t border-blue-500/20 p-3 sm:p-4">
+          <div className="max-w-3xl mx-auto">
+            <div className="flex gap-2">
+              <textarea
+                className="flex-1 bg-[#0a0a0a] text-gray-200 p-3 rounded-lg border border-blue-500/20 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                placeholder="Ask a question about your database..."
+                rows={2}
+                value={userQuery}
+                onChange={(e) => setUserQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={isLoading}
+              />
+              <button
+                className="bg-[#0a0a0a] hover:bg-blue-500/20 text-gray-200 px-4 py-2 rounded-lg disabled:opacity-50 transition-colors border border-blue-500/20 hover:border-blue-500"
+                onClick={() => handleSubmit()}
+                disabled={isLoading || !userQuery.trim()}
+              >
+                {isLoading ? 'Sending...' : 'Send'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

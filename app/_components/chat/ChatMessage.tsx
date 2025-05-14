@@ -68,12 +68,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     if (isUserMessage) {
       return (
         <div className="flex justify-end mb-4">
-          <div className="max-w-[80%] bg-blue-600 text-white p-3 rounded-lg rounded-tr-lg relative">
+          <div className="max-w-[90%] sm:max-w-[85%] md:max-w-[75%] bg-[#0a0a0a] text-gray-200 p-3 sm:p-4 rounded-lg rounded-tr-none relative shadow-lg border border-blue-500/30">
             <div className="absolute -top-3 -right-3">
               <UserButton afterSignOutUrl="/" />
             </div>
-            <p className="text-sm">{messageContent}</p>
-            <p className="text-xs text-blue-200 mt-1">{formattedTime}</p>
+            <p className="text-sm sm:text-base whitespace-pre-wrap break-words">
+              {typeof messageContent === 'string' ? messageContent : JSON.stringify(messageContent)}
+            </p>
+            <p className="text-xs text-blue-400 mt-2">{formattedTime}</p>
           </div>
         </div>
       );
@@ -81,10 +83,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
 
     return (
       <div className="flex justify-start mb-4">
-        <div className="max-w-[80%] bg-[#222] p-3 rounded-lg rounded-tl-lg relative">
+        <div className="max-w-[90%] sm:max-w-[85%] md:max-w-[75%] bg-[#0a0a0a] p-3 sm:p-4 rounded-lg rounded-tl-none relative shadow-lg border border-blue-500/20">
           <div className="absolute -top-3 -left-3">
-            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center shadow-md">
-              <Bot size={16} className="text-white" />
+            <div className="w-8 h-8 bg-[#0a0a0a] rounded-full flex items-center justify-center shadow-md border border-blue-500/30">
+              <Bot size={16} className="text-blue-500" />
             </div>
           </div>
           <div className="flex items-center mb-2">
@@ -93,7 +95,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           
           {isLoading ? (
             <div className="flex items-center space-x-2 text-gray-300">
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
               <span>Processing your request...</span>
             </div>
           ) : response && response.agentType === 'researcher' ? (
@@ -111,7 +113,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               onSubmitResponse={onSubmitResponse}
             />
           ) : (
-            <p className="text-gray-300">{messageContent}</p>
+            <p className="text-gray-300 text-sm sm:text-base whitespace-pre-wrap break-words">{typeof messageContent === 'string' ? messageContent : JSON.stringify(messageContent)}</p>
           )}
         </div>
       </div>

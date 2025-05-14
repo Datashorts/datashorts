@@ -6,11 +6,12 @@ import { currentUser } from '@clerk/nextjs/server';
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await currentUser();
-    
+    const params = await props.params;
+
     if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -18,7 +19,8 @@ export async function GET(
       );
     }
     
-    const connectionId = typeof params.id === 'string' ? parseInt(params.id) : params.id;
+    const id = await Promise.resolve(params.id);
+    const connectionId = typeof id === 'string' ? parseInt(id) : id;
     
     if (isNaN(connectionId)) {
       return NextResponse.json(
@@ -61,4 +63,4 @@ export async function GET(
       { status: 500 }
     );
   }
-} 
+}

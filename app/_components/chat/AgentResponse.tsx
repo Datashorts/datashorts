@@ -242,7 +242,7 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                     {Object.entries(parsedOutput.content.metrics).map(([key, value], index) => (
                       <div key={index} className="bg-[#333] p-3 rounded">
                         <p className="text-sm text-gray-400">{key}</p>
-                        <p className="text-lg font-medium">{value}</p>
+                        <p className="text-lg font-medium">{String(value)}</p>
                       </div>
                     ))}
                   </div>
@@ -298,7 +298,7 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                           value !== undefined && (
                             <div key={key} className="bg-gray-50 p-4 rounded-lg">
                               <p className="text-sm text-gray-500 capitalize">{key}</p>
-                              <p className="text-xl font-semibold">{value}</p>
+                              <p className="text-xl font-semibold">{String(value)}</p>
                             </div>
                           )
                         ))}
@@ -375,7 +375,7 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                         {Object.entries(agentOutput.analysisResult.metrics).map(([key, value]) => (
                           <div key={key} className="text-sm">
                             <span className="font-medium text-gray-700">{key}:</span>{' '}
-                            <span className="text-gray-600">{value}</span>
+                            <span className="text-gray-600">{String(value)}</span>
                           </div>
                         ))}
                       </div>

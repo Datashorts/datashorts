@@ -6,10 +6,11 @@ import { currentUser } from '@clerk/nextjs/server';
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await currentUser();
+    const params = await props.params;
     
     if (!user) {
       return NextResponse.json(
@@ -63,4 +64,4 @@ export async function DELETE(
       { status: 500 }
     );
   }
-} 
+}
