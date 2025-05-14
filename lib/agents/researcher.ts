@@ -1,5 +1,12 @@
 import { grokClient } from '@/app/lib/clients';
-export const researcher = async function researcher(messages) {
+
+type Message = 
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string }
+  | { role: 'function'; content: string; name: string };
+
+export const researcher = async function researcher(messages: Message[]) {
   // Check if it's a simple data query
   const userMessage = messages[messages.length - 1].content.toLowerCase();
   const isSimpleQuery = userMessage.includes('group') || 
@@ -20,7 +27,7 @@ export const researcher = async function researcher(messages) {
                                 userMessage.includes('bar') || 
                                 userMessage.includes('pie');
 
-  const systemPrompt = {
+  const systemPrompt: Message = {
     role: 'system',
     content: isVisualizationRequest ? 
       `You are a data analyst that provides visualizations based on data queries. Return results in this strict JSON format:

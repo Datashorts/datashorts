@@ -443,12 +443,11 @@ export async function submitChat(userQuery: string, url: string) {
     console.log('Conversation history:', conversationHistory);
     
 
-    const formattedHistory = conversationHistory.map(chat => [
-      { role: 'user', content: chat.message },
-      { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
-        ? chat.response.agentOutput 
-        : JSON.stringify(chat.response.agentOutput) }
-    ]).flat();
+    const formattedHistory = conversationHistory.map((msg: any) => ({
+      role: msg.role as 'system' | 'user' | 'assistant' | 'function',
+      content: msg.content,
+      ...(msg.name && { name: msg.name })
+    }));
     
 
     const taskAnalysis = await taskManager([
@@ -472,12 +471,11 @@ export async function submitChat(userQuery: string, url: string) {
     if (taskResult.requiresMultiAgent) {
       console.log('Handling multi-agent request with orchestration plan:', taskResult.orchestrationPlan);
       
-      const formattedHistory = conversationHistory.map(chat => [
-        { role: 'user', content: chat.message },
-        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
-          ? chat.response.agentOutput 
-          : JSON.stringify(chat.response.agentOutput) }
-      ]).flat();
+      const formattedHistory = conversationHistory.map((msg: any) => ({
+        role: msg.role as 'system' | 'user' | 'assistant' | 'function',
+        content: msg.content,
+        ...(msg.name && { name: msg.name })
+      }));
       
       try {
         // Execute all tasks in the orchestration plan with a timeout
@@ -576,12 +574,11 @@ export async function submitChat(userQuery: string, url: string) {
       }
     } else if (taskResult.next === 'analyze') {
       // ... existing analyze code ...
-      const formattedHistory = conversationHistory.map(chat => [
-        { role: 'user', content: chat.message },
-        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
-          ? chat.response.agentOutput 
-          : JSON.stringify(chat.response.agentOutput) }
-      ]).flat();
+      const formattedHistory = conversationHistory.map((msg: any) => ({
+        role: msg.role as 'system' | 'user' | 'assistant' | 'function',
+        content: msg.content,
+        ...(msg.name && { name: msg.name })
+      }));
       
       const researcherResponse = await researcher([
         { 
@@ -643,12 +640,11 @@ Your response should be in the following JSON format:
     } else if (taskResult.next === 'visualize') {
       console.log('Calling visualiser agent with database context and user query');
       
-      const formattedHistory = conversationHistory.map(chat => [
-        { role: 'user', content: chat.message },
-        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
-          ? chat.response.agentOutput 
-          : JSON.stringify(chat.response.agentOutput) }
-      ]).flat();
+      const formattedHistory = conversationHistory.map((msg: any) => ({
+        role: msg.role as 'system' | 'user' | 'assistant' | 'function',
+        content: msg.content,
+        ...(msg.name && { name: msg.name })
+      }));
       
       const visualiserResult = await visualiser([
         { 
@@ -772,12 +768,11 @@ Your response should be in the following JSON format:
       // ... existing inquire code ...
       console.log('Calling inquire agent with database context and user query');
       
-      const formattedHistory = conversationHistory.map(chat => [
-        { role: 'user', content: chat.message },
-        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
-          ? chat.response.agentOutput 
-          : JSON.stringify(chat.response.agentOutput) }
-      ]).flat();
+      const formattedHistory = conversationHistory.map((msg: any) => ({
+        role: msg.role as 'system' | 'user' | 'assistant' | 'function',
+        content: msg.content,
+        ...(msg.name && { name: msg.name })
+      }));
       
       const inquireResult = await inquire([
         { role: 'system' as const, content: databaseContext },

@@ -88,7 +88,11 @@ Return JSON format.`
       temperature: 0.1
     });
 
-    return JSON.parse(response.choices[0].message.content);
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error('No content in response');
+    }
+    return JSON.parse(content);
   } catch (error) {
     console.error("Error in orchestrator:", error);
     return {
@@ -166,7 +170,11 @@ export const executeTasks = async function executeTasks(tasks: AgentTask[], mess
       );
       
       // Race between the task and the timeout
-      const result = await Promise.race([taskPromise, timeoutPromise]);
+      const result = await Promise.race([taskPromise, timeoutPromise]) as {
+        agentType: string;
+        query: string;
+        response: any;
+      };
       
       // Ensure the response is properly formatted
       let formattedResponse = result.response;
@@ -207,7 +215,7 @@ export const executeTasks = async function executeTasks(tasks: AgentTask[], mess
       console.error(`Error executing task for ${task.agentType}:`, error);
       
       // For visualization tasks that time out, provide a fallback visualization
-      if (task.agentType === 'visualize' && error.message.includes('timed out')) {
+      if (task.agentType === 'visualize' && error instanceof Error && error.message.includes('timed out')) {
         console.log(`Providing fallback visualization for timed out task: ${task.query}`);
         return {
           agentType: task.agentType,
@@ -254,7 +262,7 @@ export const executeTasks = async function executeTasks(tasks: AgentTask[], mess
           content: {
             title: 'Error',
             summary: `Error processing ${task.agentType} task`,
-            details: [error.message || 'An unknown error occurred']
+            details: [error instanceof Error ? error.message : 'An unknown error occurred']
           }
         }
       };
