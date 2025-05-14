@@ -42,7 +42,7 @@ RUN npm run build
 # Stage 2: Runtime
 FROM node:18-alpine AS runner
 
-WORKDIR /app
+WORKDIR /
 
 # Repeat ARGs for runtime
 ARG NEXT_PUBLIC_DRIZZLE_DATABASE_URL
