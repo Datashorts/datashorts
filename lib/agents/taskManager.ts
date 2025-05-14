@@ -1,8 +1,14 @@
 import { grokClient } from '@/app/lib/clients';
 import { orchestrator } from './orchestrator';
 
-export const taskManager = async function taskManager(messages) {
-  const systemPrompt = {
+type Message = 
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string }
+  | { role: 'function'; content: string; name: string };
+
+export const taskManager = async function taskManager(messages: Message[]) {
+  const systemPrompt: Message = {
     role: 'system',
     content: `You are an AI task manager that determines the next action based on user input and database context.
     
@@ -50,7 +56,12 @@ Return JSON format.`
       temperature: 0.1
     });
     
-    const result = JSON.parse(fallbackResponse.choices[0].message.content);
+    const content = fallbackResponse.choices[0].message.content;
+    if (!content) {
+      throw new Error('No content in response');
+    }
+    
+    const result = JSON.parse(content);
     
     // If multi-agent is required, get the orchestration plan
     if (result.requiresMultiAgent) {
