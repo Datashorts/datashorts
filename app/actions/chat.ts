@@ -14,8 +14,37 @@ import { visualiser } from "@/lib/agents/visualiser";
 import { executeTasks } from "@/lib/agents/orchestrator";
 import { processPipeline2Query } from "./pipeline2Query";
 
+interface EmbeddingsData {
+  id: string;
+  connectionName: string;
+  dbType: string;
+  tables?: Array<{
+    tableName: string;
+    schema?: Array<{
+      column_name: string;
+      data_type: string;
+    }>;
+    columns?: Array<{
+      column_name: string;
+      data_type: string;
+    }>;
+    data?: any[];
+  }>;
+  collections?: Array<{
+    collectionName: string;
+    schema?: Array<{
+      column_name: string;
+      data_type: string;
+    }>;
+    columns?: Array<{
+      column_name: string;
+      data_type: string;
+    }>;
+    data?: any[];
+  }>;
+}
 
-export async function embeddings(data) {
+export async function embeddings(data: EmbeddingsData) {
     console.log('Starting embeddings process for connection ID:', data.id);
     const user = await currentUser();
     if (!user) return null;
@@ -26,8 +55,8 @@ export async function embeddings(data) {
       console.log(`Processing ${(data.tables || data.collections)?.length || 0} tables/collections`);
       
 
-      const schemaText = (data.tables || data.collections).map(t => {
-        const tableName = t.tableName || t.collectionName;
+      const schemaText = ((data.tables || data.collections) || []).map(t => {
+        const tableName = 'tableName' in t ? t.tableName : t.collectionName;
         
 
         if (t.schema && Array.isArray(t.schema) && t.schema.length > 0 && 'column_name' in t.schema[0]) {
@@ -64,8 +93,8 @@ export async function embeddings(data) {
   
 
       async function* generateTableChunks() {
-        for (const table of data.tables || data.collections) {
-          const tableName = table.tableName || table.collectionName;
+        for (const table of (data.tables || data.collections) || []) {
+          const tableName = 'tableName' in table ? table.tableName : table.collectionName;
           console.log(`Processing table: ${tableName} with ${table.data?.length || 0} rows`);
           
 
@@ -148,7 +177,7 @@ export async function embeddings(data) {
     }
   }
   
-export async function getQueryEmbeddings(message, connectionId) {
+export async function getQueryEmbeddings(message: string, connectionId: string | number) {
   console.log(`Getting query embeddings for message: "${message.substring(0, 50)}..." and connection ID: ${connectionId}`);
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -181,7 +210,7 @@ export async function getQueryEmbeddings(message, connectionId) {
       .filter(m => m.metadata?.type === 'data')
       .map(m => {
         try {
-          return JSON.parse(m.metadata?.data);
+          return m.metadata?.data ? JSON.parse(m.metadata.data) : null;
         } catch (e) {
           console.error('Error parsing metadata:', e);
           return null;
