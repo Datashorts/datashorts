@@ -1,5 +1,11 @@
 import { grokClient } from "@/app/lib/clients";
 
+type Message = 
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string }
+  | { role: 'function'; content: string; name: string };
+
 // Helper function to detect if a prompt suggests visualization
 export const isVisualizationRequest = (prompt: string): boolean => {
   const visualizationKeywords = [
@@ -53,8 +59,8 @@ export const validateVisualizationData = (data: any): any => {
   });
 };
 
-export const visualiser = async function visualiser(messages) {
-  const systemPrompt = {
+export const visualiser = async function visualiser(messages: Message[]) {
+  const systemPrompt: Message = {
     role: 'system',
     content: `You are an AI research assistant that provides detailed analysis and insights based on database schema and data. Your expertise is in creating meaningful visualizations that effectively communicate data insights.
 
@@ -144,13 +150,35 @@ Return JSON format.`
     }
     
     // Add a hint to keep the response concise
-    const enhancedMessages = [
+    const enhancedMessages: Message[] = [
       systemPrompt,
-      ...messages.slice(0, -1),
-      {
-        role: messages[messages.length - 1].role,
-        content: `${messages[messages.length - 1].content}${chartTypeHint} Ensure your JSON is properly formatted.`
-      }
+      ...messages.slice(0, -1).map(msg => {
+        if (msg.role === 'function') {
+          return {
+            role: 'function' as const,
+            content: msg.content,
+            name: (msg as any).name
+          } as Message;
+        }
+        return {
+          role: msg.role as 'system' | 'user' | 'assistant',
+          content: msg.content
+        } as Message;
+      }),
+      (() => {
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg.role === 'function') {
+          return {
+            role: 'function' as const,
+            content: `${lastMsg.content}${chartTypeHint} Ensure your JSON is properly formatted.`,
+            name: (lastMsg as any).name
+          } as Message;
+        }
+        return {
+          role: lastMsg.role as 'system' | 'user' | 'assistant',
+          content: `${lastMsg.content}${chartTypeHint} Ensure your JSON is properly formatted.`
+        } as Message;
+      })()
     ];
     
     const response = await grokClient.chat.completions.create({
@@ -164,7 +192,11 @@ Return JSON format.`
     // Parse the response to validate it
     let parsedResponse;
     try {
-      parsedResponse = JSON.parse(response.choices[0].message.content);
+      const content = response.choices[0].message.content;
+      if (!content) {
+        throw new Error('No content in response');
+      }
+      parsedResponse = JSON.parse(content);
       
       // Validate and fix the visualization data if needed
       if (parsedResponse.visualization && parsedResponse.visualization.data) {
