@@ -70,4 +70,4 @@ EXPOSE 3000
 
 # 13) Start in production mode. 
 #     (Make sure package.json has: "start":"next start -p ${PORT:-3000}")
-CMD ["npm","start"]
+CMD ["npm", "run", "dev"]
