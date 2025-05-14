@@ -1,99 +1,202 @@
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Button } from "@/components/ui/button"
-import Image from "next/image"
+"use client";
+import { AnimatePresence, motion } from "framer-motion";
+import React, { useState, FC } from "react";
+import { FiPlus } from "react-icons/fi";
+import useMeasure from "react-use-measure";
 
-export default function FAQ() {
+export const TabsFAQ: FC = () => {
+  const [selected, setSelected] = useState<string>(TABS[0]);
+
   return (
-    <section className="py-20 bg-[#121212]" id="faq">
-      <div className="container mx-auto px-6 md:px-8 lg:px-12 max-w-7xl">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">Frequently Asked Questions</h2>
-          <p className="text-gray-400 max-w-3xl mx-auto">
-            Everything you need to know about DataChat and how it can transform your database experience.
-          </p>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-          <div className="relative h-[400px] rounded-lg overflow-hidden hidden lg:block">
-            <Image
-              src="/placeholder.svg?height=400&width=500"
-              alt="Business person thinking"
-              fill
-              className="object-cover"
-            />
-            <div className="absolute bottom-2 left-2 text-xs text-gray-400">Photo by Ben Rosett</div>
-          </div>
-          <div className="space-y-4">
-            <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="item-1" className="border-gray-800">
-                <AccordionTrigger className="text-left">What databases does DataChat support?</AccordionTrigger>
-                <AccordionContent className="text-gray-400">
-                  DataChat currently supports PostgreSQL and MongoDB databases. We&apos;re actively working on adding
-                  support for MySQL, SQL Server, and other popular database systems in upcoming releases.
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="item-2" className="border-gray-800">
-                <AccordionTrigger className="text-left">How does the agentic questioning work?</AccordionTrigger>
-                <AccordionContent className="text-gray-400">
-                  Our AI system analyzes your initial query and identifies any ambiguities or missing information. It
-                  then asks targeted follow-up questions to clarify your intent, ensuring you get the most accurate and
-                  relevant results from your database.
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="item-3" className="border-gray-800">
-                <AccordionTrigger className="text-left">Is my data secure?</AccordionTrigger>
-                <AccordionContent className="text-gray-400">
-                  Absolutely. DataChat is designed with security as a top priority. Your data never leaves your servers
-                  - our system connects securely to your database and processes queries within your infrastructure. We
-                  don't store or have access to your data.
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="item-4" className="border-gray-800">
-                <AccordionTrigger className="text-left">Do I need SQL knowledge to use DataChat?</AccordionTrigger>
-                <AccordionContent className="text-gray-400">
-                  No SQL knowledge is required. That's the beauty of DataChat - it translates your natural language
-                  questions into optimized database queries automatically. Of course, if you do know SQL, you can still
-                  review and modify the generated queries.
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="item-5" className="border-gray-800">
-                <AccordionTrigger className="text-left">How accurate are the AI-generated responses?</AccordionTrigger>
-                <AccordionContent className="text-gray-400">
-                  DataChat achieves high accuracy through its contextual understanding of your database schema and
-                  business metrics. The system continuously improves through feedback and usage. For complex queries,
-                  the agentic questioning feature ensures clarity and precision.
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="item-6" className="border-gray-800">
-                <AccordionTrigger className="text-left">Can I try DataChat before purchasing?</AccordionTrigger>
-                <AccordionContent className="text-gray-400">
-                  Yes, we offer a free trial that allows you to connect to your database and experience the full
-                  functionality of DataChat. You can schedule a demo with our team who will help you set up and get the
-                  most out of your trial period.
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-
-            <div className="mt-8 p-6 bg-[#1e2132] rounded-lg">
-              <h3 className="text-xl font-semibold mb-2">Still have questions?</h3>
-              <p className="text-gray-400 mb-4">
-                Our team is ready to help you with any questions about DataChat implementation, security, or features.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button className="bg-blue-600 hover:bg-blue-700">Contact Support</Button>
-                <Button variant="outline" className="border-gray-700 hover:bg-gray-800">
-                  Read Documentation
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <section className="overflow-hidden bg-[#121212] px-4 py-12 text-white">
+      <Heading />
+      <Tabs selected={selected} setSelected={setSelected} />
+      <Questions selected={selected} />
     </section>
-  )
+  );
+};
+
+const Heading: FC = () => {
+  return (
+    <div className="relative z-10 flex flex-col items-center justify-center">
+      <span className="mb-8 text-blue-400 font-medium">Let's answer some questions</span>
+      <span className="mb-8 text-5xl font-bold">FAQs</span>
+    </div>
+  );
+};
+
+interface TabsProps {
+  selected: string;
+  setSelected: (tab: string) => void;
 }
 
+const Tabs: FC<TabsProps> = ({ selected, setSelected }) => {
+  return (
+    <div className="relative z-10 flex flex-wrap items-center justify-center gap-4">
+      {TABS.map((tab) => (
+        <button
+          onClick={() => setSelected(tab)}
+          className={`relative overflow-hidden whitespace-nowrap rounded-md border-[1px] px-3 py-1.5 text-sm font-medium transition-colors duration-500 ${
+            selected === tab
+              ? "border-blue-500 text-white"
+              : "border-gray-600 bg-transparent text-gray-400"
+          }`}
+          key={tab}
+        >
+          <span className="relative z-10">{tab}</span>
+          <AnimatePresence>
+            {selected === tab && (
+              <motion.span
+                initial={{ y: "100%" }}
+                animate={{ y: "0%" }}
+                exit={{ y: "100%" }}
+                transition={{
+                  duration: 0.5,
+                  ease: "backIn",
+                }}
+                className="absolute inset-0 z-0 bg-blue-600"
+              />
+            )}
+          </AnimatePresence>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+interface QuestionsProps {
+  selected: string;
+}
+
+const Questions: FC<QuestionsProps> = ({ selected }) => {
+  return (
+    <div className="mx-auto mt-12 max-w-3xl">
+      <AnimatePresence mode="wait">
+        {Object.entries(QUESTIONS).map(([tab, questions]) => {
+          return selected === tab ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.5, ease: "backIn" }}
+              className="space-y-4"
+              key={tab}
+            >
+              {questions.map((q, idx) => (
+                <Question key={idx} question={q.question} answer={q.answer} />
+              ))}
+            </motion.div>
+          ) : null;
+        })}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+interface QuestionProps {
+  question: string;
+  answer: string;
+}
+
+const Question: FC<QuestionProps> = ({ question, answer }) => {
+  const [ref, { height }] = useMeasure();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <motion.div
+      animate={open ? "open" : "closed"}
+      className={`rounded-xl border-[1px] border-gray-700 px-4 transition-colors ${
+        open ? "bg-[#1f1f1f]" : "bg-[#121212]"
+      }`}
+    >
+      <button
+        onClick={() => setOpen((pv) => !pv)}
+        className="flex w-full items-center justify-between gap-4 py-4"
+      >
+        <span
+          className={`text-left text-lg font-medium transition-colors ${
+            open ? "text-white" : "text-gray-400"
+          }`}
+        >
+          {question}
+        </span>
+        <motion.span
+          variants={{
+            open: { rotate: "45deg" },
+            closed: { rotate: "0deg" },
+          }}
+        >
+          <FiPlus
+            className={`text-2xl transition-colors ${
+              open ? "text-white" : "text-gray-400"
+            }`}
+          />
+        </motion.span>
+      </button>
+      <motion.div
+        initial={false}
+        animate={{ height: open ? height : "0px", marginBottom: open ? "24px" : "0px" }}
+        className="overflow-hidden text-gray-400"
+      >
+        <p ref={ref}>{answer}</p>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+const TABS: string[] = ["General", "DataShorts", "Technical", "Billing"];
+
+const QUESTIONS: Record<string, QuestionProps[]> = {
+  General: [
+    {
+      question: "What is DataShorts?",
+      answer: "DataShorts is a platform that allows you to ask natural language questions and receive instant SQL queries and visualizations in return. No SQL knowledge required.",
+    },
+    {
+      question: "Who is DataShorts for?",
+      answer: "DataShorts is for non-technical teams, analysts, and anyone who needs quick insights from their database without writing queries manually.",
+    },
+  ],
+  DataShorts: [
+    {
+      question: "How do I connect my database?",
+      answer: "You can securely connect your PostgreSQL or MongoDB by pasting your connection string. Data never leaves your environment.",
+    },
+    {
+      question: "Can I ask follow-up questions?",
+      answer: "Yes! DataShorts keeps track of your session context, allowing you to have natural, multi-turn conversations with your data.",
+    },
+    {
+      question: "What kind of visualizations are supported?",
+      answer: "We support bar charts, pie charts, line graphs, tables, and more. DataShorts intelligently chooses the best one for your question.",
+    },
+  ],
+  Technical: [
+    {
+      question: "Is my data secure?",
+      answer: "Absolutely. We use end-to-end encryption and never store your data unless explicitly permitted."
+    },
+    {
+      question: "Do you support all SQL dialects?",
+      answer: "Currently, we support PostgreSQL and MongoDB with more SQL dialects coming soon."
+    },
+    {
+      question: "Does DataShorts require a browser extension?",
+      answer: "No. DataShorts is fully web-based and requires no installation."
+    }
+  ],
+  Billing: [
+    {
+      question: "Is there a free trial?",
+      answer: "Yes, we offer a 14-day free trial with full access to all features."
+    },
+    {
+      question: "What happens after the trial ends?",
+      answer: "You’ll be asked to upgrade to a paid plan to continue accessing premium features."
+    },
+    {
+      question: "Do you offer student or team discounts?",
+      answer: "Yes! Contact our support team to learn more about available discounts."
+    }
+  ]
+};

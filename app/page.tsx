@@ -1,10 +1,12 @@
 import CTA from "./_components/landing/cta";
-import FAQ from "./_components/landing/faq";
+
+import { TabsFAQ } from "./_components/landing/faq";
+
 import Features from "./_components/landing/features";
 import Footer from "./_components/landing/footer";
 import Header from "./_components/landing/header";
 import Hero from "./_components/landing/hero";
-import HowItWorks from "./_components/landing/how-it-works";
+
 import MoreFeatures from "./_components/landing/more-features";
 import SeeInAction from "./_components/landing/see-in-action";
 import Visualizations from "./_components/landing/visualizations";
@@ -21,7 +23,7 @@ export default function Home() {
       <Visualizations />
       <SeeInAction />
       <MoreFeatures />
-      <FAQ />
+      <TabsFAQ />
       <CTA />
       <Footer />
     </main>
