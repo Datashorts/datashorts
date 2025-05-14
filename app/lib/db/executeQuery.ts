@@ -14,10 +14,14 @@ export async function executeSQLQuery(connectionId: string, sqlQuery: string) {
     const [connection] = await db
       .select()
       .from(dbConnections)
-      .where(eq(dbConnections.id, connectionId));
+      .where(eq(dbConnections.id, Number(connectionId)));
 
     if (!connection) {
       throw new Error('Connection not found');
+    }
+
+    if (!connection.postgresUrl) {
+      throw new Error('PostgreSQL connection URL is missing');
     }
 
     let pool = getExistingPool(connectionId);
@@ -38,7 +42,7 @@ export async function executeSQLQuery(connectionId: string, sqlQuery: string) {
     console.error('Error executing SQL query:', error);
     return {
       success: false,
-      error: error.message
+      error: error instanceof Error ? error.message : 'An unknown error occurred'
     };
   }
 } 
