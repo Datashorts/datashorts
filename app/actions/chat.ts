@@ -210,7 +210,7 @@ export async function getQueryEmbeddings(message: string, connectionId: string |
       .filter(m => m.metadata?.type === 'data')
       .map(m => {
         try {
-          return m.metadata?.data ? JSON.parse(m.metadata.data) : null;
+          return m.metadata?.data && typeof m.metadata.data === 'string' ? JSON.parse(m.metadata.data) : null;
         } catch (e) {
           console.error('Error parsing metadata:', e);
           return null;
@@ -221,8 +221,11 @@ export async function getQueryEmbeddings(message: string, connectionId: string |
     console.log(`Found ${dataChunks.length} valid data chunks`);
 
 
-    const reconstructedData = [];
-    const rowsByTable = {};
+    const reconstructedData: Array<{
+      tableName: string;
+      sampleData: any[];
+    }> = [];
+    const rowsByTable: Record<string, Record<string, any>> = {};
     
     dataChunks.forEach(chunk => {
       const tableName = chunk.tableName;
@@ -231,14 +234,14 @@ export async function getQueryEmbeddings(message: string, connectionId: string |
 
       if (chunk.entries && chunk.entries[0]?.pk) {
         console.log(`Processing PK-attribute format for table ${tableName} with ${chunk.entries.length} entries`);
-        chunk.entries.forEach(entry => {
+        chunk.entries.forEach((entry: { pk: any; attribute: any }) => {
           const pkKey = JSON.stringify(entry.pk);
           rowsByTable[tableName][pkKey] = rowsByTable[tableName][pkKey] || { ...entry.pk };
           Object.assign(rowsByTable[tableName][pkKey], entry.attribute);
         });
       } else if (Array.isArray(chunk.entries)) {
         console.log(`Processing legacy format for table ${tableName} with ${chunk.entries.length} entries`);
-        chunk.entries.forEach(row => {
+        chunk.entries.forEach((row: Record<string, any>) => {
           const rowKey = JSON.stringify(row);
           rowsByTable[tableName][rowKey] = row;
         });
@@ -262,12 +265,21 @@ export async function getQueryEmbeddings(message: string, connectionId: string |
 
 
     const result = {
-      schema: schemaInfo ? JSON.parse(schemaInfo) : [],
+      schema: schemaInfo && typeof schemaInfo === 'string' ? JSON.parse(schemaInfo) : [],
       sampleData: reconstructedData
     };
     
 
-    function formatDatabaseContext(embeddingsData) {
+    function formatDatabaseContext(embeddingsData: {
+      schema?: Array<{
+        tableName: string;
+        columns: string;
+      }>;
+      sampleData?: Array<{
+        tableName: string;
+        sampleData: any[];
+      }>;
+    }) {
       if (!embeddingsData.schema || !embeddingsData.sampleData) {
         console.log('Missing schema or sample data in embeddings result');
         return 'Database context not available';
@@ -307,7 +319,7 @@ ${embeddingsData.sampleData.map(table =>
   }
 }
 
-export async function getChatHistory(connectionId) {
+export async function getChatHistory(connectionId: string | number) {
   try {
     console.log(`Fetching chat history for connection ID: ${connectionId}`);
     
