@@ -21,8 +21,8 @@ export default function Home() {
       <Features />
       <VerticalSlideFeatures />
       <Visualizations />
-      <SeeInAction />
-      <MoreFeatures />
+     
+      
       <TabsFAQ />
       <CTA />
       <Footer />
