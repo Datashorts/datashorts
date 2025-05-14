@@ -63,4 +63,4 @@ COPY --from=build /package.json  ./package.json
 EXPOSE 3000
 
 # Use your package.json “start” script (which should be: next start -p ${PORT:-3000})
-CMD ["npm","start"]
+CMD ["npm", "run", "dev"]
