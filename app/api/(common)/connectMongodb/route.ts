@@ -4,7 +4,7 @@ import { dbConnections } from '@/configs/schema';
 import { currentUser } from '@clerk/nextjs/server';
 import { connectToMongoDB } from '@/configs/mongoDB';
 
-export async function POST(request: Request) {
+export const POST = async (request: Request) => {
   try {
     const user = await currentUser();
     const { mongoUrl, connectionName, folderId } = await request.json();

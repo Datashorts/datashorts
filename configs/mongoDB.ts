@@ -63,6 +63,4 @@ function inferMongoSchema(documents: MongoDocument[]): SchemaField[] {
   }
   
   return schema;
-}
-
-module.exports = { connectToMongoDB }; 
+} 
