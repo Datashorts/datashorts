@@ -1,10 +1,15 @@
 import { grokClient } from '@/app/lib/clients';
 
-interface Message {
-  role: 'system' | 'user' | 'assistant' | 'function';
-  content: string;
-  name?: string;
-}
+type Message = 
+  | {
+      role: 'system' | 'user' | 'assistant';
+      content: string;
+    }
+  | {
+      role: 'function';
+      content: string;
+      name: string;
+    };
 
 export const inquire = async function inquire(messages: Message[]) {
   const systemPrompt = {
@@ -44,7 +49,11 @@ Return JSON format.`
       temperature: 0.1
     });
     
-    return JSON.parse(fallbackResponse.choices[0].message.content);
+    const content = fallbackResponse.choices[0].message.content;
+    if (!content) {
+      throw new Error('No content in response');
+    }
+    return JSON.parse(content);
   } catch (error) {
     console.error("Error in inquire agent:", error);
     

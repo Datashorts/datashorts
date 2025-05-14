@@ -781,10 +781,19 @@ Your response should be in the following JSON format:
       
       const inquireResult = await inquire([
         { role: 'system' as const, content: databaseContext },
-        ...formattedHistory.map(msg => ({
-          role: msg.role as 'system' | 'user' | 'assistant' | 'function',
-          content: msg.content
-        })),
+        ...formattedHistory.map(msg => {
+          if (msg.role === 'function') {
+            return {
+              role: 'function' as const,
+              content: msg.content,
+              name: (msg as any).name || 'default'
+            };
+          }
+          return {
+            role: msg.role as 'system' | 'user' | 'assistant',
+            content: msg.content
+          };
+        }),
         { role: 'user' as const, content: userQuery }
       ]);
       console.log('Inquire agent response:', inquireResult);
