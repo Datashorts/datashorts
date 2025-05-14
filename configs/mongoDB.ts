@@ -1,6 +1,15 @@
 import { MongoClient } from 'mongodb';
 
-export async function connectToMongoDB(mongoUrl) {
+interface MongoDocument {
+  [key: string]: any;
+}
+
+interface SchemaField {
+  column_name: string;
+  data_type: string;
+}
+
+export async function connectToMongoDB(mongoUrl: string) {
   const client = new MongoClient(mongoUrl, {
     connectTimeoutMS: 30000,
     socketTimeoutMS: 30000
@@ -8,12 +17,12 @@ export async function connectToMongoDB(mongoUrl) {
 
   await client.connect();
   
-  const dbName = mongoUrl.split('/').pop().split('?')[0];
+  const dbName = mongoUrl.split('/').pop()?.split('?')[0] || 'default';
   const db = client.db(dbName);
   
   // Get all collections
   const collections = await db.listCollections().toArray();
-  console.log("collections",collections);
+  console.log("collections", collections);
   const allCollectionData = [];
   
   for (const collection of collections) {
@@ -27,7 +36,7 @@ export async function connectToMongoDB(mongoUrl) {
       
     // Infer schema from sample data
     const schema = inferMongoSchema(sampleData);
-    console.log("schema",schema);
+    console.log("schema", schema);
     allCollectionData.push({
       collectionName,
       schema,
@@ -39,8 +48,8 @@ export async function connectToMongoDB(mongoUrl) {
   return allCollectionData;
 }
 
-function inferMongoSchema(documents) {
-  const schema = [];
+function inferMongoSchema(documents: MongoDocument[]): SchemaField[] {
+  const schema: SchemaField[] = [];
   if (documents.length === 0) return schema;
   
   const sampleDoc = documents[0];
