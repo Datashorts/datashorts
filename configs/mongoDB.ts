@@ -1,6 +1,6 @@
 import { MongoClient } from 'mongodb';
 
-async function connectToMongoDB(mongoUrl) {
+export async function connectToMongoDB(mongoUrl) {
   const client = new MongoClient(mongoUrl, {
     connectTimeoutMS: 30000,
     socketTimeoutMS: 30000
