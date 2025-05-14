@@ -12,6 +12,16 @@ import { Button } from "@/components/ui/button";
 import { Copy, RefreshCw } from "lucide-react";
 // import { toast } from "react-hot-toast";
 
+interface ChatMessageProps {
+  message: string;
+  response: any;
+  timestamp: string;
+  isUser: boolean;
+  userQuery: string;
+  onUserQueryChange: (value: string) => void;
+  isLoading: boolean;
+}
+
 export default function ChatWithDbPage() {
   const params = useParams() 
   const { user } = useUser()

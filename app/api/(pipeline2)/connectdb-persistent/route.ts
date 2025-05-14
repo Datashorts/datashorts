@@ -1,4 +1,4 @@
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { NextResponse } from 'next/server';
 import { db } from '@/configs/db';
 import { dbConnections } from '@/configs/schema';
@@ -66,8 +66,29 @@ process.on('SIGINT', async () => {
 
 export async function POST(request: NextRequest) {
   let pool: Pool | null = null;
+  let client: PoolClient | undefined;
   try {
-    const user = await currentUser();
+    let user;
+    try {
+      user = await currentUser();
+    } catch (authError) {
+      console.error('Authentication error:', authError);
+      return NextResponse.json(
+        { 
+          error: 'Authentication failed',
+          details: 'Please sign in to continue'
+        },
+        { status: 401 }
+      );
+    }
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized - Please sign in to continue' },
+        { status: 401 }
+      );
+    }
+
     const { name, type, url, folderId } = await request.json();
 
     if (!url || !name) {
@@ -92,7 +113,7 @@ export async function POST(request: NextRequest) {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 
-    const client = await pool.connect();
+    client = await pool.connect();
     try {
       console.log('Successfully acquired connection from pool');
       await client.query('SELECT NOW()');
@@ -174,8 +195,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        error: error.message,
-        code: error.code,
+        error: error instanceof Error ? error.message : 'An unknown error occurred',
+        code: error instanceof Error && 'code' in error ? error.code : undefined,
         details: 'Check that your PostgreSQL URL is correct and the server is accessible',
       },
       { status: 500 }
