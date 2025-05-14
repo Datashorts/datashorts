@@ -13,13 +13,41 @@ import { Copy, RefreshCw } from "lucide-react";
 // import { toast } from "react-hot-toast";
 
 interface ChatMessageProps {
-  message: string;
-  response: any;
-  timestamp: string;
-  isUser: boolean;
-  userQuery: string;
-  onUserQueryChange: (value: string) => void;
-  isLoading: boolean;
+  message: string | {
+    role?: string;
+    content?: string | {
+      summary?: string;
+      details?: string[];
+      metrics?: Record<string, number | string>;
+      visualization?: {
+        chartType: string;
+        data: Array<{
+          label: string;
+          value: number;
+        }>;
+        config: {
+          xAxis: {
+            label: string;
+            type: string;
+          };
+          yAxis: {
+            label: string;
+            type: string;
+          };
+          legend: boolean;
+          stacked: boolean;
+        };
+      };
+    };
+    timestamp?: string;
+  };
+  response?: any;
+  isUser?: boolean;
+  isLoading?: boolean;
+  onOptionClick?: (option: string) => void;
+  userQuery?: string;
+  onUserQueryChange?: (value: string) => void;
+  onSubmitResponse?: (response: string) => void;
 }
 
 export default function ChatWithDbPage() {
@@ -315,28 +343,34 @@ ${context.sampleData.map((table: any) =>
               {chatHistory && chatHistory.length > 0 ? (
                 <div className="space-y-4">
                   {chatHistory.map((chat, index) => (
-                    <div key={index} className="bg-[#0a0a0a] p-3 sm:p-4 md:p-6 rounded-lg border border-blue-500/20">
-                      <ChatMessage 
-                        message={chat.message || ''}
-                        response={chat.response || {}}
-                        timestamp={chat.timestamp || new Date().toISOString()}
-                        isUser={true}
-                        userQuery={messageInputs[chat.id] || ''}
-                        onUserQueryChange={(value) => handleMessageInputChange(chat.id, value)}
-                        isLoading={isLoading && index === chatHistory.length - 1 && !chat.response.agentType}
-                      />
-                      
-                      <ChatMessage 
-                        message=""
-                        response={chat.response || {}}
-                        timestamp={chat.timestamp || new Date().toISOString()}
-                        isUser={false}
-                        onOptionClick={handleOptionClick}
-                        userQuery={messageInputs[chat.id] || ''}
-                        onUserQueryChange={(value) => handleMessageInputChange(chat.id, value)}
-                        onSubmitResponse={handleSubmitResponse}
-                        isLoading={isLoading && index === chatHistory.length - 1 && !chat.response.agentType}
-                      />
+                    <div key={index} className="space-y-4">
+                      {/* User Message */}
+                      <div className="bg-[#0a0a0a] p-3 sm:p-4 md:p-6 rounded-lg border border-blue-500/20">
+                        <ChatMessage 
+                          message={chat.message || ''}
+                          response={{}}
+                          isUser={true}
+                          userQuery={messageInputs[chat.id] || ''}
+                          onUserQueryChange={(value) => handleMessageInputChange(chat.id, value)}
+                          isLoading={isLoading && index === chatHistory.length - 1 && !chat.response.agentType}
+                        />
+                      </div>
+
+                      {/* Bot Response */}
+                      {chat.response && (
+                        <div className="bg-[#0a0a0a] p-3 sm:p-4 md:p-6 rounded-lg border border-blue-500/20">
+                          <ChatMessage 
+                            message=""
+                            response={chat.response}
+                            isUser={false}
+                            onOptionClick={handleOptionClick}
+                            userQuery={messageInputs[chat.id] || ''}
+                            onUserQueryChange={(value) => handleMessageInputChange(chat.id, value)}
+                            onSubmitResponse={handleSubmitResponse}
+                            isLoading={isLoading && index === chatHistory.length - 1 && !chat.response.agentType}
+                          />
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
