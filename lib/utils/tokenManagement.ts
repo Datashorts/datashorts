@@ -1,4 +1,4 @@
-export function chunkTableData(tableData) {
+export function chunkTableData(tableData: any[]) {
     console.log(`Starting chunking process for ${tableData?.length || 0} rows`);
     
     // Handle null or undefined tableData
@@ -14,8 +14,8 @@ export function chunkTableData(tableData) {
     }
     
     const CHUNK_SIZE = 4000;
-    const chunks = [];
-    let currentChunk = [];
+    const chunks: any[][] = [];
+    let currentChunk: any[] = [];
     let currentSize = 0;
     
     // Try to identify potential primary key columns
@@ -85,15 +85,15 @@ export function chunkTableData(tableData) {
   }
   
   // Helper function to identify potential primary key columns
-  function identifyPotentialPrimaryKeys(tableData) {
+  function identifyPotentialPrimaryKeys(tableData: any[]) {
     if (!tableData || tableData.length === 0) return [];
     
     // Check for common primary key column names
     const commonPkNames = ['id', 'ID', '_id', 'uuid', 'key'];
     
     // Find columns that have unique values across all rows
-    const columnCounts = {};
-    const uniqueValueColumns = [];
+    const columnCounts: Record<string, Set<string>> = {};
+    const uniqueValueColumns: string[] = [];
     
     // Initialize with all column names from first row
     const firstRow = tableData[0];
@@ -139,11 +139,11 @@ export function chunkTableData(tableData) {
   }
   
   // Fallback chunking method for when no PK can be identified
-  function fallbackChunking(tableData) {
+  function fallbackChunking(tableData: any[]) {
     console.log('Using fallback chunking method');
     const CHUNK_SIZE = 4000;
-    const chunks = [];
-    let currentChunk = [];
+    const chunks: any[][] = [];
+    let currentChunk: any[] = [];
     let currentSize = 0;
     
     for (const row of tableData) {

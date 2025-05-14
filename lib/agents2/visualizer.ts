@@ -76,7 +76,11 @@ Return a JSON object with:
       temperature: 0.1
     });
 
-    const contextResult = JSON.parse(contextAnalysis.choices[0].message.content);
+    const content = contextAnalysis.choices[0].message.content;
+    if (!content) {
+      throw new Error('No content in context analysis response');
+    }
+    const contextResult = JSON.parse(content);
     console.log('Context analysis:', contextResult);
 
     let sqlQuery;
@@ -136,13 +140,13 @@ Return a JSON object with:
     }
 
     // Process the query results for visualization
-    const determineChartType = (message: string, data: any[]) => {
+    const determineChartType = (message: string, data: { rows: any[] }) => {
       // First check explicit user preference
       if (message.toLowerCase().includes('pie')) return 'pie';
       if (message.toLowerCase().includes('bar')) return 'bar';
       
       // If no explicit preference, analyze the data
-      if (data && data.rows && data.rows.length > 0) {
+      if (data?.rows?.length > 0) {
         const columns = Object.keys(data.rows[0]);
         const valueColumn = columns[1]; // Assuming second column is the value
         
@@ -183,7 +187,11 @@ Chart Type: ${chartType}`
       temperature: 0.1
     });
 
-    const result = JSON.parse(response.choices[0].message.content);
+    const responseContent = response.choices[0].message.content;
+    if (!responseContent) {
+      throw new Error('No content in visualization response');
+    }
+    const result = JSON.parse(responseContent);
     
     // Ensure the chart type matches what we processed
     result.visualization.chartType = chartType;
@@ -249,7 +257,7 @@ function processQueryResults(queryResult: any, chartType: 'bar' | 'pie') {
         percentage: percentage.toFixed(1),
         color: colors[index % colors.length]
       };
-    }).sort((a, b) => b.value - a.value);
+    }).sort((a: { value: number }, b: { value: number }) => b.value - a.value);
   } else {
     return queryResult.rows.map((row: any, index: number) => {
       let value = Number(row[valueColumn]);
@@ -280,7 +288,7 @@ function processQueryResults(queryResult: any, chartType: 'bar' | 'pie') {
         value: value,
         color: colors[index % colors.length]
       };
-    }).sort((a, b) => b.value - a.value);
+    }).sort((a: { value: number }, b: { value: number }) => b.value - a.value);
   }
 }
 

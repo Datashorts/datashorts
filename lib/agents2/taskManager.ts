@@ -1,5 +1,11 @@
 import { grokClient } from '@/app/lib/clients';
 
+type Message = 
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string }
+  | { role: 'function'; content: string; name: string };
+
 interface TaskManagerResult {
   next: 'researcher' | 'visualizer';
   reason: string;
@@ -10,7 +16,7 @@ export async function taskManager(
   query: string,
   schema: any[]
 ): Promise<TaskManagerResult> {
-  const systemPrompt = {
+  const systemPrompt: Message = {
     role: 'system',
     content: `You are an AI task manager that determines the next action based on user input and database context.
     
@@ -75,7 +81,11 @@ Columns: ${table.columns}
       temperature: 0.1
     });
 
-    const result = JSON.parse(response.choices[0].message.content);
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error('No content in response');
+    }
+    const result = JSON.parse(content);
     console.log('Task manager decision:', result);
 
     return {

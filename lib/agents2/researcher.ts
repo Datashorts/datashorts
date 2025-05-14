@@ -25,6 +25,12 @@ interface ResearcherResponse {
   queryResult?: QueryResult;
 }
 
+type Message = 
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string }
+  | { role: 'assistant'; content: string }
+  | { role: 'function'; content: string; name: string };
+
 export async function researcher(
   userQuery: string,
   reconstructedSchema: SchemaTable[],
@@ -35,7 +41,7 @@ export async function researcher(
   console.log('Connection ID:', connectionId);
   console.log('Schema Tables:', JSON.stringify(reconstructedSchema, null, 2));
 
-  const systemPrompt = {
+  const systemPrompt: Message = {
     role: 'system',
     content: `You are a data analyst that provides direct answers to data queries. Return results in this strict JSON format:
 {
@@ -120,7 +126,11 @@ ${JSON.stringify(queryResult, null, 2)}`;
     });
 
     console.log('\n--- Processing Grok Response ---');
-    const result = JSON.parse(response.choices[0].message.content);
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error('No content in response');
+    }
+    const result = JSON.parse(content);
     console.log('Analysis Result:', JSON.stringify(result, null, 2));
 
     const finalResponse = {
