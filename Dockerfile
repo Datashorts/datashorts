@@ -1,7 +1,7 @@
 # Stage 1: Build
 FROM node:18-alpine AS deps
 
-WORKDIR /app
+WORKDIR /
 
 # Accept env vars at build time
 ARG NEXT_PUBLIC_DRIZZLE_DATABASE_URL
