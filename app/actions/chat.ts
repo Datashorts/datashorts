@@ -444,8 +444,8 @@ export async function submitChat(userQuery: string, url: string) {
     
 
     const formattedHistory = conversationHistory.map(chat => [
-      { role: 'user', content: chat.message },
-      { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+      { role: 'user' as const, content: chat.message },
+      { role: 'assistant' as const, content: typeof chat.response.agentOutput === 'string' 
         ? chat.response.agentOutput 
         : JSON.stringify(chat.response.agentOutput) }
     ]).flat();
@@ -457,7 +457,7 @@ export async function submitChat(userQuery: string, url: string) {
         content: 'Initial context. Direct questions about counts, totals, or current state should be analyzed directly.' 
       },
       ...formattedHistory,
-      { role: 'user', content: userQuery }
+      { role: 'user' as const, content: userQuery }
     ]);
     
     console.log('Task analysis:', taskAnalysis);
@@ -473,8 +473,8 @@ export async function submitChat(userQuery: string, url: string) {
       console.log('Handling multi-agent request with orchestration plan:', taskResult.orchestrationPlan);
       
       const formattedHistory = conversationHistory.map(chat => [
-        { role: 'user', content: chat.message },
-        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+        { role: 'user' as const, content: chat.message },
+        { role: 'assistant' as const, content: typeof chat.response.agentOutput === 'string' 
           ? chat.response.agentOutput 
           : JSON.stringify(chat.response.agentOutput) }
       ]).flat();
@@ -484,7 +484,7 @@ export async function submitChat(userQuery: string, url: string) {
         const taskResults = await Promise.race([
           executeTasks(taskResult.orchestrationPlan.tasks, [
             ...formattedHistory,
-            { role: 'user', content: userQuery }
+            { role: 'user' as const, content: userQuery }
           ]),
           new Promise((_, reject) => 
             setTimeout(() => reject(new Error('Task execution timed out')), 60000)
@@ -577,8 +577,8 @@ export async function submitChat(userQuery: string, url: string) {
     } else if (taskResult.next === 'analyze') {
       // ... existing analyze code ...
       const formattedHistory = conversationHistory.map(chat => [
-        { role: 'user', content: chat.message },
-        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+        { role: 'user' as const, content: chat.message },
+        { role: 'assistant' as const, content: typeof chat.response.agentOutput === 'string' 
           ? chat.response.agentOutput 
           : JSON.stringify(chat.response.agentOutput) }
       ]).flat();
@@ -604,7 +604,7 @@ Your response should be in the following JSON format:
 }`
         },
         ...formattedHistory,
-        { role: 'user', content: userQuery }
+        { role: 'user' as const, content: userQuery }
       ]);
 
       console.log('Researcher response:', researcherResponse);
@@ -644,8 +644,8 @@ Your response should be in the following JSON format:
       console.log('Calling visualiser agent with database context and user query');
       
       const formattedHistory = conversationHistory.map(chat => [
-        { role: 'user', content: chat.message },
-        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+        { role: 'user' as const, content: chat.message },
+        { role: 'assistant' as const, content: typeof chat.response.agentOutput === 'string' 
           ? chat.response.agentOutput 
           : JSON.stringify(chat.response.agentOutput) }
       ]).flat();
@@ -706,7 +706,7 @@ Your response should be in the following JSON format:
 }`
         },
         ...formattedHistory,
-        { role: 'user', content: userQuery }
+        { role: 'user' as const, content: userQuery }
       ]);
       
       console.log('Visualiser agent response:', visualiserResult);
@@ -773,16 +773,16 @@ Your response should be in the following JSON format:
       console.log('Calling inquire agent with database context and user query');
       
       const formattedHistory = conversationHistory.map(chat => [
-        { role: 'user', content: chat.message },
-        { role: 'assistant', content: typeof chat.response.agentOutput === 'string' 
+        { role: 'user' as const, content: chat.message },
+        { role: 'assistant' as const, content: typeof chat.response.agentOutput === 'string' 
           ? chat.response.agentOutput 
           : JSON.stringify(chat.response.agentOutput) }
       ]).flat();
       
       const inquireResult = await inquire([
-        { role: 'system', content: databaseContext },
+        { role: 'system' as const, content: databaseContext },
         ...formattedHistory,
-        { role: 'user', content: userQuery }
+        { role: 'user' as const, content: userQuery }
       ]);
       console.log('Inquire agent response:', inquireResult);
       
