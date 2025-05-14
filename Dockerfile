@@ -1,7 +1,7 @@
 # Stage 1: Build
 FROM node:18-alpine AS deps
 
-WORKDIR /
+WORKDIR /app
 
 # Accept env vars at build time
 ARG NEXT_PUBLIC_DRIZZLE_DATABASE_URL
@@ -37,12 +37,14 @@ RUN npm install --legacy-peer-deps
 
 # Copy and build
 COPY . .
+
+
 RUN npm run build
 
 # Stage 2: Runtime
 FROM node:18-alpine AS runner
 
-WORKDIR /
+WORKDIR /app
 
 # Repeat ARGs for runtime
 ARG NEXT_PUBLIC_DRIZZLE_DATABASE_URL
@@ -78,5 +80,10 @@ COPY --from=deps /app/.next ./.next
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/package.json ./package.json
 
+
+
+
+
 EXPOSE 3000
+
 CMD ["npm", "run", "dev"]
