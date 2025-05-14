@@ -161,15 +161,16 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           </div>
         ) : typeof message.content === 'string' ? (
           <AgentResponse
-            content={message.content}
+            agentType="text"
+            agentOutput={message.content}
             userQuery={userQuery}
             onUserQueryChange={onUserQueryChange}
             onSubmitResponse={onSubmitResponse}
           />
         ) : (
           <ResearcherResponse
-            content={message.content}
-            visualization={message.content.visualization}
+            content={message.content || {}}
+            visualization={message.content?.visualization}
           />
         )}
       </div>
