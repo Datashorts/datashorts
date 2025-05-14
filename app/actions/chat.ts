@@ -270,7 +270,7 @@ export async function getQueryEmbeddings(message: string, connectionId: string |
     };
     
 
-    function formatDatabaseContext(embeddingsData: {
+    function formatDatabaseContext(context: {
       schema?: Array<{
         tableName: string;
         columns: string;
@@ -280,23 +280,29 @@ export async function getQueryEmbeddings(message: string, connectionId: string |
         sampleData: any[];
       }>;
     }) {
-      if (!embeddingsData.schema || !embeddingsData.sampleData) {
-        console.log('Missing schema or sample data in embeddings result');
-        return 'Database context not available';
+      if (!context) return "No database context available.";
+      
+      let formattedContext = "Database Context:\n\n";
+      
+
+      if (context.schema && context.schema.length > 0) {
+        formattedContext += "Schema Information:\n";
+        context.schema.forEach(table => {
+          formattedContext += `Table: ${table.tableName}\n`;
+          formattedContext += `Columns: ${table.columns}\n\n`;
+        });
       }
       
-      return `Current database context:
-Schema Information:
-${embeddingsData.schema.map(table => 
-  `Table: ${table.tableName}
-   Columns: ${table.columns}`
-).join('\n')}
 
-Sample Data:
-${embeddingsData.sampleData.map(table => 
-  `Table: ${table.tableName}
-   Data: ${JSON.stringify(table.sampleData, null, 2)}`
-).join('\n\n')}`;
+      if (context.sampleData && context.sampleData.length > 0) {
+        formattedContext += "Sample Data:\n";
+        context.sampleData.forEach(table => {
+          formattedContext += `Table: ${table.tableName}\n`;
+          formattedContext += `Data: ${JSON.stringify(table.sampleData, null, 2)}\n\n`;
+        });
+      }
+      
+      return formattedContext;
     }
     
     const formattedContext = formatDatabaseContext(result);
@@ -326,7 +332,7 @@ export async function getChatHistory(connectionId: string | number) {
     const chatHistory = await db
       .select()
       .from(chats)
-      .where(eq(chats.connectionId, connectionId))
+      .where(eq(chats.connectionId, Number(connectionId)))
       .orderBy(chats.createdAt);
     
     console.log(`Found ${chatHistory.length} chat records for connection ID: ${connectionId}`);
@@ -377,7 +383,7 @@ export async function getChatHistory(connectionId: string | number) {
   }
 }
 
-export async function submitChat(userQuery, url) {
+export async function submitChat(userQuery: string, url: string) {
   console.log('Submitting chat with query:', userQuery);
   console.log('URL:', url);
   
@@ -483,7 +489,11 @@ export async function submitChat(userQuery, url) {
           new Promise((_, reject) => 
             setTimeout(() => reject(new Error('Task execution timed out')), 60000)
           )
-        ]);
+        ]) as Array<{
+          agentType: string;
+          query: string;
+          response: any;
+        }>;
         
         // Process and clean up the task results
         const processedTaskResults = taskResults.map(result => {
@@ -820,13 +830,13 @@ Your response should be in the following JSON format:
     console.error('Error in submitChat:', error);
     return {
       success: false,
-      error: error.message
+      error: error instanceof Error ? error.message : 'An unknown error occurred'
     };
   }
 }
 
 
-async function storeChatInDatabase(userQuery, response, connectionId) {
+async function storeChatInDatabase(userQuery: string, response: { success: boolean; connectionId: string | number; connectionName: string; agentType: string; agentOutput: any; error?: string; }, connectionId: string | number) {
   try {
     console.log(`Storing chat for connection ID: ${connectionId}`);
     console.log('User query:', userQuery);
@@ -842,7 +852,7 @@ async function storeChatInDatabase(userQuery, response, connectionId) {
     const existingChats = await db
       .select()
       .from(chats)
-      .where(eq(chats.connectionId, connectionId));
+      .where(eq(chats.connectionId, Number(connectionId)));
     
     console.log(`Found ${existingChats.length} existing chat records for connection ID: ${connectionId}`);
     
@@ -860,7 +870,11 @@ async function storeChatInDatabase(userQuery, response, connectionId) {
     if (existingChats.length > 0) {
 
       const existingChat = existingChats[0];
-      const conversation = existingChat.conversation || [];
+      const conversation = (existingChat.conversation as Array<{
+        message: string;
+        response: string;
+        timestamp: string;
+      }>) || [];
       
       console.log(`Existing conversation has ${conversation.length} entries`);
       
@@ -879,7 +893,7 @@ async function storeChatInDatabase(userQuery, response, connectionId) {
     } else {
       await db.insert(chats).values({
         userId: user.id,
-        connectionId: parseInt(connectionId),
+        connectionId: parseInt(String(connectionId)),
         conversation: [chatEntry],
         createdAt: new Date(),
         updatedAt: new Date()
@@ -893,7 +907,16 @@ async function storeChatInDatabase(userQuery, response, connectionId) {
 }
 
 
-function formatDatabaseContext(context) {
+function formatDatabaseContext(context: {
+  schema?: Array<{
+    tableName: string;
+    columns: string;
+  }>;
+  sampleData?: Array<{
+    tableName: string;
+    sampleData: any[];
+  }>;
+}) {
   if (!context) return "No database context available.";
   
   let formattedContext = "Database Context:\n\n";

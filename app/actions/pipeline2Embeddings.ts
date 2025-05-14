@@ -58,7 +58,7 @@ export async function processPipeline2Embeddings(data: {
           columns
         })))
       })
-      .where(eq(dbConnections.id, data.id));
+      .where(eq(dbConnections.id, Number(data.id)));
     
 
     const schemaEntries = Object.entries(data.schema).map(([tableName, columns]) => {
