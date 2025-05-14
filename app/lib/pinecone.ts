@@ -1,4 +1,4 @@
-import { Pinecone } from '@pinecone-database/pinecone';
+import { Pinecone, Index } from '@pinecone-database/pinecone';
 
 // Initialize the Pinecone client
 const pc = new Pinecone({
@@ -9,7 +9,7 @@ const pc = new Pinecone({
 const indexName = process.env.PINECONE_INDEX_NAME;
 
 // Create or get the index with the correct dimensions for text-embedding-3-large (3072)
-let index;
+let index: Index;
 try {
   // Try to get the existing index
   index = pc.index(indexName);

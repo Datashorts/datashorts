@@ -135,7 +135,8 @@ export default function Sidebar() {
               id: data.connection.id,
               connectionName: data.connection.name,
               dbType: data.connection.type,
-              schema: data.schema
+              schema: data.schema,
+              postgresUrl: data.connection.url
             }
             
             processPipeline2Embeddings(formattedData).catch(error => {
@@ -226,7 +227,8 @@ export default function Sidebar() {
             id: connectionId,
             connectionName: newConnection.name,
             dbType: newConnection.type,
-            tables: data.tables || []
+            tables: data.tables || [],
+            postgresUrl: data.connection && data.connection.url
           }
           
 
