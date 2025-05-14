@@ -4,15 +4,21 @@ import React from 'react';
 import BarChart from './BarChart';
 import PieChart from './PieChart';
 
+interface ChartDataItem {
+  label: string;
+  value: number;
+  color?: string;
+}
+
+interface DataItem {
+  [key: string]: string | number | undefined;
+  color?: string;
+}
+
 interface VisualizationRendererProps {
   visualization: {
     chartType: 'bar' | 'pie';
-    data: Array<{
-      label: string;
-      value: number;
-      color?: string;
-      group?: string;
-    }>;
+    data: Array<DataItem>;
     config: {
       title: string;
       description: string;
@@ -56,11 +62,11 @@ const VisualizationRenderer: React.FC<VisualizationRendererProps> = ({ visualiza
   }
 
   // Ensure data has the correct format
-  const formattedData = data.map(item => {
+  const formattedData: ChartDataItem[] = data.map(item => {
     // If data already has label/value format
     if (item.label !== undefined && item.value !== undefined) {
       return {
-        label: item.label,
+        label: String(item.label),
         value: Number(item.value) || 0,
         color: item.color
       };
@@ -70,14 +76,18 @@ const VisualizationRenderer: React.FC<VisualizationRendererProps> = ({ visualiza
     const keys = Object.keys(item);
     if (keys.length >= 2) {
       return {
-        label: item[keys[0]],
+        label: String(item[keys[0]]),
         value: Number(item[keys[1]]) || 0,
         color: item.color
       };
     }
     
-    return null;
-  }).filter(Boolean);
+    return {
+      label: 'Unknown',
+      value: 0,
+      color: item.color
+    };
+  });
 
   console.log("Formatted data for chart:", formattedData);
 

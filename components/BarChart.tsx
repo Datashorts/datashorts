@@ -11,6 +11,8 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
+import { TooltipProps } from 'recharts';
+import { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent';
 
 interface BarChartProps {
   data: Array<{
@@ -63,7 +65,7 @@ const BarChart = ({ data, config = {} }: BarChartProps) => {
   const total = formattedData.reduce((sum, item) => sum + item.value, 0);
 
   // Custom tooltip component
-  const CustomTooltip = ({ active, payload }) => {
+  const CustomTooltip = ({ active, payload }: TooltipProps<ValueType, NameType>) => {
     if (!active || !payload?.length) return null;
 
     const data = payload[0].payload;
