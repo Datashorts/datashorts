@@ -97,7 +97,22 @@ const ResearcherResponse: React.FC<ResearcherResponseProps> = ({
       {displayVisualization && (
         <div className="bg-[#2a2a2a] p-4 rounded-lg">
           <h3 className="text-lg font-medium mb-2">Visualization</h3>
-          <VisualizationRenderer visualization={displayVisualization} />
+          <VisualizationRenderer visualization={{
+            ...displayVisualization,
+            chartType: displayVisualization.chartType as "bar" | "pie",
+            config: {
+              title: "Data Visualization",
+              description: "Visual representation of the data",
+              xAxis: {
+                label: displayVisualization.config.xAxis.label,
+                gridLines: true
+              },
+              yAxis: {
+                label: displayVisualization.config.yAxis.label
+              },
+              stacked: displayVisualization.config.stacked
+            }
+          }} />
         </div>
       )}
     </div>
