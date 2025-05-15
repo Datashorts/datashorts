@@ -1,411 +1,262 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, KeyboardEvent } from 'react'
 import { useParams } from 'next/navigation'
 import { useFoldersStore } from '@/app/store/useFoldersStore'
 import Sidebar from '@/app/_components/chat/Sidebar'
 import { useUser } from '@clerk/nextjs'
 import { submitChat, getChatHistory } from '@/app/actions/chat'
-import AgentResponse from '@/app/_components/chat/AgentResponse'
 import ChatMessage from '@/app/_components/chat/ChatMessage'
-import { Button } from "@/components/ui/button";
-import { Copy, RefreshCw } from "lucide-react";
-// import { toast } from "react-hot-toast";
+import { Button } from '@/components/ui/button'
+import { Copy, RefreshCw } from 'lucide-react'
 
 interface ChatMessageProps {
   message: string | {
-    role?: string;
+    role?: string
     content?: string | {
-      summary?: string;
-      details?: string[];
-      metrics?: Record<string, number | string>;
+      summary?: string
+      details?: string[]
+      metrics?: Record<string, number | string>
       visualization?: {
-        chartType: string;
-        data: Array<{
-          label: string;
-          value: number;
-        }>;
+        chartType: string
+        data: { label: string; value: number }[]
         config: {
-          xAxis: {
-            label: string;
-            type: string;
-          };
-          yAxis: {
-            label: string;
-            type: string;
-          };
-          legend: boolean;
-          stacked: boolean;
-        };
-      };
-    };
-    timestamp?: string;
-  };
-  response?: any;
-  isUser?: boolean;
-  isLoading?: boolean;
-  onOptionClick?: (option: string) => void;
-  userQuery?: string;
-  onUserQueryChange?: (value: string) => void;
-  onSubmitResponse?: (response: string) => void;
+          xAxis: { label: string; type: string }
+          yAxis: { label: string; type: string }
+          legend: boolean
+          stacked: boolean
+        }
+      }
+    }
+    timestamp?: string
+  }
+  response?: any
+  isUser?: boolean
+  isLoading?: boolean
+  onOptionClick?: (option: string) => void
+  userQuery?: string
+  onUserQueryChange?: (value: string) => void
+  onSubmitResponse?: (response: string) => void
 }
 
 export default function ChatWithDbPage() {
-  const params = useParams() 
-  const { user } = useUser()
+  /* ──────────────────────────────────────────────────────────
+     STATE
+  ────────────────────────────────────────────────────────── */
+  const params = useParams()
+  const { user }         = useUser()
   const { setActiveConnection, loadFolders } = useFoldersStore()
-  
-  const connectionId = params.id as string
-  const dbName = params.dbname as string
-  const [userQuery, setUserQuery] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [chatResults, setChatResults] = useState<any>(null)
-  const [showContext, setShowContext] = useState(false)
+
+  const connectionId = params.id     as string
+  const dbName       = params.dbname as string
+
+  const [userQuery,   setUserQuery]   = useState('')
+  const [isLoading,   setIsLoading]   = useState(false)
   const [chatHistory, setChatHistory] = useState<any[]>([])
-  const [messageInputs, setMessageInputs] = useState<Record<string, string>>({})
-  const [copySuccess, setCopySuccess] = useState(false)
-  const [dbConnectionUrl, setDbConnectionUrl] = useState<string>('')
-  const chatContainerRef = useRef<HTMLDivElement>(null)
-  const [isSyncing, setIsSyncing] = useState(false)
-  
+  const [inputs,      setInputs]      = useState<Record<string, string>>({})
+  const [copyOK,      setCopyOK]      = useState(false)
+  const [dbUrl,       setDbUrl]       = useState('')
+  const [isSyncing,   setIsSyncing]   = useState(false)
+
+  const chatRef = useRef<HTMLDivElement>(null)
+
+  /* ──────────────────────────────────────────────────────────
+     LIFECYCLE
+  ────────────────────────────────────────────────────────── */
   useEffect(() => {
-    if (user) {
-      loadFolders(user.id)
-    }
-  }, [loadFolders, user])
-  
+    if (user) loadFolders(user.id)
+  }, [user, loadFolders])
+
   useEffect(() => {
-    setActiveConnection(connectionId)
+    if (connectionId) setActiveConnection(connectionId)
   }, [connectionId, setActiveConnection])
-  
-  // Load chat history when component mounts
+
+  // chat history
   useEffect(() => {
-    const loadChatHistory = async () => {
-      if (connectionId) {
-        try {
-          const history = await getChatHistory(connectionId)
-          console.log('Raw chat history:', history)
-          
-          // Check if history is an array and has the expected structure
-          if (Array.isArray(history) && history.length > 0) {
-            console.log('First chat item:', history[0])
-            setChatHistory(history)
-          } else {
-            console.log('Chat history is empty or not in the expected format')
-            setChatHistory([])
-          }
-        } catch (error) {
-          console.error('Error loading chat history:', error)
-          setChatHistory([])
-        }
-      }
-    }
-    
-    loadChatHistory()
-  }, [connectionId])
-  
-  // Fetch the database connection URL when the component mounts
-  useEffect(() => {
-    const fetchDbConnectionUrl = async () => {
+    (async () => {
+      if (!connectionId) return
       try {
-        // Fetch the connection details from the database
-        const response = await fetch(`/api/connections/${connectionId}/url`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.connectionUrl) {
-            setDbConnectionUrl(data.connectionUrl);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching database connection URL:', error);
+        const hist = await getChatHistory(connectionId)
+        setChatHistory(Array.isArray(hist) ? hist : [])
+      } catch {
+        setChatHistory([])
       }
-    };
-    
-    if (connectionId) {
-      fetchDbConnectionUrl();
-    }
-  }, [connectionId]);
-  
-  // Scroll to bottom when chat history or current results change
+    })()
+  }, [connectionId])
+
+  // db url
   useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-  }, [chatHistory, chatResults]);
-  
-  const handleSubmit = async (customQuery?: string) => {
-    const queryToSubmit = customQuery || userQuery;
-    if (!queryToSubmit.trim()) return
-    
+    (async () => {
+      if (!connectionId) return
+      try {
+        const r = await fetch(`/api/connections/${connectionId}/url`)
+        const j = await r.json()
+        if (j?.connectionUrl) setDbUrl(j.connectionUrl)
+      } catch { /* ignore */ }
+    })()
+  }, [connectionId])
+
+  // auto-scroll
+  useEffect(() => {
+    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' })
+  }, [chatHistory])
+
+  /* ──────────────────────────────────────────────────────────
+     HANDLERS
+  ────────────────────────────────────────────────────────── */
+  const handleSend = async (forced?: string) => {
+    const q = (forced ?? userQuery).trim()
+    if (!q) return
+
+    // optimistic user bubble
+    const tempId = `tmp-${Date.now()}`
+    setChatHistory(h => [...h, { id: tempId, message: q, response: {}, timestamp: new Date().toISOString() }])
+    setUserQuery('')
     setIsLoading(true)
-    
-    // Create a temporary user message to display immediately
-    const tempUserMessage = {
-      id: `temp-${Date.now()}`,
-      message: queryToSubmit,
-      response: {},
-      timestamp: new Date().toISOString(),
-      connectionId
-    };
-    
-    // Add the temporary message to the chat history
-    setChatHistory(prev => [...prev, tempUserMessage]);
-    
-    // Clear the input field immediately
-    setUserQuery('');
-    
+
     try {
-      const url = window.location.href
-      const result = await submitChat(queryToSubmit, url)
-      
-      // Update the chat history with the real response
-      setChatHistory(prev => {
-        // Remove the temporary message
-        const filteredHistory = prev.filter(msg => msg.id !== tempUserMessage.id);
-        
-        // Add the real message and response
-        return [...filteredHistory, {
-          id: `${connectionId}-${Date.now()}`,
-          message: tempUserMessage.message,
-          response: result,
-          timestamp: new Date().toISOString(),
-          connectionId
-        }];
-      });
-    } catch (error) {
-      console.error('Error submitting chat:', error)
-      
-      // Update the chat history to show the error
-      setChatHistory(prev => {
-        // Remove the temporary message
-        const filteredHistory = prev.filter(msg => msg.id !== tempUserMessage.id);
-        
-        // Add the error message
-        return [...filteredHistory, {
-          id: `${connectionId}-${Date.now()}`,
-          message: tempUserMessage.message,
-          response: {
-            agentType: 'error',
-            agentOutput: 'An error occurred while processing your request.'
-          },
-          timestamp: new Date().toISOString(),
-          connectionId
-        }];
-      });
+      const result = await submitChat(q, window.location.href)
+      setChatHistory(h =>
+        h
+          .filter(m => m.id !== tempId)
+          .concat({ id: `${connectionId}-${Date.now()}`, message: q, response: result, timestamp: new Date().toISOString() })
+      )
+    } catch {
+      setChatHistory(h =>
+        h
+          .filter(m => m.id !== tempId)
+          .concat({ id: `${connectionId}-${Date.now()}`, message: q, response: { agentType: 'error', agentOutput: 'Something went wrong.' }, timestamp: new Date().toISOString() })
+      )
     } finally {
       setIsLoading(false)
     }
   }
-  
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit()
-    }
-  }
-  
-  const formatDatabaseContext = (context: any) => {
-    if (!context) return 'No database context available';
-    
-    return `Current database context:
-Schema Information:
-${context.schema.map((table: any) => 
-  `Table: ${table.tableName}
-   Columns: ${table.columns}`
-).join('\n')}
 
-Sample Data:
-${context.sampleData.map((table: any) => 
-  `Table: ${table.tableName}
-   Data: ${JSON.stringify(table.sampleData, null, 2)}`
-).join('\n\n')}`;
+  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
-  
-  const handleOptionClick = (option: string) => {
-    // Find the most recent inquire agent response
-    const lastInquireResponseIndex = chatHistory.length - 1;
-    if (lastInquireResponseIndex >= 0) {
-      const lastMessage = chatHistory[lastInquireResponseIndex];
-      if (lastMessage.response && lastMessage.response.agentType === 'inquire') {
-        // Set the option in the message input field for this specific message
-        handleMessageInputChange(lastMessage.id, option);
-      }
-    }
+
+  const copyUrl = () => {
+    if (!dbUrl) return
+    navigator.clipboard.writeText(dbUrl).then(() => {
+      setCopyOK(true); setTimeout(() => setCopyOK(false), 2000)
+    })
   }
-  
-  const handleMessageInputChange = (messageId: string, value: string) => {
-    setMessageInputs(prev => ({
-      ...prev,
-      [messageId]: value
-    }))
-  }
-  
-  const handleSubmitResponse = (response: string) => {
-    // Directly submit the response without updating the main input field
-    handleSubmit(response);
-  }
-  
-  const handleCopyUrl = () => {
-    if (!dbConnectionUrl) {
-      console.error('Database connection URL not available');
-      return;
-    }
-    
-    navigator.clipboard.writeText(dbConnectionUrl).then(() => {
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    }).catch(err => {
-      console.error('Failed to copy URL: ', err);
-    });
-  };
-  
-  const handleSync = async () => {
+
+  const syncDB = async () => {
+    setIsSyncing(true)
     try {
-      setIsSyncing(true);
-      const response = await fetch(`/api/connections/${connectionId}/sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to sync database');
-      }
-
-      if (data.updatedTables.length > 0) {
-        console.log(`Database synced successfully. Updated tables: ${data.updatedTables.join(', ')}`);
-      } else {
-        console.log('No new data to sync');
-      }
-    } catch (error) {
-      console.error('Error syncing database:', error);
-
-    } finally {
-      setIsSyncing(false);
+      const r = await fetch(`/api/connections/${connectionId}/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      await r.json()
+    } catch { /* ignore */ } finally {
+      setIsSyncing(false)
     }
-  };
-  
+  }
+
+  /* ──────────────────────────────────────────────────────────
+     RENDER
+  ────────────────────────────────────────────────────────── */
   if (!user) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Authentication Required</h1>
-          <p className="text-gray-400">Please sign in to access your chats.</p>
-        </div>
+      <div className="flex h-screen items-center justify-center bg-[#0a0a0a] text-gray-200">
+        <p className="text-xl font-semibold">Please sign in to continue.</p>
       </div>
     )
   }
-  
-  return (
-    <div className="flex h-screen bg-[#0a0a0a]">
-      <Sidebar />
-      <div className="flex-1 flex flex-col min-h-screen">
-        <div className="border-b border-blue-500/20 p-3 sm:p-4">
-          <div className="max-w-3xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <h1 className="text-lg sm:text-xl font-semibold text-gray-200">Chat with {dbName}</h1>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCopyUrl}
-                className="border-blue-500/20 text-gray-300 hover:bg-blue-500/10 hover:text-white transition-colors"
-              >
-                <Copy className="h-4 w-4 mr-2" />
-                {copySuccess ? 'Copied!' : 'Copy URL'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSync}
-                disabled={isSyncing}
-                className="border-blue-500/20 text-gray-300 hover:bg-blue-500/10 hover:text-white transition-colors"
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-                {isSyncing ? 'Syncing...' : 'Sync DB'}
-              </Button>
-            </div>
-          </div>
-        </div>
-        
-        <div className="flex-1 p-3 sm:p-4 md:p-6 overflow-y-auto" ref={chatContainerRef}>
-          <div className="max-w-3xl mx-auto">
-            <div className="bg-[#0a0a0a] p-4 sm:p-6 rounded-lg border border-blue-500/20 mb-6">
-              <h2 className="text-base sm:text-lg font-medium mb-2 text-gray-200">Welcome to your chat with {dbName}</h2>
-              <p className="text-sm sm:text-base text-gray-400">
-                You can ask questions about your database and get instant answers.
-              </p>
-            </div>
-            
-            <div className="space-y-4">
-              {chatHistory && chatHistory.length > 0 ? (
-                <div className="space-y-4">
-                  {chatHistory.map((chat, index) => (
-                    <div key={index} className="space-y-4">
-                      {/* User Message */}
-                      <div className="bg-[#0a0a0a] p-3 sm:p-4 md:p-6 rounded-lg border border-blue-500/20">
-                        <ChatMessage 
-                          message={chat.message || ''}
-                          response={{}}
-                          isUser={true}
-                          userQuery={messageInputs[chat.id] || ''}
-                          onUserQueryChange={(value) => handleMessageInputChange(chat.id, value)}
-                          isLoading={isLoading && index === chatHistory.length - 1 && !chat.response.agentType}
-                        />
-                      </div>
 
-                      {/* Bot Response */}
-                      {chat.response && (
-                        <div className="bg-[#0a0a0a] p-3 sm:p-4 md:p-6 rounded-lg border border-blue-500/20">
-                          <ChatMessage 
-                            message=""
-                            response={chat.response}
-                            isUser={false}
-                            onOptionClick={handleOptionClick}
-                            userQuery={messageInputs[chat.id] || ''}
-                            onUserQueryChange={(value) => handleMessageInputChange(chat.id, value)}
-                            onSubmitResponse={handleSubmitResponse}
-                            isLoading={isLoading && index === chatHistory.length - 1 && !chat.response.agentType}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center text-gray-400 py-4">
-                  No previous conversations found. Start a new conversation!
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        <div className="border-t border-blue-500/20 p-3 sm:p-4">
-          <div className="max-w-3xl mx-auto">
+  return (
+    <div className="flex h-screen bg-[#0a0a0a] text-gray-200">
+      <Sidebar />
+
+      {/* main column */}
+      <div className="flex flex-col flex-1 overflow-hidden">
+        {/* ─── HEADER ─────────────────────────────── */}
+        <header className="sticky top-0 z-20 backdrop-blur border-b border-blue-500/20 px-4 py-3">
+          <div className="max-w-3xl mx-auto flex flex-wrap gap-3 items-center justify-between">
+            <h1 className="text-lg sm:text-xl font-semibold">Chat with <span className="text-blue-400">{dbName}</span></h1>
+
             <div className="flex gap-2">
-              <textarea
-                className="flex-1 bg-[#0a0a0a] text-gray-200 p-3 rounded-lg border border-blue-500/20 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                placeholder="Ask a question about your database..."
-                rows={2}
-                value={userQuery}
-                onChange={(e) => setUserQuery(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={isLoading}
-              />
-              <button
-                className="bg-[#0a0a0a] hover:bg-blue-500/20 text-gray-200 px-4 py-2 rounded-lg disabled:opacity-50 transition-colors border border-blue-500/20 hover:border-blue-500"
-                onClick={() => handleSubmit()}
-                disabled={isLoading || !userQuery.trim()}
-              >
-                {isLoading ? 'Sending...' : 'Send'}
-              </button>
+              <Button variant="outline" size="sm" onClick={copyUrl}
+                className="border-blue-400/30 hover:bg-blue-500/10">
+                <Copy className="h-4 w-4 mr-1" />
+                {copyOK ? 'Copied' : 'Copy URL'}
+              </Button>
+
+              <Button variant="outline" size="sm" onClick={syncDB} disabled={isSyncing}
+                className="relative border-blue-400/30 hover:bg-blue-500/10">
+                <RefreshCw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Syncing…' : 'Sync DB'}
+              </Button>
             </div>
           </div>
-        </div>
+        </header>
+
+        {/* ─── CHAT BODY ─────────────────────────── */}
+        <section
+          ref={chatRef}
+          className="flex-1 overflow-y-auto px-4 py-6 scrollbar-thin scrollbar-thumb-blue-500/30 scrollbar-track-transparent">
+          <div className="max-w-3xl mx-auto space-y-6">
+            {chatHistory.length === 0 && (
+              <div className="text-center text-gray-400">No conversations yet. Ask anything!</div>
+            )}
+
+            {chatHistory.map((chat, idx) => (
+              <div key={idx} className="space-y-4">
+                {/* user bubble */}
+                <div className="self-end bg-gradient-to-br from-blue-600/30 to-blue-600/10 border border-blue-500/30 px-4 py-3 rounded-2xl rounded-tr-none shadow-md">
+                  <ChatMessage
+                    message={chat.message}
+                    response={{}}
+                    isUser
+                    isLoading={false}
+                  />
+                </div>
+
+                {/* bot bubble */}
+                {chat.response && (
+                  <div className="bg-[#111214]/80 border border-blue-500/20 px-4 py-3 rounded-2xl rounded-tl-none shadow-lg">
+                    <ChatMessage
+                      message=""
+                      response={chat.response}
+                      isUser={false}
+                      onOptionClick={() => {}}
+                      onSubmitResponse={handleSend}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {isLoading && (
+              <div className="animate-pulse text-sm text-blue-400">Thinking…</div>
+            )}
+          </div>
+        </section>
+
+        {/* ─── INPUT BAR ─────────────────────────── */}
+        <footer className="sticky bottom-0 backdrop-blur border-t border-blue-500/20 px-4 py-3">
+          <div className="max-w-3xl mx-auto flex gap-3">
+            <textarea
+              rows={2}
+              className="flex-1 resize-none bg-[#0a0a0a]/80 border border-blue-500/20 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none placeholder-gray-400 scrollbar-thin scrollbar-thumb-blue-500/30"
+              placeholder="Ask something about your database…"
+              value={userQuery}
+              onChange={e => setUserQuery(e.target.value)}
+              onKeyDown={onKey}
+              disabled={isLoading}
+            />
+
+            <button
+              onClick={() => handleSend()}
+              disabled={isLoading || !userQuery.trim()}
+              className="px-5 py-2 rounded-lg border border-blue-500/40 bg-blue-600/20 hover:bg-blue-600/30 transition disabled:opacity-50">
+              {isLoading ? '…' : 'Send'}
+            </button>
+          </div>
+        </footer>
       </div>
     </div>
   )
-} 
+}
+
+

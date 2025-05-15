@@ -1,481 +1,532 @@
-import React, { useState, useEffect } from 'react';
-import { Bot, Send, User } from 'lucide-react';
-import VisualizationRenderer from '@/components/VisualizationRenderer';
-import ResearcherResponse from './ResearcherResponse';
-import PieChart from '@/components/PieChart';
-import BarChart from '@/components/BarChart';
+import React, { useState } from 'react'
+import VisualizationRenderer from '@/components/VisualizationRenderer'
+import ResearcherResponse from './ResearcherResponse'
+import PieChart from '@/components/PieChart'
+import BarChart from '@/components/BarChart'
 
 interface AgentResponseProps {
-  agentType: string;
-  agentOutput: any;
-  onOptionClick?: (option: string) => void;
-  userQuery?: string;
-  onUserQueryChange?: (value: string) => void;
-  onSubmitResponse?: (response: string) => void;
+  agentType: string
+  agentOutput: any
+  onOptionClick?: (opt: string) => void        // kept for forward-compat
+  userQuery?: string
+  onUserQueryChange?: (v: string) => void      // kept for forward-compat
+  onSubmitResponse?: (v: string) => void
 }
+
+/* ──────────────────────────────────────────────────────────
+   Enhanced Card component with gradient border option
+─────────────────────────────────────────────────────────── */
+const Card: React.FC<{
+  title?: string
+  children: React.ReactNode
+  gradient?: boolean
+  className?: string
+}> = ({ title, children, gradient = false, className = '' }) => (
+  <div 
+    className={`relative bg-gradient-to-b from-[#151619] to-[#0d0e10] rounded-lg p-5 space-y-3 
+                shadow-lg ${gradient ? 'border border-blue-500/20' : 'shadow-blue-500/10'} 
+                backdrop-blur-sm ${className}`}
+  >
+    {gradient && (
+      <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-blue-500/5 to-purple-500/5 pointer-events-none" />
+    )}
+    {title && (
+      <h3 className="text-lg font-medium text-gray-100 flex items-center">
+        <div className="w-1 h-5 bg-blue-500 rounded mr-2" />
+        {title}
+      </h3>
+    )}
+    <div className="relative z-10">{children}</div>
+  </div>
+)
+
+/* ──────────────────────────────────────────────────────────
+   Enhanced Button component
+─────────────────────────────────────────────────────────── */
+const Button: React.FC<{
+  children: React.ReactNode
+  onClick?: () => void
+  selected?: boolean
+  disabled?: boolean
+  className?: string
+  variant?: 'primary' | 'secondary' | 'text'
+  size?: 'sm' | 'md' | 'lg'
+}> = ({
+  children,
+  onClick,
+  selected = false,
+  disabled = false,
+  className = '',
+  variant = 'secondary',
+  size = 'md'
+}) => {
+  const baseClasses = "rounded font-medium transition-all duration-150 ease-in-out"
+  
+  const variantClasses = {
+    primary: selected || !disabled 
+      ? "bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white" 
+      : "bg-[#333] text-gray-400 cursor-not-allowed",
+    secondary: selected 
+      ? "bg-blue-600 hover:bg-blue-700 text-white" 
+      : disabled 
+        ? "bg-[#1b1c1d] text-gray-500 cursor-not-allowed" 
+        : "bg-[#1b1c1d] hover:bg-[#2a2a2a] text-gray-200",
+    text: disabled 
+      ? "text-gray-500 cursor-not-allowed" 
+      : "text-blue-400 hover:text-blue-300"
+  }
+  
+  const sizeClasses = {
+    sm: "text-xs px-2 py-1",
+    md: "text-sm px-3 py-2",
+    lg: "text-base px-4 py-2"
+  }
+  
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+    >
+      {children}
+    </button>
+  )
+}
+
+/* ──────────────────────────────────────────────────────────
+   Metric Card component
+─────────────────────────────────────────────────────────── */
+const MetricCard: React.FC<{
+  label: string
+  value: string | number
+}> = ({ label, value }) => (
+  <div className="bg-gradient-to-br from-[#1b1c1d] to-[#161718] p-3 rounded border border-blue-500/10 hover:border-blue-500/20 transition-colors duration-150">
+    <p className="text-xs text-gray-400 capitalize mb-1">{label}</p>
+    <p className="font-medium text-gray-200">{String(value)}</p>
+  </div>
+)
 
 const AgentResponse: React.FC<AgentResponseProps> = ({
   agentType,
   agentOutput,
-  onOptionClick,
-  userQuery,
-  onUserQueryChange,
-  onSubmitResponse
+  onSubmitResponse,
 }) => {
-  const [selectedOption, setSelectedOption] = useState<string>('');
-  const [customInput, setCustomInput] = useState<string>('');
-  const [isSubmitEnabled, setIsSubmitEnabled] = useState<boolean>(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  /* generic local state (used mostly by inquire/multi) */
+  const [selected, setSelected] = useState<string>('')
+  const [custom, setCustom] = useState<string>('')
+  const [expand, setExpand] = useState<boolean>(false)   // for "Show More" in pipeline2
 
-  useEffect(() => {
-    // Enable submit button if an option is selected or custom input is provided
-    setIsSubmitEnabled(selectedOption !== '' || customInput.trim() !== '');
-  }, [selectedOption, customInput]);
+  const submitEnabled = selected !== '' || custom.trim() !== ''
+  const choose = (opt: string) => { setSelected(opt); setCustom('') }
+  const type = (v: string) => { setCustom(v); setSelected('') }
+  const submit = () => onSubmitResponse?.(selected || custom)
 
-  const handleOptionSelect = (option: string) => {
-    setSelectedOption(option);
-    setCustomInput(''); // Clear custom input when an option is selected
-  };
-
-  const handleCustomInputChange = (value: string) => {
-    setCustomInput(value);
-    setSelectedOption(''); // Clear selected option when custom input is provided
-  };
-
-  const handleSubmit = () => {
-    if (onSubmitResponse) {
-      onSubmitResponse(selectedOption || customInput);
-    }
-  };
-
-  // Render different agent types
+  /* ───────────────────── agent switches ───────────────────── */
   switch (agentType) {
+    /* ───────────── 1. MULTI (pipeline) ───────────── */
     case 'multi':
       return (
         <div className="space-y-6">
-          <div className="bg-[#2a2a2a] p-4 rounded-lg">
-            <h3 className="text-lg font-medium mb-2">Overview</h3>
-            <p className="text-gray-300">{agentOutput.summary}</p>
-            {agentOutput.details && agentOutput.details.length > 0 && (
-              <ul className="list-disc pl-5 mt-2 space-y-1">
-                {agentOutput.details.map((detail: string, index: number) => (
-                  <li key={index} className="text-gray-300">{detail}</li>
+          {/* top overview */}
+          <Card title="Overview" gradient>
+            <p className="text-gray-200 leading-relaxed">{agentOutput.summary}</p>
+            {agentOutput.details?.length > 0 && (
+              <ul className="list-disc list-inside space-y-2 mt-3 text-gray-200">
+                {agentOutput.details.map((d: string, i: number) => (
+                  <li key={i} className="leading-relaxed">{d}</li>
                 ))}
               </ul>
             )}
-          </div>
-          
-          {agentOutput.tasks && agentOutput.tasks.map((task: any, index: number) => (
-            <div key={index} className="bg-[#2a2a2a] p-4 rounded-lg">
-              <h3 className="text-lg font-medium mb-2">
-                {task.agentType.charAt(0).toUpperCase() + task.agentType.slice(1)} Response
-              </h3>
-              <p className="text-sm text-gray-400 mb-2">Query: {task.query}</p>
-              
+          </Card>
+
+          {/* each sub-task */}
+          {agentOutput.tasks?.map((task: any, i: number) => (
+            <Card
+              key={i}
+              title={`${task.agentType.charAt(0).toUpperCase() + task.agentType.slice(1)} Response`}
+            >
+              <div className="inline-block px-3 py-1 bg-blue-900/20 rounded-full mb-3">
+                <p className="text-xs text-blue-300">Query: {task.query}</p>
+              </div>
+
+              {/* researcher task */}
               {task.agentType === 'researcher' && (
                 <ResearcherResponse
                   content={task.response}
                   visualization={task.response.visualization}
                 />
               )}
-              
+
+              {/* visualize task */}
               {task.agentType === 'visualize' && (
-                <div>
-                  <VisualizationRenderer visualization={task.response.visualization} />
+                <>
+                  <div className="p-2 rounded-lg bg-[#0d0e10]/80 mb-4">
+                    <VisualizationRenderer visualization={task.response.visualization} />
+                  </div>
                   {task.response.content && (
-                    <div className="mt-4">
-                      <p className="text-gray-300">{task.response.content.summary}</p>
-                      {task.response.content.details && (
-                        <ul className="list-disc pl-5 mt-2 space-y-1">
-                          {task.response.content.details.map((detail: string, idx: number) => (
-                            <li key={idx} className="text-gray-300">{detail}</li>
+                    <>
+                      <p className="text-gray-200 leading-relaxed">{task.response.content.summary}</p>
+                      {task.response.content.details?.length > 0 && (
+                        <ul className="list-disc list-inside space-y-2 mt-3">
+                          {task.response.content.details.map((d: string, idx: number) => (
+                            <li key={idx} className="text-gray-200 leading-relaxed">{d}</li>
                           ))}
                         </ul>
                       )}
-                    </div>
+                    </>
                   )}
-                </div>
+                </>
               )}
-              
+
+              {/* inquire task */}
               {task.agentType === 'inquire' && (
-                <div>
-                  <p className="font-medium">{task.response.question}</p>
-                  <p className="text-xs text-gray-400 mb-2">{task.response.context}</p>
-                  
-                  {task.response.options && task.response.options.length > 0 && (
-                    <div className="mt-2">
-                      <p className="text-xs text-gray-400 mb-1">Suggested options:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {task.response.options.map((option: string, idx: number) => (
-                          <button 
-                            key={idx} 
-                            className={`text-xs px-2 py-1 rounded ${
-                              selectedOption === option 
-                                ? 'bg-blue-600 hover:bg-blue-700' 
-                                : 'bg-[#333] hover:bg-[#444]'
-                            }`}
-                            onClick={() => handleOptionSelect(option)}
-                          >
-                            {option}
-                          </button>
-                        ))}
-                      </div>
+                <>
+                  <p className="font-medium text-gray-100 mb-2">{task.response.question}</p>
+                  <p className="text-xs text-gray-400 mb-4">{task.response.context}</p>
+
+                  {task.response.options?.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {task.response.options.map((opt: string) => (
+                        <Button
+                          key={opt}
+                          onClick={() => choose(opt)}
+                          selected={selected === opt}
+                          size="sm"
+                        >
+                          {opt}
+                        </Button>
+                      ))}
                     </div>
                   )}
-                </div>
+                </>
               )}
-            </div>
+            </Card>
           ))}
         </div>
-      );
-    
+      )
+
+    /* ───────────── 2. INQUIRE ───────────── */
     case 'inquire':
       return (
-        <div>
-          <p className="font-medium">{agentOutput.question}</p>
-          <p className="text-xs text-gray-400 mb-2">{agentOutput.context}</p>
-          
-          {agentOutput.options && agentOutput.options.length > 0 && (
-            <div className="mt-2">
-              <p className="text-xs text-gray-400 mb-1">Suggested options:</p>
-              <div className="flex flex-wrap gap-2">
-                {agentOutput.options.map((option: string, idx: number) => (
-                  <button 
-                    key={idx} 
-                    className={`text-xs px-2 py-1 rounded ${
-                      selectedOption === option 
-                        ? 'bg-blue-600 hover:bg-blue-700' 
-                        : 'bg-[#333] hover:bg-[#444]'
-                    }`}
-                    onClick={() => handleOptionSelect(option)}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
+        <Card gradient className="space-y-4">
+          <p className="font-medium text-gray-100 text-lg">{agentOutput.question}</p>
+          <p className="text-sm text-gray-400">{agentOutput.context}</p>
+
+          {agentOutput.options?.length > 0 && (
+            <div className="flex flex-wrap gap-2 my-4">
+              {agentOutput.options.map((opt: string) => (
+                <Button
+                  key={opt}
+                  onClick={() => choose(opt)}
+                  selected={selected === opt}
+                  size="sm"
+                >
+                  {opt}
+                </Button>
+              ))}
             </div>
           )}
-          
+
           {agentOutput.allowCustomInput && (
-            <div className="mt-2">
-              <p className="text-xs text-gray-400 mb-1">Or provide your own answer:</p>
+            <div className="relative">
               <input
-                type={agentOutput.inputType || "text"}
-                className="w-full bg-[#333] text-white text-sm p-2 rounded"
-                placeholder="Type your answer here..."
-                value={customInput}
-                onChange={(e) => handleCustomInputChange(e.target.value)}
+                type={agentOutput.inputType || 'text'}
+                className="w-full bg-[#1b1c1d] border border-blue-500/20 focus:border-blue-500/40 outline-none rounded-lg p-3 text-sm text-gray-200 placeholder-gray-500 transition-colors duration-150"
+                placeholder="Type your answer…"
+                value={custom}
+                onChange={e => type(e.target.value)}
               />
             </div>
           )}
-          
+
           {onSubmitResponse && (
-            <div className="mt-3">
-              <button
-                className={`w-full py-2 px-4 rounded ${
-                  isSubmitEnabled 
-                    ? 'bg-blue-600 hover:bg-blue-700' 
-                    : 'bg-gray-700 cursor-not-allowed'
-                }`}
-                onClick={handleSubmit}
-                disabled={!isSubmitEnabled}
-              >
-                Submit Response
-              </button>
-            </div>
+            <Button
+              disabled={!submitEnabled}
+              onClick={submit}
+              variant="primary"
+              className="w-full mt-3"
+            >
+              Submit Response
+            </Button>
           )}
-        </div>
-      );
-    
+        </Card>
+      )
+
+    /* ───────────── 3. ANALYZE ───────────── */
     case 'analyze':
       return (
-        <div>
-          <p className="font-medium">{agentOutput.analysis || 'Analysis in progress...'}</p>
-        </div>
-      );
-    
-    case 'visualize':
-      console.log("Visualize agent output:", agentOutput);
-      
-      // Check if agentOutput is a string (JSON) and parse it
-      let parsedOutput = agentOutput;
-      if (typeof agentOutput === 'string') {
-        try {
-          parsedOutput = JSON.parse(agentOutput);
-          console.log("Parsed agent output:", parsedOutput);
-        } catch (error) {
-          console.error("Error parsing agent output:", error);
-          return <div>Error parsing visualization data</div>;
-        }
+        <Card gradient>
+          <div className="flex items-center space-x-2 mb-3">
+            <div className="animate-pulse w-2 h-2 rounded-full bg-blue-500" />
+            <p className="text-sm text-blue-400 font-medium">Analysis</p>
+          </div>
+          <p className="font-medium text-gray-200 leading-relaxed">
+            {agentOutput.analysis || 'Analysis in progress…'}
+          </p>
+        </Card>
+      )
+
+    /* ───────────── 4. VISUALIZE ───────────── */
+    case 'visualize': {
+      let out = agentOutput
+      if (typeof out === 'string') {
+        try { out = JSON.parse(out) } catch { return <Card>No visualization data</Card> }
       }
-      
-      // Check if the output has the expected structure
-      if (!parsedOutput.visualization) {
-        console.error("Missing visualization data in agent output");
-        return <div>No visualization data available</div>;
-      }
-      
+      if (!out.visualization) return <Card>No visualization data</Card>
+
       return (
-        <div className="space-y-4">
-          {parsedOutput.content &&
+        <div className="space-y-6">
+          {/* content summary/details/metrics */}
+          {out.content && (
             <>
-              <div className="bg-[#2a2a2a] p-4 rounded-lg">
-                <h3 className="text-lg font-medium mb-2">{parsedOutput.content.title || 'Visualization'}</h3>
-                <p className="text-gray-300">{parsedOutput.content.summary}</p>
-              </div>
-              
-              {parsedOutput.content.details && parsedOutput.content.details.length > 0 && (
-                <div className="bg-[#2a2a2a] p-4 rounded-lg">
-                  <h3 className="text-lg font-medium mb-2">Details</h3>
-                  <ul className="list-disc pl-5 space-y-1">
-                    {parsedOutput.content.details.map((detail: string, index: number) => (
-                      <li key={index} className="text-gray-300">{detail}</li>
+              <Card title={out.content.title || 'Visualization'} gradient>
+                <p className="text-gray-200 leading-relaxed">{out.content.summary}</p>
+              </Card>
+
+              {out.content.details?.length > 0 && (
+                <Card title="Details">
+                  <ul className="list-disc list-inside space-y-2">
+                    {out.content.details.map((d: string, i: number) => (
+                      <li key={i} className="text-gray-200 leading-relaxed">{d}</li>
                     ))}
                   </ul>
-                </div>
+                </Card>
               )}
-              
-              {parsedOutput.content.metrics && Object.keys(parsedOutput.content.metrics).length > 0 && (
-                <div className="bg-[#2a2a2a] p-4 rounded-lg">
-                  <h3 className="text-lg font-medium mb-2">Metrics</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    {Object.entries(parsedOutput.content.metrics).map(([key, value], index) => (
-                      <div key={index} className="bg-[#333] p-3 rounded">
-                        <p className="text-sm text-gray-400">{key}</p>
-                        <p className="text-lg font-medium">{String(value)}</p>
-                      </div>
+
+              {out.content.metrics && Object.keys(out.content.metrics).length > 0 && (
+                <Card title="Metrics">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {Object.entries(out.content.metrics).map(([k, v]) => (
+                      <MetricCard key={k} label={k} value={typeof v === 'string' || typeof v === 'number' ? v : String(v)} />
                     ))}
                   </div>
-                </div>
+                </Card>
               )}
             </>
-          }
-          
-          {parsedOutput.visualization && (
-            <div className="bg-[#2a2a2a] p-4 rounded-lg">
-              <VisualizationRenderer visualization={parsedOutput.visualization} />
-            </div>
           )}
+
+          {/* visualization itself */}
+          <Card className="p-0 overflow-hidden">
+            <div className="p-4 bg-[#0d0e10]/80 rounded-lg">
+              <VisualizationRenderer visualization={out.visualization} />
+            </div>
+          </Card>
         </div>
-      );
-    
+      )
+    }
+
+    /* ───────────── 5. PIPELINE2 (detailed) ───────────── */
     case 'pipeline2':
       return (
-        <div className="space-y-4">
-          {/* Task Manager Result */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Task Analysis</h3>
-            <p className="text-sm text-gray-600">{agentOutput.taskResult?.reason}</p>
-          </div>
+        <div className="space-y-6">
+          {/* 5.1 Task analysis */}
+          <Card title="Task Analysis" gradient>
+            <p className="text-gray-200 leading-relaxed">{agentOutput.taskResult?.reason}</p>
+          </Card>
 
-          {/* Analysis Result */}
+          {/* 5.2 Main analysis (summary/details/metrics or visualizer branch) */}
           {agentOutput.analysisResult && (
-            <div className="space-y-4">
+            <>
               {agentOutput.taskResult?.next === 'visualizer' ? (
-                // Visualizer Output Format
+                /* ---------- VISUALIZER branch ---------- */
                 <>
-                  {/* Content Section */}
-                  <div className="bg-white p-6 rounded-lg shadow-sm border">
-                    <h2 className="text-2xl font-bold mb-4">{agentOutput.analysisResult.content.title}</h2>
-                    <p className="text-gray-600 mb-4">{agentOutput.analysisResult.content.summary}</p>
+                  <Card title={agentOutput.analysisResult.content.title} gradient>
+                    <p className="text-gray-200 leading-relaxed">{agentOutput.analysisResult.content.summary}</p>
 
-                    {/* Details */}
-                    {agentOutput.analysisResult.content.details && agentOutput.analysisResult.content.details.length > 0 && (
-                      <div className="mb-6">
-                        <h3 className="text-lg font-semibold mb-2">Key Insights</h3>
-                        <ul className="list-disc list-inside space-y-2">
-                          {agentOutput.analysisResult.content.details.map((detail: string, index: number) => (
-                            <li key={index} className="text-gray-600">{detail}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Metrics */}
-                    {agentOutput.analysisResult.content.metrics && Object.keys(agentOutput.analysisResult.content.metrics).length > 0 && (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        {Object.entries(agentOutput.analysisResult.content.metrics).map(([key, value]) => (
-                          value !== undefined && (
-                            <div key={key} className="bg-gray-50 p-4 rounded-lg">
-                              <p className="text-sm text-gray-500 capitalize">{key}</p>
-                              <p className="text-xl font-semibold">{String(value)}</p>
-                            </div>
-                          )
+                    {agentOutput.analysisResult.content.details?.length > 0 && (
+                      <ul className="list-disc list-inside space-y-2 mt-3">
+                        {agentOutput.analysisResult.content.details.map((d: string, i: number) => (
+                          <li key={i} className="text-gray-200 leading-relaxed">{d}</li>
                         ))}
-                      </div>
+                      </ul>
                     )}
-                  </div>
 
-                  {/* Visualization Section */}
-                  <div className="bg-white p-6 rounded-lg shadow-sm border">
-                    <h3 className="text-xl font-bold mb-2">{agentOutput.analysisResult.visualization.config.title}</h3>
-                    <p className="text-gray-600 mb-4">{agentOutput.analysisResult.visualization.config.description}</p>
+                    {agentOutput.analysisResult.content.metrics &&
+                      Object.keys(agentOutput.analysisResult.content.metrics).length > 0 && (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
+                          {Object.entries(agentOutput.analysisResult.content.metrics).map(
+                            ([k, v]) => (
+                              <MetricCard key={k} label={k} value={typeof v === 'string' || typeof v === 'number' ? v : String(v)} />
+                            )
+                          )}
+                        </div>
+                      )}
+                  </Card>
 
-                    <div className="visualization-container">
+                  {/* chart */}
+                  <Card title={agentOutput.analysisResult.visualization.config.title}>
+                    <p className="text-gray-200 mb-4 leading-relaxed">
+                      {agentOutput.analysisResult.visualization.config.description}
+                    </p>
+                    <div className="p-4 bg-[#0d0e10]/80 rounded-lg">
                       {agentOutput.analysisResult.visualization.chartType === 'pie' ? (
                         <PieChart
-                          data={agentOutput.analysisResult.visualization.data} 
+                          data={agentOutput.analysisResult.visualization.data}
                           config={{
                             donut: false,
                             showPercentages: true,
-                            ...agentOutput.analysisResult.visualization.config.pieConfig
-                          }} 
+                            ...agentOutput.analysisResult.visualization.config.pieConfig,
+                          }}
                         />
                       ) : (
-                        <BarChart 
-                          data={agentOutput.analysisResult.visualization.data} 
+                        <BarChart
+                          data={agentOutput.analysisResult.visualization.data}
                           config={{
                             barThickness: 40,
                             horizontal: false,
                             showGridLines: true,
                             xAxisLabel: agentOutput.analysisResult.visualization.config.xAxis,
-                            yAxisLabel: agentOutput.analysisResult.visualization.config.yAxis
+                            yAxisLabel: agentOutput.analysisResult.visualization.config.yAxis,
                           }}
                         />
                       )}
                     </div>
-                  </div>
-
-                  {/* SQL Query Section */}
-                  {agentOutput.analysisResult.sqlQuery && (
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">SQL Query</h3>
-                      <pre className="bg-gray-100 p-3 rounded text-sm overflow-x-auto">
-                        <code>{agentOutput.analysisResult.sqlQuery}</code>
-                      </pre>
-                    </div>
-                  )}
+                  </Card>
                 </>
               ) : (
-                // Researcher Output Format
+                /* ---------- RESEARCHER branch ---------- */
                 <>
-                  {/* Summary */}
-                  <div className="bg-white p-4 rounded-lg border">
-                    <h3 className="text-sm font-medium text-gray-700 mb-2">Summary</h3>
-                    <p className="text-sm text-gray-600">{agentOutput.analysisResult.summary}</p>
-                  </div>
+                  <Card title="Summary" gradient>
+                    <p className="text-gray-200 leading-relaxed">{agentOutput.analysisResult.summary}</p>
+                  </Card>
 
-                  {/* Details */}
-                  {agentOutput.analysisResult.details && agentOutput.analysisResult.details.length > 0 && (
-                    <div className="bg-white p-4 rounded-lg border">
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">Details</h3>
-                      <ul className="list-disc list-inside space-y-1">
-                        {agentOutput.analysisResult.details.map((detail: string, index: number) => (
-                          <li key={index} className="text-sm text-gray-600">{detail}</li>
+                  {agentOutput.analysisResult.details?.length > 0 && (
+                    <Card title="Details">
+                      <ul className="list-disc list-inside space-y-2">
+                        {agentOutput.analysisResult.details.map((d: string, i: number) => (
+                          <li key={i} className="text-gray-200 leading-relaxed">{d}</li>
                         ))}
                       </ul>
-                    </div>
+                    </Card>
                   )}
 
-                  {/* Metrics */}
-                  {agentOutput.analysisResult.metrics && Object.keys(agentOutput.analysisResult.metrics).length > 0 && (
-                    <div className="bg-white p-4 rounded-lg border">
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">Metrics</h3>
-                      <div className="grid grid-cols-2 gap-2">
-                        {Object.entries(agentOutput.analysisResult.metrics).map(([key, value]) => (
-                          <div key={key} className="text-sm">
-                            <span className="font-medium text-gray-700">{key}:</span>{' '}
-                            <span className="text-gray-600">{String(value)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* SQL Query */}
-                  {agentOutput.analysisResult.sqlQuery && (
-                    <div className="bg-white p-4 rounded-lg border">
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">SQL Query</h3>
-                      <pre className="bg-gray-50 p-2 rounded text-sm overflow-x-auto">
-                        <code>{agentOutput.analysisResult.sqlQuery}</code>
-                      </pre>
-                    </div>
-                  )}
-
-                  {/* Query Results */}
-                  {agentOutput.analysisResult.queryResult && (
-                    <div className="bg-white p-4 rounded-lg border">
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">Query Results</h3>
-                      {agentOutput.analysisResult.queryResult.success ? (
-                        <div className="space-y-2">
-                          <div className="text-sm text-gray-600">
-                            Rows returned: {agentOutput.analysisResult.queryResult.rowCount}
-                          </div>
-                          {agentOutput.analysisResult.queryResult.rows && agentOutput.analysisResult.queryResult.rows.length > 0 && (
-                            <div className="overflow-x-auto">
-                              <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
-                                  <tr>
-                                    {Object.keys(agentOutput.analysisResult.queryResult.rows[0]).map((header) => (
-                                      <th
-                                        key={header}
-                                        className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                                      >
-                                        {header}
-                                      </th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                  {agentOutput.analysisResult.queryResult.rows.map((row: any, index: number) => (
-                                    <tr key={index}>
-                                      {Object.values(row).map((value: any, i: number) => (
-                                        <td
-                                          key={i}
-                                          className="px-3 py-2 text-sm text-gray-500 whitespace-nowrap"
-                                        >
-                                          {value}
-                                        </td>
-                                      ))}
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
+                  {agentOutput.analysisResult.metrics &&
+                    Object.keys(agentOutput.analysisResult.metrics).length > 0 && (
+                      <Card title="Metrics">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          {Object.entries(agentOutput.analysisResult.metrics).map(([k, v]) => (
+                            <MetricCard key={k} label={k} value={typeof v === 'string' || typeof v === 'number' ? v : String(v)} />
+                          ))}
                         </div>
-                      ) : (
-                        <div className="text-sm text-red-600">
-                          Error: {agentOutput.analysisResult.queryResult.error}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                      </Card>
+                    )}
                 </>
               )}
-            </div>
+
+              {/* 5.3 Query Results (always visible) */}
+              {agentOutput.analysisResult.queryResult && (
+                <Card title="Query Results">
+                  {agentOutput.analysisResult.queryResult.success ? (
+                    <>
+                      <div className="bg-blue-900/20 inline-block px-3 py-1 rounded-full mb-3">
+                        <p className="text-blue-300 text-sm">
+                          Rows returned: {agentOutput.analysisResult.queryResult.rowCount}
+                        </p>
+                      </div>
+                      {agentOutput.analysisResult.queryResult.rows?.length > 0 && (
+                        <div className="overflow-x-auto rounded-lg border border-blue-500/20">
+                          <table className="min-w-full text-sm">
+                            <thead className="bg-gradient-to-r from-[#151821] to-[#0f1015]">
+                              <tr>
+                                {Object.keys(agentOutput.analysisResult.queryResult.rows[0]).map(
+                                  (header) => (
+                                    <th
+                                      key={header}
+                                      className="px-4 py-3 text-left font-medium text-gray-100 border-b border-blue-500/20"
+                                    >
+                                      {header}
+                                    </th>
+                                  )
+                                )}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-blue-500/10">
+                              {agentOutput.analysisResult.queryResult.rows.map(
+                                (row: any, i: number) => (
+                                  <tr 
+                                    key={i} 
+                                    className="hover:bg-blue-500/5 transition-colors duration-150"
+                                  >
+                                    {Object.values(row).map((val: any, j: number) => (
+                                      <td key={j} className="px-4 py-3 whitespace-nowrap text-gray-300">
+                                        {val}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                )
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="bg-red-900/20 p-3 rounded-lg border border-red-500/20">
+                      <p className="text-red-400">
+                        Error: {agentOutput.analysisResult.queryResult.error}
+                      </p>
+                    </div>
+                  )}
+                </Card>
+              )}
+            </>
           )}
 
-          {/* Debug Information */}
-          {agentOutput.debug && (
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Debug Info</h3>
-              <div className="text-sm text-gray-600">
-                <p>Message: {agentOutput.debug.message}</p>
-                <p>Connection ID: {agentOutput.debug.connectionId}</p>
-                <p>Query: {agentOutput.debug.query}</p>
-                <p>Match Count: {agentOutput.debug.matchCount}</p>
-              </div>
-            </div>
+          {/* 5.4 "Show More" section (SQL + Debug) */}
+          {expand && (
+            <>
+              {agentOutput.analysisResult?.sqlQuery && (
+                <Card title="SQL Query">
+                  <pre className="whitespace-pre-wrap text-xs bg-[#0d0e10] p-3 rounded-lg border border-blue-500/10 text-gray-300 overflow-x-auto">
+                    {agentOutput.analysisResult.sqlQuery}
+                  </pre>
+                </Card>
+              )}
+
+              {agentOutput.debug && (
+                <Card title="Debug Info">
+                  <pre className="whitespace-pre-wrap text-xs bg-[#0d0e10] p-3 rounded-lg border border-blue-500/10 text-gray-300 overflow-x-auto">
+{`Message:       ${agentOutput.debug.message}
+Connection ID: ${agentOutput.debug.connectionId}
+Query:         ${agentOutput.debug.query}
+Match Count:   ${agentOutput.debug.matchCount}`}
+                  </pre>
+                </Card>
+              )}
+            </>
           )}
 
-          {/* Expand/Collapse Button */}
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="text-sm text-blue-600 hover:text-blue-800"
+          {/* toggle button */}
+          <Button 
+            onClick={() => setExpand(!expand)}
+            variant="text"
+            className="flex items-center space-x-1"
           >
-            {isExpanded ? 'Show Less' : 'Show More'}
-          </button>
+            <span>{expand ? 'Show Less' : 'Show More'}</span>
+            <svg 
+              className={`w-4 h-4 transition-transform duration-200 ${expand ? 'rotate-180' : ''}`} 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24" 
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </Button>
         </div>
-      );
-    
+      )
+
+    /* ───────────── 6. DEFAULT ───────────── */
     default:
       return (
-        <div>
-          <p className="font-medium">Processing your request...</p>
-        </div>
-      );
+        <Card gradient>
+          <div className="flex items-center space-x-3">
+            <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full" />
+            <p className="font-medium text-gray-200">Processing your request…</p>
+          </div>
+        </Card>
+      )
   }
-};
+}
 
-export default AgentResponse; 
+export default AgentResponse

@@ -1,191 +1,145 @@
-import React from 'react';
-import AgentResponse from './AgentResponse';
-import ResearcherResponse from './ResearcherResponse';
-import { Bot, Loader2 } from 'lucide-react';
-import { UserButton } from '@clerk/nextjs';
+'use client'
+
+import React from 'react'
+import AgentResponse      from './AgentResponse'
+import ResearcherResponse from './ResearcherResponse'
+import { Bot, Loader2 }   from 'lucide-react'
+import { UserButton }     from '@clerk/nextjs'
 
 interface ChatMessageProps {
   message: string | {
-    role?: string;
-    content?: string | {
-      summary?: string;
-      details?: string[];
-      metrics?: Record<string, number | string>;
-      visualization?: {
-        chartType: string;
-        data: Array<{
-          label: string;
-          value: number;
-        }>;
-        config: {
-          xAxis: {
-            label: string;
-            type: string;
-          };
-          yAxis: {
-            label: string;
-            type: string;
-          };
-          legend: boolean;
-          stacked: boolean;
-        };
-      };
-    };
-    timestamp?: string;
-  };
-  response?: any;
-  isUser?: boolean;
-  isLoading?: boolean;
-  onOptionClick?: (option: string) => void;
-  userQuery?: string;
-  onUserQueryChange?: (value: string) => void;
-  onSubmitResponse?: (response: string) => void;
+    role?: string
+    content?: any
+    timestamp?: string
+  }
+  response?: any
+  isUser?: boolean
+  isLoading?: boolean
+  onOptionClick?: (opt: string) => void
+  userQuery?: string
+  onUserQueryChange?: (v: string) => void
+  onSubmitResponse?: (v: string) => void
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({
-  message,
-  response,
-  isUser,
-  isLoading = false,
-  onOptionClick,
-  userQuery,
-  onUserQueryChange,
-  onSubmitResponse,
-}) => {
-  // Handle legacy format where message is a string and isUser is used
-  if (typeof message === 'string' || isUser !== undefined) {
-    const isUserMessage = typeof message === 'string' ? isUser : message.role === 'user';
-    const messageContent = typeof message === 'string' ? message : message.content;
-    const timestamp = typeof message === 'string' ? '' : message.timestamp;
-    
-    const formattedTime = timestamp 
-      ? new Date(timestamp).toLocaleTimeString([], { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        })
-      : '';
-    
-    if (isUserMessage) {
-      return (
-        <div className="flex justify-end mb-4">
-          <div className="max-w-[80%] bg-blue-600 text-white p-3 rounded-lg rounded-tr-lg relative">
-            <div className="absolute -top-3 -right-3">
-              <UserButton afterSignOutUrl="/" />
-            </div>
-            <p className="text-sm">
-              {typeof messageContent === 'string' 
-                ? messageContent 
-                : messageContent?.summary || JSON.stringify(messageContent)}
-            </p>
-            <p className="text-xs text-blue-200 mt-1">{formattedTime}</p>
-          </div>
+/* ──────────────────────────────────────────────────────────
+   Utils
+─────────────────────────────────────────────────────────── */
+const fmt = (ts?: string) =>
+  ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+
+/* ──────────────────────────────────────────────────────────
+   Bubble components
+─────────────────────────────────────────────────────────── */
+const UserBubble: React.FC<{ msg: string; time: string }> = ({ msg, time }) => (
+  <div className="flex justify-end mb-5">
+    <div className="relative w-fit max-w-[80%] bg-blue-600/90 text-white px-4 py-3 rounded-2xl rounded-tr-none shadow-lg shadow-blue-500/10">
+      <div className="absolute -top-3 -right-3">
+        <UserButton afterSignOutUrl="/" />
+      </div>
+      <p className="text-sm whitespace-pre-wrap break-words">{msg}</p>
+      {time && <p className="text-[10px] text-blue-200 mt-1">{time}</p>}
+    </div>
+  </div>
+)
+
+const BotBubble: React.FC<{ time: string; loading?: boolean; children: React.ReactNode }> = ({
+  time,
+  loading,
+  children,
+}) => (
+  <div className="flex justify-start mb-5">
+    <div className="relative w-fit max-w-[80%] bg-[#111214]/90 rounded-2xl rounded-tl-none px-4 py-3 shadow-lg shadow-blue-500/5 text-gray-200">
+      <div className="absolute -top-3 -left-3">
+        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center shadow-md">
+          <Bot size={16} className="text-white" />
         </div>
-      );
+      </div>
+
+      {time && <p className="text-[10px] text-gray-400 mb-2">{time}</p>}
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-gray-300">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Processing…</span>
+        </div>
+      ) : (
+        children
+      )}
+    </div>
+  </div>
+)
+
+/* ──────────────────────────────────────────────────────────
+   Main component
+─────────────────────────────────────────────────────────── */
+const ChatMessage: React.FC<ChatMessageProps> = (props) => {
+  const {
+    message,
+    response,
+    isUser,
+    isLoading = false,
+    onOptionClick,
+    userQuery,
+    onUserQueryChange,
+    onSubmitResponse,
+  } = props
+
+  /* Handle legacy / mixed props */
+  if (typeof message === 'string' || isUser !== undefined) {
+    const usr  = typeof message === 'string' ? isUser : message.role === 'user'
+    const text = typeof message === 'string' ? message : message.content
+    const time = fmt(typeof message === 'string' ? '' : message.timestamp)
+
+    if (usr) {
+      return <UserBubble msg={String(text)} time={time} />
     }
 
     return (
-      <div className="flex justify-start mb-4">
-        <div className="max-w-[80%] bg-[#222] p-3 rounded-lg rounded-tl-lg relative">
-          <div className="absolute -top-3 -left-3">
-            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center shadow-md">
-              <Bot size={16} className="text-white" />
-            </div>
-          </div>
-          <div className="flex items-center mb-2">
-            <p className="text-xs text-gray-400">{formattedTime}</p>
-          </div>
-          
-          {isLoading ? (
-            <div className="flex items-center space-x-2 text-gray-300">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Processing your request...</span>
-            </div>
-          ) : response && response.agentType === 'researcher' ? (
-            <ResearcherResponse
-              content={response.agentOutput}
-              visualization={response.agentOutput.visualization}
-            />
-          ) : response && response.agentType ? (
-            <AgentResponse
-              agentType={response.agentType}
-              agentOutput={response.agentOutput}
-              onOptionClick={onOptionClick}
-              userQuery={userQuery}
-              onUserQueryChange={onUserQueryChange}
-              onSubmitResponse={onSubmitResponse}
-            />
-          ) : (
-            <p className="text-gray-300">
-              {typeof messageContent === 'string' 
-                ? messageContent 
-                : messageContent?.summary || JSON.stringify(messageContent)}
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Handle new format with role and content
-  const formattedTime = message.timestamp 
-    ? new Date(message.timestamp).toLocaleTimeString([], { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      })
-    : '';
-
-  if (message.role === 'user') {
-    return (
-      <div className="flex justify-end mb-4">
-        <div className="max-w-[80%] bg-blue-600 text-white p-3 rounded-lg rounded-tr-lg relative">
-          <div className="absolute -top-3 -right-3">
-            <UserButton afterSignOutUrl="/" />
-          </div>
-          <p className="text-sm">
-            {typeof message.content === 'string' 
-              ? message.content 
-              : message.content?.summary || JSON.stringify(message.content)}
-          </p>
-          <p className="text-xs text-blue-200 mt-1">{formattedTime}</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex justify-start mb-4">
-      <div className="max-w-[80%] bg-[#222] p-3 rounded-lg rounded-tl-lg relative">
-        <div className="absolute -top-3 -left-3">
-          <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center shadow-md">
-            <Bot size={16} className="text-white" />
-          </div>
-        </div>
-        <div className="flex items-center mb-2">
-          <p className="text-xs text-gray-400">{formattedTime}</p>
-        </div>
-        
-        {isLoading ? (
-          <div className="flex items-center space-x-2 text-gray-300">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Processing your request...</span>
-          </div>
-        ) : typeof message.content === 'string' ? (
+      <BotBubble time={time} loading={isLoading}>
+        {response?.agentType === 'researcher' ? (
+          <ResearcherResponse
+            content={response.agentOutput}
+            visualization={response.agentOutput?.visualization}
+          />
+        ) : response?.agentType ? (
           <AgentResponse
-            agentType="analyze"
-            agentOutput={{ analysis: message.content }}
+            agentType={response.agentType}
+            agentOutput={response.agentOutput}
+            onOptionClick={onOptionClick}
             userQuery={userQuery}
             onUserQueryChange={onUserQueryChange}
             onSubmitResponse={onSubmitResponse}
           />
         ) : (
-          <ResearcherResponse
-            content={message.content || {}}
-            visualization={message.content?.visualization}
-          />
+          <p className="whitespace-pre-wrap break-words">{String(text)}</p>
         )}
-      </div>
-    </div>
-  );
-};
+      </BotBubble>
+    )
+  }
 
-export default ChatMessage; 
+  /* Object-based message */
+  const time = fmt(message.timestamp)
+
+  if (message.role === 'user') {
+    return <UserBubble msg={String(message.content)} time={time} />
+  }
+
+  return (
+    <BotBubble time={time} loading={isLoading}>
+      {typeof message.content === 'string' ? (
+        <AgentResponse
+          agentType="analyze"
+          agentOutput={{ analysis: message.content }}
+          onSubmitResponse={onSubmitResponse}
+        />
+      ) : (
+        <ResearcherResponse
+          content={message.content || {}}
+          visualization={message.content?.visualization}
+        />
+      )}
+    </BotBubble>
+  )
+}
+
+export default ChatMessage
