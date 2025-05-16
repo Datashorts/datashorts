@@ -89,7 +89,20 @@ export default function ChatWithDbPage() {
       if (!connectionId) return
       try {
         const hist = await getChatHistory(connectionId)
-        setChatHistory(Array.isArray(hist) ? hist : [])
+
+        const uniqueMessages = new Map()
+        if (Array.isArray(hist)) {
+          hist.forEach(msg => {
+            if (msg.message) {
+              // Only update if this message doesn't exist or if it has a response
+              if (!uniqueMessages.has(msg.message) || 
+                  (msg.response && Object.keys(msg.response).length > 0)) {
+                uniqueMessages.set(msg.message, msg)
+              }
+            }
+          })
+        }
+        setChatHistory(Array.from(uniqueMessages.values()))
       } catch {
         setChatHistory([])
       }
@@ -119,6 +132,10 @@ export default function ChatWithDbPage() {
   const handleSend = async (forced?: string) => {
     const q = (forced ?? userQuery).trim()
     if (!q) return
+
+    // Check if this exact message already exists in chat history
+    const messageExists = chatHistory.some(msg => msg.message === q)
+    if (messageExists) return
 
     // optimistic user bubble
     const tempId = `tmp-${Date.now()}`
