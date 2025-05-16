@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, KeyboardEvent } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useFoldersStore } from '@/app/store/useFoldersStore'
 import Sidebar from '@/app/_components/chat/Sidebar'
 import { useUser } from '@clerk/nextjs'
@@ -45,7 +45,8 @@ export default function ChatWithDbPage() {
   ────────────────────────────────────────────────────────── */
   const params = useParams()
   const { user }         = useUser()
-  const { setActiveConnection, loadFolders } = useFoldersStore()
+  const { setActiveConnection, loadFolders, folders } = useFoldersStore()
+  const router = useRouter()
 
   const connectionId = params.id     as string
   const dbName       = params.dbname as string
@@ -67,11 +68,22 @@ export default function ChatWithDbPage() {
     if (user) loadFolders(user.id)
   }, [user, loadFolders])
 
+
+  useEffect(() => {
+    const connectionExists = folders.some(folder => 
+      folder.connections.some(conn => conn.id === connectionId)
+    )
+    
+    if (!connectionExists) {
+      router.push('/stats')
+    }
+  }, [folders, connectionId, router])
+
   useEffect(() => {
     if (connectionId) setActiveConnection(connectionId)
   }, [connectionId, setActiveConnection])
 
-  // chat history
+
   useEffect(() => {
     (async () => {
       if (!connectionId) return
