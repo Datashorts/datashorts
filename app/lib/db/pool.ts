@@ -10,12 +10,12 @@ const connectionPools = new Map<string, Pool>();
  * @returns The pool instance
  */
 export function getPool(connectionId: string, connectionString: string): Pool {
-  // Check if pool already exists for this connection
+
   if (connectionPools.has(connectionId)) {
     return connectionPools.get(connectionId)!;
   }
 
-  // Create new pool
+
   const pool = new Pool({
     connectionString,
     ssl: {

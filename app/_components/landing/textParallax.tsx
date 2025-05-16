@@ -49,7 +49,7 @@ const features: Feature[] = [
   },
   {
     id: 4,
-    callout: 'From tables to charts—automagically.',
+    callout: 'From tables to charts—automatically.',
     title: 'Auto-Generated Visualizations',
     description:
       'Whether it’s column distribution or schema stats, DataChat instantly transforms your query results into interactive visuals like pie charts.',

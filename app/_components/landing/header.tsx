@@ -8,7 +8,7 @@ export default function Header() {
         <div className="flex items-center gap-2">
           <Link href="/" className="flex items-center">
             <span className="text-xl font-bold">
-              <span className="text-blue-500">Data</span>Chat
+              <span className="text-blue-500">Data</span>Shorts
             </span>
           </Link>
         </div>
