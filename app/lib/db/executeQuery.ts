@@ -29,6 +29,7 @@ export async function executeSQLQuery(connectionId: string, sqlQuery: string) {
 
     let pool = getExistingPool(connectionId);
     if (!pool) {
+    // https://stackoverflow.com/questions/45088006/nodejs-error-self-signed-certificate-in-certificate-chain
       console.log('No existing pool found, creating new pool for connection:', connectionId);
       const connectionUrl = connection.postgresUrl.includes('sslmode=') 
         ? connection.postgresUrl 
