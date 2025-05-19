@@ -1,36 +1,38 @@
-import { grokClient } from '@/app/lib/clients';
+import { grokClient } from "@/app/lib/clients";
 
-type Message = 
-  | { role: 'system'; content: string }
-  | { role: 'user'; content: string }
-  | { role: 'assistant'; content: string }
-  | { role: 'function'; content: string; name: string };
+type Message =
+  | { role: "system"; content: string }
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string }
+  | { role: "function"; content: string; name: string };
 
 export const researcher = async function researcher(messages: Message[]) {
   // Check if it's a simple data query
   const userMessage = messages[messages.length - 1].content.toLowerCase();
-  const isSimpleQuery = userMessage.includes('group') || 
-                       userMessage.includes('count') || 
-                       userMessage.includes('show') || 
-                       userMessage.includes('list') || 
-                       userMessage.includes('tell') ||
-                       userMessage.includes('how many') ||
-                       userMessage.includes('what is') ||
-                       userMessage.includes('describe');
-  
+  const isSimpleQuery =
+    userMessage.includes("group") ||
+    userMessage.includes("count") ||
+    userMessage.includes("show") ||
+    userMessage.includes("list") ||
+    userMessage.includes("tell") ||
+    userMessage.includes("how many") ||
+    userMessage.includes("what is") ||
+    userMessage.includes("describe");
+
   // Check if it's a visualization request
-  const isVisualizationRequest = userMessage.includes('visualize') || 
-                                userMessage.includes('visualise') || 
-                                userMessage.includes('chart') || 
-                                userMessage.includes('graph') || 
-                                userMessage.includes('plot') || 
-                                userMessage.includes('bar') || 
-                                userMessage.includes('pie');
+  const isVisualizationRequest =
+    userMessage.includes("visualize") ||
+    userMessage.includes("visualise") ||
+    userMessage.includes("chart") ||
+    userMessage.includes("graph") ||
+    userMessage.includes("plot") ||
+    userMessage.includes("bar") ||
+    userMessage.includes("pie");
 
   const systemPrompt: Message = {
-    role: 'system',
-    content: isVisualizationRequest ? 
-      `You are a data analyst that provides visualizations based on data queries. Return results in this strict JSON format:
+    role: "system",
+    content: isVisualizationRequest
+      ? `You are a data analyst that provides visualizations based on data queries. Return results in this strict JSON format:
       {
         "type": "visualization",
         "content": {
@@ -78,9 +80,9 @@ export const researcher = async function researcher(messages: Message[]) {
       - Ensure data has "label" and "value" properties
       - Set appropriate axis labels
       
-      Return JSON format.` 
-      : isSimpleQuery ? 
-      `You are a data analyst that provides direct answers to data queries. Return results in this strict JSON format:
+      Return JSON format.`
+      : isSimpleQuery
+        ? `You are a data analyst that provides direct answers to data queries. Return results in this strict JSON format:
       {
         "summary": string,
         "details": string[],
@@ -92,9 +94,9 @@ export const researcher = async function researcher(messages: Message[]) {
       For simple questions like "how many tables are there" or "what is the schema", provide a direct answer.
       Focus on providing clear, concise information without visualizations.
       
-      Return JSON format.` 
-      : // Default analysis prompt
-      `You are a data analyst that provides detailed analysis based on data queries. Return results in this strict JSON format:
+      Return JSON format.`
+        : // Default analysis prompt
+          `You are a data analyst that provides detailed analysis based on data queries. Return results in this strict JSON format:
       {
         "summary": string,
         "details": string[],
@@ -105,55 +107,58 @@ export const researcher = async function researcher(messages: Message[]) {
       
       Provide a comprehensive analysis of the data, including key insights and trends.
       
-      Return JSON format.`
+      Return JSON format.`,
   };
 
   try {
     // Use standard OpenAI client instead of Instructor for now
     const fallbackResponse = await grokClient.chat.completions.create({
-      model: 'grok-2-latest',
+      model: "grok-2-latest",
       messages: [systemPrompt, ...messages],
-      response_format: { type: 'json_object' },
-      temperature: 0.3
+      response_format: { type: "json_object" },
+      temperature: 0.3,
     });
-    
+
     return fallbackResponse.choices[0].message.content;
   } catch (error) {
     console.error("Error in researcher agent:", error);
-    
+
     // Return a simple error response in the expected format
     return JSON.stringify({
       type: isVisualizationRequest ? "visualization" : "analysis",
       content: {
         title: "Error",
         summary: "Error processing your request",
-        details: ["There was an error processing your request. Please try again."],
-        metrics: {}
+        details: [
+          "There was an error processing your request. Please try again.",
+        ],
+        metrics: {},
       },
-      ...(isVisualizationRequest ? {
-        visualization: {
-          chartType: "bar",
-          data: [
-            { label: "Error", value: 0 }
-          ],
-          config: {
-            title: "Error Visualization",
-            description: "An error occurred while generating the visualization",
-            xAxis: {
-              label: "",
-              type: "category"
+      ...(isVisualizationRequest
+        ? {
+            visualization: {
+              chartType: "bar",
+              data: [{ label: "Error", value: 0 }],
+              config: {
+                title: "Error Visualization",
+                description:
+                  "An error occurred while generating the visualization",
+                xAxis: {
+                  label: "",
+                  type: "category",
+                },
+                yAxis: {
+                  label: "",
+                  type: "number",
+                },
+                legend: {
+                  display: false,
+                },
+                stacked: false,
+              },
             },
-            yAxis: {
-              label: "",
-              type: "number"
-            },
-            legend: {
-              display: false
-            },
-            stacked: false
           }
-        }
-      } : {})
+        : {}),
     });
   }
 };

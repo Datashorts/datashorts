@@ -1,6 +1,6 @@
-import { grokClient } from '@/app/lib/clients';
-import { executeSQLQuery } from '@/app/lib/db/executeQuery';
-import { generateSQLQuery } from '@/app/actions/pipeline2Query';
+import { grokClient } from "@/app/lib/clients";
+import { executeSQLQuery } from "@/app/lib/db/executeQuery";
+import { generateSQLQuery } from "@/app/actions/pipeline2Query";
 
 interface SchemaTable {
   tableName: string;
@@ -25,24 +25,24 @@ interface ResearcherResponse {
   queryResult?: QueryResult;
 }
 
-type Message = 
-  | { role: 'system'; content: string }
-  | { role: 'user'; content: string }
-  | { role: 'assistant'; content: string }
-  | { role: 'function'; content: string; name: string };
+type Message =
+  | { role: "system"; content: string }
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string }
+  | { role: "function"; content: string; name: string };
 
 export async function researcher(
   userQuery: string,
   reconstructedSchema: SchemaTable[],
   connectionId: string
 ): Promise<ResearcherResponse> {
-  console.log('\n=== Researcher Agent Started ===');
-  console.log('User Query:', userQuery);
-  console.log('Connection ID:', connectionId);
-  console.log('Schema Tables:', JSON.stringify(reconstructedSchema, null, 2));
+  console.log("\n=== Researcher Agent Started ===");
+  console.log("User Query:", userQuery);
+  console.log("Connection ID:", connectionId);
+  console.log("Schema Tables:", JSON.stringify(reconstructedSchema, null, 2));
 
   const systemPrompt: Message = {
-    role: 'system',
+    role: "system",
     content: `You are a data analyst that provides direct answers to data queries. Return results in this strict JSON format:
 {
   "summary": string,    // A concise summary of the analysis
@@ -82,79 +82,86 @@ Consider the provided database schema and query results when making your analysi
 - Consider data relationships
 - Look for patterns and trends
 
-Return JSON format.`
+Return JSON format.`,
   };
 
   try {
-    console.log('\n--- Generating SQL Query ---');
+    console.log("\n--- Generating SQL Query ---");
     const sqlQuery = await generateSQLQuery(reconstructedSchema, userQuery);
-    console.log('Generated SQL Query:', sqlQuery);
+    console.log("Generated SQL Query:", sqlQuery);
 
-    console.log('\n--- Executing SQL Query ---');
+    console.log("\n--- Executing SQL Query ---");
     const queryResult = await executeSQLQuery(connectionId, sqlQuery);
-    console.log('SQL Query Execution Result:', JSON.stringify(queryResult, null, 2));
+    console.log(
+      "SQL Query Execution Result:",
+      JSON.stringify(queryResult, null, 2)
+    );
 
     if (!queryResult.success) {
-      console.error('SQL Query Execution Failed:', queryResult.error);
-      throw new Error(queryResult.error || 'Failed to execute SQL query');
+      console.error("SQL Query Execution Failed:", queryResult.error);
+      throw new Error(queryResult.error || "Failed to execute SQL query");
     }
 
-    console.log('\n--- Preparing Analysis Prompt ---');
+    console.log("\n--- Preparing Analysis Prompt ---");
     const prompt = `User Query: ${userQuery}
 
 Database Schema:
-${reconstructedSchema.map(table => `
+${reconstructedSchema
+  .map(
+    (table) => `
 Table: "${table.tableName}"
 Columns: ${table.columns}
-`).join('\n')}
+`
+  )
+  .join("\n")}
 
 Query Results:
 ${JSON.stringify(queryResult, null, 2)}`;
 
-    console.log('\n--- Sending to Grok for Analysis ---');
+    console.log("\n--- Sending to Grok for Analysis ---");
     const response = await grokClient.chat.completions.create({
-      model: 'grok-2-latest',
+      model: "grok-2-latest",
       messages: [
         systemPrompt,
         {
           role: "user",
-          content: prompt
-        }
+          content: prompt,
+        },
       ],
       temperature: 0.1,
-      response_format: { type: "json_object" }
+      response_format: { type: "json_object" },
     });
 
-    console.log('\n--- Processing Grok Response ---');
+    console.log("\n--- Processing Grok Response ---");
     const content = response.choices[0].message.content;
     if (!content) {
-      throw new Error('No content in response');
+      throw new Error("No content in response");
     }
     const result = JSON.parse(content);
-    console.log('Analysis Result:', JSON.stringify(result, null, 2));
+    console.log("Analysis Result:", JSON.stringify(result, null, 2));
 
     const finalResponse = {
       ...result,
       sqlQuery,
-      queryResult
+      queryResult,
     } as ResearcherResponse;
 
-    console.log('\n=== Researcher Agent Completed ===');
-    console.log('Final Response:', JSON.stringify(finalResponse, null, 2));
+    console.log("\n=== Researcher Agent Completed ===");
+    console.log("Final Response:", JSON.stringify(finalResponse, null, 2));
 
     return finalResponse;
   } catch (error) {
-    console.error('\n=== Researcher Agent Error ===');
-    console.error('Error Details:', error);
+    console.error("\n=== Researcher Agent Error ===");
+    console.error("Error Details:", error);
     // Return a basic response in case of error
     const errorResponse = {
-      summary: 'Unable to complete analysis due to an error',
-      details: ['Please try rephrasing your query or try again later'],
+      summary: "Unable to complete analysis due to an error",
+      details: ["Please try rephrasing your query or try again later"],
       metrics: {
-        error: 'Analysis failed'
-      }
+        error: "Analysis failed",
+      },
     };
-    console.log('Error Response:', JSON.stringify(errorResponse, null, 2));
+    console.log("Error Response:", JSON.stringify(errorResponse, null, 2));
     return errorResponse;
   }
-} 
+}

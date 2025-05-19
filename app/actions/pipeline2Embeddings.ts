@@ -1,12 +1,12 @@
-'use server'
+"use server";
 
-import { index as pinecone } from '@/app/lib/pinecone';
-import { chunkTableData } from '@/lib/utils/tokenManagement';
-import OpenAI from 'openai';
-import { getPool } from '@/app/lib/db/pool';
-import { db } from '@/configs/db';
-import { dbConnections } from '@/configs/schema';
-import { eq } from 'drizzle-orm';
+import { index as pinecone } from "@/app/lib/pinecone";
+import { chunkTableData } from "@/lib/utils/tokenManagement";
+import OpenAI from "openai";
+import { getPool } from "@/app/lib/db/pool";
+import { db } from "@/configs/db";
+import { dbConnections } from "@/configs/schema";
+import { eq } from "drizzle-orm";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -22,13 +22,13 @@ async function generatePipeline2Embeddings(text: string) {
     const response = await openai.embeddings.create({
       model: "text-embedding-ada-002",
       input: text,
-      encoding_format: "float"
+      encoding_format: "float",
     });
 
     return response.data[0].embedding;
   } catch (error) {
-    console.error('Error generating embeddings:', error);
-    throw new Error('Failed to generate embeddings');
+    console.error("Error generating embeddings:", error);
+    throw new Error("Failed to generate embeddings");
   }
 }
 
@@ -44,47 +44,49 @@ export async function processPipeline2Embeddings(data: {
   postgresUrl: string;
 }) {
   try {
-    console.log('Processing schema for pipeline 2 embeddings:', data);
-    
+    console.log("Processing schema for pipeline 2 embeddings:", data);
 
     const pool = getPool(data.id, data.postgresUrl);
-    console.log('Created pool for connection:', data.id);
+    console.log("Created pool for connection:", data.id);
 
-
-    await db.update(dbConnections)
+    await db
+      .update(dbConnections)
       .set({
-        tableSchema: JSON.stringify(Object.entries(data.schema).map(([tableName, columns]) => ({
-          tableName,
-          columns
-        })))
+        tableSchema: JSON.stringify(
+          Object.entries(data.schema).map(([tableName, columns]) => ({
+            tableName,
+            columns,
+          }))
+        ),
       })
       .where(eq(dbConnections.id, Number(data.id)));
-    
 
-    const schemaEntries = Object.entries(data.schema).map(([tableName, columns]) => {
-      const columnDescriptions = columns.map(col => {
-        const columnName = col.column_name || col.name;
-        const dataType = col.data_type || col.type;
-        return `${columnName} (${dataType})`;
-      }).join(', ');
+    const schemaEntries = Object.entries(data.schema).map(
+      ([tableName, columns]) => {
+        const columnDescriptions = columns
+          .map((col) => {
+            const columnName = col.column_name || col.name;
+            const dataType = col.data_type || col.type;
+            return `${columnName} (${dataType})`;
+          })
+          .join(", ");
 
+        const textVariations = [
+          `Table ${tableName} contains the following columns: ${columnDescriptions}`,
+          `The ${tableName} table has columns: ${columnDescriptions}`,
+          `${tableName} table with columns: ${columnDescriptions}`,
+          `Database table ${tableName} containing: ${columnDescriptions}`,
+        ];
 
-      const textVariations = [
-        `Table ${tableName} contains the following columns: ${columnDescriptions}`,
-        `The ${tableName} table has columns: ${columnDescriptions}`,
-        `${tableName} table with columns: ${columnDescriptions}`,
-        `Database table ${tableName} containing: ${columnDescriptions}`
-      ];
+        return {
+          tableName,
+          textVariations,
+          columns: columnDescriptions,
+        };
+      }
+    );
 
-      return {
-        tableName,
-        textVariations,
-        columns: columnDescriptions
-      };
-    });
-
-    console.log('Processed schema entries:', schemaEntries);
-
+    console.log("Processed schema entries:", schemaEntries);
 
     const embeddingPromises = schemaEntries.flatMap(async (entry) => {
       const embeddings = await Promise.all(
@@ -100,9 +102,9 @@ export async function processPipeline2Embeddings(data: {
               tableName: entry.tableName,
               text: text,
               columns: entry.columns,
-              pipeline: 'pipeline2',
-              type: 'schema'
-            }
+              pipeline: "pipeline2",
+              type: "schema",
+            },
           };
         })
       );
@@ -112,15 +114,16 @@ export async function processPipeline2Embeddings(data: {
     const allEmbeddings = await Promise.all(embeddingPromises);
     const flattenedEmbeddings = allEmbeddings.flat();
 
-    console.log(`Generated ${flattenedEmbeddings.length} embeddings for ${schemaEntries.length} tables`);
-
+    console.log(
+      `Generated ${flattenedEmbeddings.length} embeddings for ${schemaEntries.length} tables`
+    );
 
     await pinecone.upsert(flattenedEmbeddings);
-    console.log('Successfully stored embeddings in Pinecone');
+    console.log("Successfully stored embeddings in Pinecone");
 
     return true;
   } catch (error) {
-    console.error('Error processing pipeline 2 embeddings:', error);
+    console.error("Error processing pipeline 2 embeddings:", error);
     throw error;
   }
-} 
+}

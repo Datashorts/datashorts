@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useUser } from '@clerk/nextjs'
 import { getChatHistory, toggleBookmark } from '@/app/actions/chat'
-import ChatMessage from '@/app/_components/chat/ChatMessage'
 import { Bookmark, Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import GridLayout from 'react-grid-layout'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
+import BookmarkMessage from '@/app/_components/chat/BookmarkMessage'
 
 interface BookmarkedChat {
   id: string
@@ -214,6 +214,10 @@ export default function DashboardPage() {
                   <div className="absolute left-1/2 top-2 -translate-x-1/2 w-16 h-1 rounded-full bg-blue-500/30"></div>
                 </div>
 
+                <div className="resize-handle absolute bottom-0 right-0 w-4 h-4 cursor-se-resize opacity-0 hover:opacity-100 transition-opacity">
+                  <div className="absolute bottom-1 right-1 w-2 h-2 border-b-2 border-r-2 border-blue-500/30"></div>
+                </div>
+
                 <Button
                   variant="ghost"
                   size="sm"
@@ -226,21 +230,16 @@ export default function DashboardPage() {
                 <div className="flex flex-col h-full overflow-hidden space-y-4 pt-4">
                   <div className="flex-1 overflow-y-auto pr-2">
                     <div className="bg-blue-500/10 border border-blue-500/20 px-4 py-3 rounded-lg">
-                      <ChatMessage
-                        message={chat.message}
-                        response={{}}
-                        isUser
-                        isLoading={false}
+                      <BookmarkMessage
+                        response={{ message: chat.message }}
+                        isUser={true}
                       />
                     </div>
                     
                     <div className="mt-4 bg-[#0a0a0a] border border-blue-500/10 px-4 py-3 rounded-lg">
-                      <ChatMessage
-                        message=""
+                      <BookmarkMessage
                         response={chat.response}
                         isUser={false}
-                        onOptionClick={() => {}}
-                        onSubmitResponse={() => {}}
                       />
                     </div>
                   </div>

@@ -196,6 +196,7 @@ Consider the following when generating the query:
       max_tokens: 150
     });
 
+    
     if (!response.choices?.[0]?.message?.content) {
       throw new Error('No response content from OpenAI');
     }
