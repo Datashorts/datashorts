@@ -32,10 +32,10 @@ export default function ChatPage() {
   ])
 
   useEffect(() => {
-    // Set the active connection based on the chat ID
+
     setActiveConnection(chatId)
     
-    // Load folders if user is authenticated
+
     if (user) {
       loadFolders(user.id)
     }
@@ -44,7 +44,7 @@ export default function ChatPage() {
   const handleSendMessage = () => {
     if (!input.trim()) return;
     
-    // Create new user message
+
     const userMessage: Message = {
       id: Date.now().toString(),
       content: input,
@@ -56,7 +56,7 @@ export default function ChatPage() {
     setInput('');
     setIsLoading(true);
     
-    // Simulate AI response
+
     setTimeout(() => {
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -70,7 +70,7 @@ export default function ChatPage() {
     }, 1500);
   };
 
-  // Handle Enter key
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();

@@ -53,7 +53,7 @@ const ResearcherResponse: React.FC<ResearcherResponseProps> = ({
 }) => {
   if (!content) return null;
 
-  // Use the visualization prop if provided, otherwise use content.visualization
+
   const displayVisualization = visualization || content.visualization;
 
   return (

@@ -342,7 +342,6 @@ export async function getChatHistory(connectionId: string | number) {
       return [];
     }
     
-
     if (!chatHistory[0].conversation || !Array.isArray(chatHistory[0].conversation)) {
       console.log('Conversation is not an array or is missing:', chatHistory[0].conversation);
       return [];
@@ -361,7 +360,8 @@ export async function getChatHistory(connectionId: string | number) {
             agentOutput: parsedResponse.agentOutput
           },
           timestamp: chat.timestamp,
-          connectionId
+          connectionId,
+          bookmarked: chat.bookmarked || false
         };
       } catch (error) {
         console.error(`Error parsing response for chat item ${index}:`, error);
@@ -373,7 +373,8 @@ export async function getChatHistory(connectionId: string | number) {
             agentOutput: 'Error parsing response'
           },
           timestamp: chat.timestamp || new Date().toISOString(),
-          connectionId
+          connectionId,
+          bookmarked: chat.bookmarked || false
         };
       }
     });
@@ -387,7 +388,7 @@ export async function submitChat(userQuery: string, url: string) {
   console.log('Submitting chat with query:', userQuery);
   console.log('URL:', url);
   
-  // Extract connection ID and name from URL
+
   const urlParts = url.split('/');
   const connectionId = urlParts[urlParts.length - 2];
   const connectionName = urlParts[urlParts.length - 1]; 
@@ -395,7 +396,7 @@ export async function submitChat(userQuery: string, url: string) {
   console.log(`Extracted connection ID: ${connectionId}, connection name: ${connectionName}`);
   
   try {
-    // Get the connection details directly from the database
+
     const connectionDetails = await db
       .select()
       .from(dbConnections)
@@ -947,5 +948,51 @@ function formatDatabaseContext(context: {
   }
   
   return formattedContext;
+}
+
+export async function toggleBookmark(connectionId: string | number, messageIndex: number) {
+  try {
+    console.log(`Toggling bookmark for connection ID: ${connectionId}, message index: ${messageIndex}`);
+    
+    const existingChats = await db
+      .select()
+      .from(chats)
+      .where(eq(chats.connectionId, Number(connectionId)));
+    
+    if (existingChats.length === 0) {
+      console.log('No chat found for this connection');
+      return false;
+    }
+
+    const existingChat = existingChats[0];
+    const conversation = existingChat.conversation as Array<{
+      message: string;
+      response: string;
+      timestamp: string;
+      bookmarked?: boolean;
+    }>;
+
+    if (messageIndex >= conversation.length) {
+      console.log('Message index out of bounds');
+      return false;
+    }
+
+    // Toggle the bookmark status
+    conversation[messageIndex].bookmarked = !conversation[messageIndex].bookmarked;
+    
+    await db
+      .update(chats)
+      .set({
+        conversation,
+        updatedAt: new Date()
+      })
+      .where(eq(chats.id, existingChat.id));
+    
+    console.log(`Bookmark toggled for message ${messageIndex}`);
+    return conversation[messageIndex].bookmarked;
+  } catch (error) {
+    console.error('Error toggling bookmark:', error);
+    return false;
+  }
 }
   

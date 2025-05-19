@@ -5,10 +5,11 @@ import { useParams, useRouter } from 'next/navigation'
 import { useFoldersStore } from '@/app/store/useFoldersStore'
 import Sidebar from '@/app/_components/chat/Sidebar'
 import { useUser } from '@clerk/nextjs'
-import { submitChat, getChatHistory } from '@/app/actions/chat'
+import { submitChat, getChatHistory, toggleBookmark } from '@/app/actions/chat'
 import ChatMessage from '@/app/_components/chat/ChatMessage'
 import { Button } from '@/components/ui/button'
-import { Copy, RefreshCw } from 'lucide-react'
+import { Copy, RefreshCw, Bookmark } from 'lucide-react'
+import Link from 'next/link'
 
 interface ChatMessageProps {
   message: string | {
@@ -40,9 +41,7 @@ interface ChatMessageProps {
 }
 
 export default function ChatWithDbPage() {
-  /* ──────────────────────────────────────────────────────────
-     STATE
-  ────────────────────────────────────────────────────────── */
+ 
   const params = useParams()
   const { user }         = useUser()
   const { setActiveConnection, loadFolders, folders } = useFoldersStore()
@@ -61,9 +60,7 @@ export default function ChatWithDbPage() {
 
   const chatRef = useRef<HTMLDivElement>(null)
 
-  /* ──────────────────────────────────────────────────────────
-     LIFECYCLE
-  ────────────────────────────────────────────────────────── */
+  
   useEffect(() => {
     if (user) loadFolders(user.id)
   }, [user, loadFolders])
@@ -182,6 +179,17 @@ export default function ChatWithDbPage() {
     }
   }
 
+  const handleBookmarkToggle = async (index: number) => {
+    try {
+      const newBookmarkStatus = await toggleBookmark(connectionId, index);
+      setChatHistory(prev => prev.map((chat, idx) => 
+        idx === index ? { ...chat, bookmarked: newBookmarkStatus } : chat
+      ));
+    } catch (error) {
+      console.error('Error toggling bookmark:', error);
+    }
+  };
+
   /* ──────────────────────────────────────────────────────────
      RENDER
   ────────────────────────────────────────────────────────── */
@@ -205,6 +213,14 @@ export default function ChatWithDbPage() {
             <h1 className="text-lg sm:text-xl font-semibold">Chat with <span className="text-blue-400">{dbName}</span></h1>
 
             <div className="flex gap-2">
+              <Link 
+                href={`/chats/${connectionId}/${dbName}/dashboard`}
+                className="px-3 py-1.5 rounded-lg border border-blue-400/30 hover:bg-blue-500/10 text-sm flex items-center gap-1"
+              >
+                <Bookmark className="h-4 w-4" />
+                Bookmarks
+              </Link>
+
               <Button variant="outline" size="sm" onClick={copyUrl}
                 className="border-blue-400/30 hover:bg-blue-500/10">
                 <Copy className="h-4 w-4 mr-1" />
@@ -219,6 +235,7 @@ export default function ChatWithDbPage() {
             </div>
           </div>
         </header>
+
 
         {/* ─── CHAT BODY ─────────────────────────── */}
         <section
@@ -243,7 +260,13 @@ export default function ChatWithDbPage() {
 
                 {/* bot bubble */}
                 {chat.response && (
-                  <div className="bg-[#111214]/80 border border-blue-500/20 px-4 py-3 rounded-2xl rounded-tl-none shadow-lg">
+                  <div className="bg-[#111214]/80 border border-blue-500/20 px-4 py-3 rounded-2xl rounded-tl-none shadow-lg relative">
+                    <div 
+                      className="absolute top-3 right-3 text-blue-400 hover:text-blue-300 cursor-pointer transition-colors"
+                      onClick={() => handleBookmarkToggle(idx)}
+                    >
+                      <Bookmark size={18} className={chat.bookmarked ? "fill-current" : ""} />
+                    </div>
                     <ChatMessage
                       message=""
                       response={chat.response}

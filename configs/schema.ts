@@ -5,7 +5,12 @@ export const chats = pgTable('chats', {
   id: serial('id').primaryKey(),
   userId: text('user_id').references(() => users.clerk_id),
   connectionId: integer('connection_id').references(() => dbConnections.id),
-  conversation: json('conversation').notNull(),
+  conversation: json('conversation').notNull().$type<Array<{
+    message: string;
+    response: string;
+    timestamp: string;
+    bookmarked?: boolean;
+  }>>(),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });

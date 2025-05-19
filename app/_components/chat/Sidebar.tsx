@@ -54,7 +54,7 @@ export default function Sidebar() {
   const [isCreateConnectionModalOpen, setIsCreateConnectionModalOpen] = useState(false)
   const [selectedFolderForConnection, setSelectedFolderForConnection] = useState<number | null>(null)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-  const [selectedPipeline, setSelectedPipeline] = useState<'pipeline 1' | 'pipeline 2'>('pipeline 1')
+  const [selectedPipeline, setSelectedPipeline] = useState<'pipeline 1' | 'pipeline 2'>('pipeline 2')
   const [newConnection, setNewConnection] = useState<Connection>({
     id: '',
     name: '',
@@ -555,7 +555,7 @@ export default function Sidebar() {
               <div className="bg-gray-900 p-4 rounded-lg">
                 <p className="text-gray-400 text-sm mb-3">Select Pipeline:</p>
                 <div className="grid grid-cols-2 gap-3">
-                  <Button
+                  {/* <Button
                     variant={selectedPipeline === 'pipeline 1' ? 'default' : 'outline'}
                     onClick={() => setSelectedPipeline('pipeline 1')}
                     className={selectedPipeline === 'pipeline 1' 
@@ -564,7 +564,7 @@ export default function Sidebar() {
                     }
                   >
                     pipeline 1
-                  </Button>
+                  </Button> */}
                   <Button
                     variant={selectedPipeline === 'pipeline 2' ? 'default' : 'outline'}
                     onClick={() => setSelectedPipeline('pipeline 2')}

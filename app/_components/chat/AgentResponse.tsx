@@ -3,25 +3,25 @@ import VisualizationRenderer from '@/components/VisualizationRenderer'
 import ResearcherResponse from './ResearcherResponse'
 import PieChart from '@/components/PieChart'
 import BarChart from '@/components/BarChart'
+import { Bookmark } from 'lucide-react'
 
 interface AgentResponseProps {
   agentType: string
   agentOutput: any
-  onOptionClick?: (opt: string) => void        // kept for forward-compat
+  onOptionClick?: (opt: string) => void        
   userQuery?: string
-  onUserQueryChange?: (v: string) => void      // kept for forward-compat
+  onUserQueryChange?: (v: string) => void      
   onSubmitResponse?: (v: string) => void
 }
 
-/* ──────────────────────────────────────────────────────────
-   Enhanced Card component with gradient border option
-─────────────────────────────────────────────────────────── */
+
 const Card: React.FC<{
   title?: string
   children: React.ReactNode
   gradient?: boolean
   className?: string
-}> = ({ title, children, gradient = false, className = '' }) => (
+  showBookmark?: boolean
+}> = ({ title, children, gradient = false, className = '', showBookmark = false }) => (
   <div 
     className={`relative bg-gradient-to-b from-[#151619] to-[#0d0e10] rounded-lg p-5 space-y-3 
                 shadow-lg ${gradient ? 'border border-blue-500/20' : 'shadow-blue-500/10'} 
@@ -29,6 +29,11 @@ const Card: React.FC<{
   >
     {gradient && (
       <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-blue-500/5 to-purple-500/5 pointer-events-none" />
+    )}
+    {showBookmark && (
+      <div className="absolute top-3 right-3 text-blue-400 hover:text-blue-300 cursor-pointer transition-colors">
+        <Bookmark size={18} />
+      </div>
     )}
     {title && (
       <h3 className="text-lg font-medium text-gray-100 flex items-center">
@@ -40,9 +45,7 @@ const Card: React.FC<{
   </div>
 )
 
-/* ──────────────────────────────────────────────────────────
-   Enhanced Button component
-─────────────────────────────────────────────────────────── */
+
 const Button: React.FC<{
   children: React.ReactNode
   onClick?: () => void
@@ -93,9 +96,7 @@ const Button: React.FC<{
   )
 }
 
-/* ──────────────────────────────────────────────────────────
-   Metric Card component
-─────────────────────────────────────────────────────────── */
+
 const MetricCard: React.FC<{
   label: string
   value: string | number
@@ -111,19 +112,19 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
   agentOutput,
   onSubmitResponse,
 }) => {
-  /* generic local state (used mostly by inquire/multi) */
+
   const [selected, setSelected] = useState<string>('')
   const [custom, setCustom] = useState<string>('')
-  const [expand, setExpand] = useState<boolean>(false)   // for "Show More" in pipeline2
+  const [expand, setExpand] = useState<boolean>(false)   
 
   const submitEnabled = selected !== '' || custom.trim() !== ''
   const choose = (opt: string) => { setSelected(opt); setCustom('') }
   const type = (v: string) => { setCustom(v); setSelected('') }
   const submit = () => onSubmitResponse?.(selected || custom)
 
-  /* ───────────────────── agent switches ───────────────────── */
+
   switch (agentType) {
-    /* ───────────── 1. MULTI (pipeline) ───────────── */
+
     case 'multi':
       return (
         <div className="space-y-6">

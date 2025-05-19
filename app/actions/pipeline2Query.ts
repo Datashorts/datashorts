@@ -202,7 +202,7 @@ Consider the following when generating the query:
 
     let sqlQuery = response.choices[0].message.content.trim();
     
-    // Validate and enhance the generated query
+
     const queryValidation = {
       hasJoins: sqlQuery.toLowerCase().includes('join'),
       hasWhere: sqlQuery.toLowerCase().includes('where'),
@@ -212,18 +212,18 @@ Consider the following when generating the query:
       )
     };
 
-    // If the query is missing necessary joins based on the schema relationships
+
     if (!queryValidation.hasJoins && queryValidation.mentionedTables.length > 1) {
       const tables = queryValidation.mentionedTables;
       const relationships = [];
       
-      // Find relationships between mentioned tables
+
       for (let i = 0; i < tables.length; i++) {
         for (let j = i + 1; j < tables.length; j++) {
           const table1 = schemaAnalysis[tables[i]];
           const table2 = schemaAnalysis[tables[j]];
           
-          // Check direct relationships
+
           const directRelationship = table1.foreignKeys.find(fk => 
             fk.referencesTable === tables[j]
           ) || table2.foreignKeys.find(fk => 
@@ -240,7 +240,7 @@ Consider the following when generating the query:
         }
       }
       
-      // Add necessary joins
+
       if (relationships.length > 0) {
         const baseTable = relationships[0].table1;
         let joinClause = `FROM "${baseTable}"`;
@@ -306,10 +306,10 @@ export async function processPipeline2Query(query: string, connectionId: string)
     const queryEmbedding = await generateQueryEmbeddings(query);
     console.log('Generated query embeddings, length:', queryEmbedding.length);
 
-    // Get all relevant tables for the query
+
     const queryResponse = await pinecone.query({
       vector: queryEmbedding,
-      topK: 10, // Increased from 5 to get more context
+      topK: 10, 
       filter: {
         connectionId: connectionId,
         pipeline: 'pipeline2',
@@ -335,7 +335,7 @@ export async function processPipeline2Query(query: string, connectionId: string)
       };
     }
 
-    // Enhanced table matching logic
+
     const tableMatches = new Map();
     queryResponse.matches.forEach(match => {
       console.log('Processing match:', match);
@@ -347,20 +347,20 @@ export async function processPipeline2Query(query: string, connectionId: string)
 
       let relevanceScore = match.score || 0;
       
-      // Boost score for tables mentioned in the query
+
       if (query.toLowerCase().includes(String(tableName).toLowerCase())) {
         relevanceScore += 0.2;
         console.log(`Boosted score for table ${tableName} due to name match`);
       }
 
-      // Boost score for tables with relationships to other matched tables
+
       const columns = String(match.metadata?.columns || '');
       const columnMatches = columns.toLowerCase().split(',').filter(col => {
         const colName = col.split('(')[0].trim().toLowerCase();
         return query.toLowerCase().includes(colName) || 
-               colName.includes('id') || // Foreign key columns
-               colName.includes('user') || // User-related columns
-               colName.includes('post'); // Post-related columns
+               colName.includes('id') || 
+               colName.includes('user') || 
+               colName.includes('post'); 
       });
 
       if (columnMatches.length > 0) {
@@ -368,7 +368,7 @@ export async function processPipeline2Query(query: string, connectionId: string)
         console.log(`Boosted score for table ${tableName} due to column matches:`, columnMatches);
       }
 
-      // Store the best match for each table
+
       if (!tableMatches.has(tableName) || relevanceScore > tableMatches.get(tableName).score) {
         tableMatches.set(tableName, {
           tableName,
@@ -384,7 +384,7 @@ export async function processPipeline2Query(query: string, connectionId: string)
 
     console.log('Final reconstructed schema:', reconstructedSchema);
 
-    // Determine whether to route to researcher or visualizer
+
     const taskResult = await taskManager(query, reconstructedSchema);
     console.log('Task manager result:', taskResult);
 
@@ -392,7 +392,7 @@ export async function processPipeline2Query(query: string, connectionId: string)
     if (taskResult.next === 'researcher') {
       analysisResult = await researcher(query, reconstructedSchema, connectionId);
       
-      // Enhance the analysis result with more context
+
       if (analysisResult && analysisResult.queryResult && analysisResult.queryResult.rows) {
         const rows = analysisResult.queryResult.rows;
         if (rows.length === 0) {
@@ -416,31 +416,31 @@ export async function processPipeline2Query(query: string, connectionId: string)
     const tablesUsed = reconstructedSchema.map(table => table.tableName);
     const chatEntry = {
       message: query,
-      response: {
+      response: JSON.stringify({
         taskResult,
         analysisResult,
         tablesUsed,
         timestamp: new Date().toISOString()
-      }
+      }),
+      timestamp: new Date().toISOString()
     };
 
     const existingChats = await db
       .select()
       .from(chats)
-      .where(eq(chats.connectionId, parseInt(connectionId)));
+      .where(eq(chats.connectionId, Number(connectionId)));
 
     if (existingChats.length > 0) {
       const existingChat = existingChats[0];
-      type ChatEntry = {
+
+      const conversation = ((existingChat.conversation as unknown) as Array<{
         message: string;
-        response: {
-          taskResult: any;
-          analysisResult: any;
-          tablesUsed: string[];
-          timestamp: string;
-        };
-      };
-      const conversation = (existingChat.conversation as ChatEntry[]) || [];
+        response: string;
+        timestamp: string;
+        bookmarked?: boolean;
+      }>) || [];
+      
+
       conversation.push(chatEntry);
       
       await db
@@ -453,7 +453,7 @@ export async function processPipeline2Query(query: string, connectionId: string)
     } else {
       await db.insert(chats).values({
         userId: user.id,
-        connectionId: parseInt(connectionId),
+        connectionId: parseInt(String(connectionId)),
         conversation: [chatEntry],
         createdAt: new Date(),
         updatedAt: new Date()
