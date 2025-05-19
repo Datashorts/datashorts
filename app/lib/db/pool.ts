@@ -3,6 +3,18 @@ import { Pool } from 'pg';
 // Map to store pools for different connections
 const connectionPools = new Map<string, Pool>();
 
+// Map to store last used timestamp for each pool
+const poolLastUsed = new Map<string, number>();
+
+// Maximum number of pools to keep active
+const MAX_ACTIVE_POOLS = 10;
+
+// Pool cleanup interval (5 minutes)
+const POOL_CLEANUP_INTERVAL = 5 * 60 * 1000;
+
+// Pool idle timeout (10 minutes)
+const POOL_IDLE_TIMEOUT = 10 * 60 * 1000;
+
 /**
  * Get or create a pool for a specific connection
  * @param connectionId The database connection ID
@@ -10,11 +22,17 @@ const connectionPools = new Map<string, Pool>();
  * @returns The pool instance
  */
 export function getPool(connectionId: string, connectionString: string): Pool {
+  // Update last used timestamp
+  poolLastUsed.set(connectionId, Date.now());
 
   if (connectionPools.has(connectionId)) {
     return connectionPools.get(connectionId)!;
   }
 
+  // If we have too many active pools, clean up the oldest ones
+  if (connectionPools.size >= MAX_ACTIVE_POOLS) {
+    cleanupOldPools();
+  }
 
   const pool = new Pool({
     connectionString,
@@ -34,10 +52,33 @@ export function getPool(connectionId: string, connectionString: string): Pool {
     console.error('Unexpected error on idle client', err);
     // Remove pool from map on error
     connectionPools.delete(connectionId);
+    poolLastUsed.delete(connectionId);
   });
 
   return pool;
 }
+
+/**
+ * Clean up old pools that haven't been used recently
+ */
+function cleanupOldPools() {
+  const now = Date.now();
+  for (const [connectionId, lastUsed] of poolLastUsed.entries()) {
+    if (now - lastUsed > POOL_IDLE_TIMEOUT) {
+      const pool = connectionPools.get(connectionId);
+      if (pool) {
+        pool.end().catch(err => {
+          console.error('Error closing pool:', err);
+        });
+      }
+      connectionPools.delete(connectionId);
+      poolLastUsed.delete(connectionId);
+    }
+  }
+}
+
+// Start periodic cleanup
+setInterval(cleanupOldPools, POOL_CLEANUP_INTERVAL);
 
 /**
  * Close a specific connection pool
@@ -48,6 +89,7 @@ export async function closePool(connectionId: string) {
   if (pool) {
     await pool.end();
     connectionPools.delete(connectionId);
+    poolLastUsed.delete(connectionId);
   }
 }
 
@@ -58,6 +100,7 @@ export async function closeAllPools() {
   const closePromises = Array.from(connectionPools.values()).map(pool => pool.end());
   await Promise.all(closePromises);
   connectionPools.clear();
+  poolLastUsed.clear();
 }
 
 /**
@@ -66,5 +109,10 @@ export async function closeAllPools() {
  * @returns The pool instance or undefined if not found
  */
 export function getExistingPool(connectionId: string): Pool | undefined {
-  return connectionPools.get(connectionId);
+  const pool = connectionPools.get(connectionId);
+  if (pool) {
+    // Update last used timestamp
+    poolLastUsed.set(connectionId, Date.now());
+  }
+  return pool;
 } 

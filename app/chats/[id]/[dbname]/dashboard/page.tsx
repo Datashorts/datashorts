@@ -240,6 +240,7 @@ export default function DashboardPage() {
                       <BookmarkMessage
                         response={chat.response}
                         isUser={false}
+                        connectionId={connectionId}
                       />
                     </div>
                   </div>
