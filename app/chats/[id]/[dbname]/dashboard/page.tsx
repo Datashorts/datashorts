@@ -5,70 +5,11 @@ import { useParams } from 'next/navigation'
 import { useUser } from '@clerk/nextjs'
 import { getChatHistory, toggleBookmark } from '@/app/actions/chat'
 import ChatMessage from '@/app/_components/chat/ChatMessage'
-import { Bookmark, X } from 'lucide-react'
+import { Bookmark, Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ResizableBox } from 'react-resizable'
+import GridLayout from 'react-grid-layout'
+import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
-
-
-const styles = `
-  .react-resizable {
-    position: relative;
-  }
-  .react-resizable-handle {
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    background-color: rgba(59, 130, 246, 0.1);
-    border: 1px solid rgba(59, 130, 246, 0.3);
-    border-radius: 4px;
-    z-index: 10;
-  }
-  .react-resizable-handle-se {
-    bottom: -10px;
-    right: -10px;
-    cursor: se-resize;
-  }
-  .react-resizable-handle-sw {
-    bottom: -10px;
-    left: -10px;
-    cursor: sw-resize;
-  }
-  .react-resizable-handle-ne {
-    top: -10px;
-    right: -10px;
-    cursor: ne-resize;
-  }
-  .react-resizable-handle-nw {
-    top: -10px;
-    left: -10px;
-    cursor: nw-resize;
-  }
-  .react-resizable-handle-s {
-    bottom: -10px;
-    left: 50%;
-    transform: translateX(-50%);
-    cursor: s-resize;
-  }
-  .react-resizable-handle-n {
-    top: -10px;
-    left: 50%;
-    transform: translateX(-50%);
-    cursor: n-resize;
-  }
-  .react-resizable-handle-e {
-    right: -10px;
-    top: 50%;
-    transform: translateY(-50%);
-    cursor: e-resize;
-  }
-  .react-resizable-handle-w {
-    left: -10px;
-    top: 50%;
-    transform: translateY(-50%);
-    cursor: w-resize;
-  }
-`
 
 interface BookmarkedChat {
   id: string
@@ -76,57 +17,76 @@ interface BookmarkedChat {
   response: any
   timestamp: string
   bookmarked: boolean
-  index: number 
-  originalIndex: number 
+  originalIndex: number
+}
+
+interface LayoutItem {
+  i: string
+  x: number
+  y: number
+  w: number
+  h: number
+  static?: boolean
 }
 
 export default function DashboardPage() {
   const params = useParams()
   const { user } = useUser()
   const [bookmarkedChats, setBookmarkedChats] = useState<BookmarkedChat[]>([])
+  const [layout, setLayout] = useState<LayoutItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [boxSizes, setBoxSizes] = useState<{ [key: string]: { width: number; height: number } }>({})
+  const [gridWidth, setGridWidth] = useState(1200)
 
   const connectionId = params.id as string
   const dbName = params.dbname as string
 
-
-  const loadSavedSizes = () => {
+  const loadLayout = () => {
     try {
-      const savedSizes = localStorage.getItem(`bookmark-sizes-${connectionId}`)
-      if (savedSizes) {
-        return JSON.parse(savedSizes)
-      }
+      const savedLayout = localStorage.getItem(`bookmark-layout-${connectionId}`)
+      return savedLayout ? JSON.parse(savedLayout) : []
     } catch (error) {
-      console.error('Error loading saved sizes:', error)
+      console.error('Error loading layout:', error)
+      return []
     }
-    return {}
   }
 
-
-  const saveSizes = (sizes: { [key: string]: { width: number; height: number } }) => {
+  const saveLayout = (newLayout: LayoutItem[]) => {
     try {
-      localStorage.setItem(`bookmark-sizes-${connectionId}`, JSON.stringify(sizes))
+      localStorage.setItem(`bookmark-layout-${connectionId}`, JSON.stringify(newLayout))
     } catch (error) {
-      console.error('Error saving sizes:', error)
+      console.error('Error saving layout:', error)
     }
   }
 
   const fetchBookmarkedChats = async () => {
     try {
+      setIsLoading(true)
       const chatHistory = await getChatHistory(connectionId)
       const bookmarked = chatHistory
-        .map((chat, index) => ({ ...chat, index }))
         .filter(chat => chat.bookmarked)
+        .map((chat, index) => ({
+          ...chat,
+          originalIndex: chatHistory.findIndex(c => c.id === chat.id)
+        }))
+
       setBookmarkedChats(bookmarked)
+      const savedLayout = loadLayout()
 
+      const newLayout = bookmarked.map((chat, idx) => {
+        const existingLayout = savedLayout.find((item: LayoutItem) => item.i === chat.id)
+        if (existingLayout) return existingLayout
+        return {
+          i: chat.id,
+          x: (idx % 3) * 4,
+          y: Math.floor(idx / 3) * 4,
+          w: 4,
+          h: 4,
+          static: false
+        }
+      })
 
-      const savedSizes = loadSavedSizes()
-      const initialSizes = bookmarked.reduce((acc, chat) => ({
-        ...acc,
-        [chat.id]: savedSizes[chat.id] || { width: 400, height: 300 }
-      }), {})
-      setBoxSizes(initialSizes)
+      setLayout(newLayout)
+      saveLayout(newLayout)
     } catch (error) {
       console.error('Error fetching bookmarked chats:', error)
     } finally {
@@ -134,124 +94,171 @@ export default function DashboardPage() {
     }
   }
 
+  const updateGridWidth = () => {
+    setGridWidth(window.innerWidth - 80)
+  }
+
   useEffect(() => {
-    if (connectionId) {
-      fetchBookmarkedChats()
-    }
+    if (connectionId) fetchBookmarkedChats()
+    updateGridWidth()
+    window.addEventListener('resize', updateGridWidth)
+    return () => window.removeEventListener('resize', updateGridWidth)
   }, [connectionId])
 
-  const handleRemoveBookmark = async (index: number) => {
+  const handleRemoveBookmark = async (id: string) => {
     try {
-      const chatToRemove = bookmarkedChats.find(chat => chat.index === index);
-      if (!chatToRemove) return;
+      const chatToRemove = bookmarkedChats.find(chat => chat.id === id)
+      if (!chatToRemove) return
+      await toggleBookmark(connectionId, chatToRemove.originalIndex)
 
-      await toggleBookmark(connectionId, chatToRemove.originalIndex);
-      
-      setBookmarkedChats(prev => prev.filter(chat => chat.index !== index));
-      
+      const updatedChats = bookmarkedChats.filter(chat => chat.id !== id)
+      setBookmarkedChats(updatedChats)
 
-      const newSizes = { ...boxSizes }
-      delete newSizes[chatToRemove.id]
-      saveSizes(newSizes)
-      
-      await fetchBookmarkedChats();
+      const newLayout = layout.filter(item => item.i !== id)
+      setLayout(newLayout)
+      saveLayout(newLayout)
     } catch (error) {
-      console.error('Error removing bookmark:', error);
+      console.error('Error removing bookmark:', error)
     }
-  };
+  }
 
-  const handleResize = (id: string, size: { width: number; height: number }) => {
-    const newSizes = {
-      ...boxSizes,
-      [id]: size
-    }
-    setBoxSizes(newSizes)
-    saveSizes(newSizes)
+  const handleLayoutChange = (newLayout: LayoutItem[]) => {
+    const updatedLayout = newLayout.map(item => {
+      const existingItem = layout.find(existing => existing.i === item.i)
+      if (existingItem &&
+          (existingItem.x !== item.x ||
+           existingItem.y !== item.y ||
+           existingItem.w !== item.w ||
+           existingItem.h !== item.h)) {
+        return item
+      }
+      return existingItem || item
+    })
+
+    const validLayout = updatedLayout.filter(item =>
+      item && item.i &&
+      typeof item.x === 'number' &&
+      typeof item.y === 'number' &&
+      typeof item.w === 'number' &&
+      typeof item.h === 'number'
+    )
+
+    setLayout(validLayout)
+    saveLayout(validLayout)
   }
 
   if (!user) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#0a0a0a] text-gray-200">
-        <p className="text-xl font-semibold">Please sign in to continue.</p>
+        <p className="text-xl font-semibold flex items-center gap-2">
+          <Bookmark className="h-5 w-5 text-blue-400 animate-bounce" />
+          Please sign in to continue
+        </p>
       </div>
     )
   }
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#0a0a0a] text-gray-200">
-        <p className="text-xl font-semibold">Loading bookmarked items...</p>
+      <div className="flex h-screen items-center justify-center bg-[#0a0a0a]">
+        <Loader2 className="h-8 w-8 text-blue-400 animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-gray-200">
-      <style>{styles}</style>
-      <div className="max-w-[95%] mx-auto px-4 py-4">
-        <div className="flex items-center gap-2 mb-4">
-          <Bookmark className="h-5 w-5 text-blue-400" />
-          <h1 className="text-xl font-semibold">Bookmarked Items</h1>
-          <span className="text-xs text-gray-400">({dbName})</span>
+    <div className="min-h-screen bg-[#0a0a0a] text-gray-200 overflow-x-auto">
+      <div className="min-w-full max-w-[98%] mx-auto px-4 py-8">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <Bookmark className="h-6 w-6 text-blue-400" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Bookmarked Chats</h1>
+            <p className="text-sm text-gray-400 mt-1">{dbName}</p>
+          </div>
         </div>
 
         {bookmarkedChats.length === 0 ? (
-          <div className="text-center text-gray-400 py-4 text-sm">
-            No bookmarked items yet. Bookmark some questions to see them here!
+          <div className="text-center py-12 border-2 border-dashed border-blue-500/20 rounded-xl">
+            <p className="text-gray-400 mb-2">No bookmarked items found</p>
+            <p className="text-sm text-blue-400/60">Bookmark important chats to access them here</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {bookmarkedChats.map((chat) => (
-              <ResizableBox
+          <GridLayout
+            className="layout"
+            layout={layout}
+            onLayoutChange={handleLayoutChange}
+            cols={12}
+            rowHeight={30}
+            width={gridWidth}
+            margin={[20, 20]}
+            compactType={null}            // 💡 Disable auto compaction
+            preventCollision={true}       // 💡 Prevent pushing other cards
+            autoSize={true}
+            isDraggable={true}
+            isResizable={true}
+            useCSSTransforms={true}
+            verticalCompact={false}
+            draggableHandle=".drag-handle"
+            style={{
+              position: 'relative'
+            }}
+          >
+            {bookmarkedChats.map(chat => (
+              <div 
                 key={chat.id}
-                width={boxSizes[chat.id]?.width || 400}
-                height={boxSizes[chat.id]?.height || 300}
-                minConstraints={[200, 200]}
-                maxConstraints={[800, 600]}
-                onResizeStop={(e, { size }) => handleResize(chat.id, size)}
-                resizeHandles={['se', 'sw', 'ne', 'nw', 's', 'n', 'e', 'w']}
-                className="bg-[#111214]/80 border border-blue-500/20 rounded-lg p-4 relative hover:border-blue-500/40 transition-colors"
+                className="bg-[#111214]/90 border border-blue-500/20 rounded-xl p-4 relative group transition-all hover:border-blue-500/40"
               >
+                <div className="drag-handle absolute top-0 left-0 right-0 h-8 cursor-move opacity-0 hover:opacity-100 transition-opacity">
+                  <div className="absolute left-1/2 top-2 -translate-x-1/2 w-16 h-1 rounded-full bg-blue-500/30"></div>
+                </div>
+
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="absolute top-2 right-2 z-50 text-gray-400 hover:text-red-400 hover:bg-red-500/10 p-1"
-                  onClick={() => handleRemoveBookmark(chat.index)}
+                  className="absolute top-3 right-3 z-50 text-gray-400 hover:text-red-400 hover:bg-red-500/10 p-1.5 rounded-lg"
+                  onClick={() => handleRemoveBookmark(chat.id)}
                 >
                   <X className="h-4 w-4" />
                 </Button>
-                <div className="space-y-2 h-full overflow-y-auto">
-                  {/* Question */}
-                  <div className="bg-gradient-to-br from-blue-600/30 to-blue-600/10 border border-blue-500/30 px-3 py-2 rounded-lg rounded-tr-none text-sm">
-                    <ChatMessage
-                      message={chat.message}
-                      response={{}}
-                      isUser
-                      isLoading={false}
-                    />
+                
+                <div className="flex flex-col h-full overflow-hidden space-y-4 pt-4">
+                  <div className="flex-1 overflow-y-auto pr-2">
+                    <div className="bg-blue-500/10 border border-blue-500/20 px-4 py-3 rounded-lg">
+                      <ChatMessage
+                        message={chat.message}
+                        response={{}}
+                        isUser
+                        isLoading={false}
+                      />
+                    </div>
+                    
+                    <div className="mt-4 bg-[#0a0a0a] border border-blue-500/10 px-4 py-3 rounded-lg">
+                      <ChatMessage
+                        message=""
+                        response={chat.response}
+                        isUser={false}
+                        onOptionClick={() => {}}
+                        onSubmitResponse={() => {}}
+                      />
+                    </div>
                   </div>
 
-                  {/* Answer */}
-                  <div className="bg-[#111214]/80 border border-blue-500/20 px-3 py-2 rounded-lg rounded-tl-none text-sm">
-                    <ChatMessage
-                      message=""
-                      response={chat.response}
-                      isUser={false}
-                      onOptionClick={() => {}}
-                      onSubmitResponse={() => {}}
-                    />
-                  </div>
-
-                  {/* Timestamp */}
-                  <div className="text-xs text-gray-400">
-                    {new Date(chat.timestamp).toLocaleString()}
+                  <div className="pt-2 border-t border-blue-500/10">
+                    <p className="text-xs text-blue-400/60 text-right">
+                      {new Date(chat.timestamp).toLocaleString('en-US', {
+                        dateStyle: 'short',
+                        timeStyle: 'short'
+                      })}
+                    </p>
                   </div>
                 </div>
-              </ResizableBox>
+              </div>
             ))}
-          </div>
+          </GridLayout>
         )}
       </div>
     </div>
   )
-} 
+}
