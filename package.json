@@ -13,6 +13,9 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.13.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^5.0.1",
     "@liblab/sdk": "^0.1.373",
     "@neondatabase/serverless": "^1.0.0",

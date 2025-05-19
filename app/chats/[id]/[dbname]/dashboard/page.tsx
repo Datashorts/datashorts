@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { ResizableBox } from 'react-resizable'
 import 'react-resizable/css/styles.css'
 
-// Add custom styles for resize handles
+
 const styles = `
   .react-resizable {
     position: relative;
@@ -90,6 +90,28 @@ export default function DashboardPage() {
   const connectionId = params.id as string
   const dbName = params.dbname as string
 
+
+  const loadSavedSizes = () => {
+    try {
+      const savedSizes = localStorage.getItem(`bookmark-sizes-${connectionId}`)
+      if (savedSizes) {
+        return JSON.parse(savedSizes)
+      }
+    } catch (error) {
+      console.error('Error loading saved sizes:', error)
+    }
+    return {}
+  }
+
+
+  const saveSizes = (sizes: { [key: string]: { width: number; height: number } }) => {
+    try {
+      localStorage.setItem(`bookmark-sizes-${connectionId}`, JSON.stringify(sizes))
+    } catch (error) {
+      console.error('Error saving sizes:', error)
+    }
+  }
+
   const fetchBookmarkedChats = async () => {
     try {
       const chatHistory = await getChatHistory(connectionId)
@@ -97,10 +119,12 @@ export default function DashboardPage() {
         .map((chat, index) => ({ ...chat, index }))
         .filter(chat => chat.bookmarked)
       setBookmarkedChats(bookmarked)
-      // Initialize sizes for new chats
+
+
+      const savedSizes = loadSavedSizes()
       const initialSizes = bookmarked.reduce((acc, chat) => ({
         ...acc,
-        [chat.id]: { width: 400, height: 300 }
+        [chat.id]: savedSizes[chat.id] || { width: 400, height: 300 }
       }), {})
       setBoxSizes(initialSizes)
     } catch (error) {
@@ -125,6 +149,11 @@ export default function DashboardPage() {
       
       setBookmarkedChats(prev => prev.filter(chat => chat.index !== index));
       
+
+      const newSizes = { ...boxSizes }
+      delete newSizes[chatToRemove.id]
+      saveSizes(newSizes)
+      
       await fetchBookmarkedChats();
     } catch (error) {
       console.error('Error removing bookmark:', error);
@@ -132,10 +161,12 @@ export default function DashboardPage() {
   };
 
   const handleResize = (id: string, size: { width: number; height: number }) => {
-    setBoxSizes(prev => ({
-      ...prev,
+    const newSizes = {
+      ...boxSizes,
       [id]: size
-    }))
+    }
+    setBoxSizes(newSizes)
+    saveSizes(newSizes)
   }
 
   if (!user) {
