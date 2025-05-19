@@ -1,59 +1,34 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import Sidebar from '@/app/_components/chat/Sidebar'
 import { useUser } from '@clerk/nextjs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Database, BarChart3 } from 'lucide-react'
 import Link from 'next/link'
-
-interface Folder {
-  id: number
-  name: string
-  connections: {
-    id: string
-    name: string
-    type: 'postgres' | 'mongodb'
-  }[]
-}
+import { useFoldersStore } from '@/app/store/useFoldersStore'
 
 export default function StatsPage() {
   const { user } = useUser()
-  const [stats, setStats] = useState({ postgres: 0, mongodb: 0 })
-  const [folders, setFolders] = useState<Folder[]>([])
+  const { folders, loadFolders } = useFoldersStore()
 
   useEffect(() => {
-    const fetchStats = async () => {
-      if (!user) return
-
-      try {
-        const res = await fetch(`/api/connections?userId=${user.id}`)
-        const connections = await res.json()
-        const counts = {
-          postgres: connections.filter((conn: any) => conn.dbType === 'postgres').length,
-          mongodb: connections.filter((conn: any) => conn.dbType === 'mongodb').length
-        }
-        setStats(counts)
-      } catch (error) {
-        console.error('Error fetching stats:', error)
-      }
+    if (user) {
+      loadFolders(user.id)
     }
+  }, [user, loadFolders])
 
-    const fetchFolders = async () => {
-      if (!user) return
-
-      try {
-        const res = await fetch(`/api/folders-with-connections?userId=${user.id}`)
-        const data = await res.json()
-        setFolders(data)
-      } catch (error) {
-        console.error('Error fetching folders:', error)
-      }
-    }
-
-    fetchStats()
-    fetchFolders()
-  }, [user])
+  // Count connections reactively
+  const connectionCounts = folders.reduce(
+    (counts, folder) => {
+      folder.connections.forEach((conn) => {
+        if (conn.type === 'postgres') counts.postgres += 1
+        else if (conn.type === 'mongodb') counts.mongodb += 1
+      })
+      return counts
+    },
+    { postgres: 0, mongodb: 0 }
+  )
 
   if (!user) {
     return (
@@ -71,6 +46,8 @@ export default function StatsPage() {
       <Sidebar />
       <div className="flex-1 p-8 overflow-y-auto">
         <h1 className="text-2xl font-bold mb-8">Database Statistics</h1>
+
+        {/* Database Count Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
           <Card className="bg-[#1a1a1a] border-gray-800">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -78,7 +55,7 @@ export default function StatsPage() {
               <Database className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.postgres}</div>
+              <div className="text-2xl font-bold">{connectionCounts.postgres}</div>
             </CardContent>
           </Card>
 
@@ -88,12 +65,14 @@ export default function StatsPage() {
               <Database className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.mongodb}</div>
+              <div className="text-2xl font-bold">{connectionCounts.mongodb}</div>
             </CardContent>
           </Card>
         </div>
 
+        {/* Pinned Analytics Section */}
         <h2 className="text-xl font-semibold mb-4">📌 Pinned Analytics</h2>
+
         {folders.length === 0 ? (
           <div className="text-gray-400">No folders or connections found.</div>
         ) : (
