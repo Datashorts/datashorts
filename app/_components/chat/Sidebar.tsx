@@ -255,7 +255,7 @@ export default function Sidebar() {
   return (
     <TooltipProvider>
       <div className={`h-full bg-[#111] border-r border-gray-800 flex flex-col transition-all duration-300 ${isSidebarCollapsed ? 'w-16' : 'w-72'}`}>
-        <div className="flex justify-between items-center p-4 border-b border-gray-800">
+        <div className="flex justify-between items-center p-4 ">
           {!isSidebarCollapsed && (
             <h2 className="text-lg font-semibold bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent">
               Database Explorer
