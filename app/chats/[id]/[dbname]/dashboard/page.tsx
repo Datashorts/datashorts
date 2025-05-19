@@ -14,7 +14,8 @@ interface BookmarkedChat {
   response: any
   timestamp: string
   bookmarked: boolean
-  index: number // Add index to track position in original chat history
+  index: number 
+  originalIndex: number 
 }
 
 export default function DashboardPage() {
@@ -48,13 +49,22 @@ export default function DashboardPage() {
 
   const handleRemoveBookmark = async (index: number) => {
     try {
-      await toggleBookmark(connectionId, index)
-      // Remove the item from the local state
-      setBookmarkedChats(prev => prev.filter(chat => chat.index !== index))
+
+      const chatToRemove = bookmarkedChats.find(chat => chat.index === index);
+      if (!chatToRemove) return;
+
+
+      await toggleBookmark(connectionId, chatToRemove.originalIndex);
+      
+
+      setBookmarkedChats(prev => prev.filter(chat => chat.index !== index));
+      
+
+      await fetchBookmarkedChats();
     } catch (error) {
-      console.error('Error removing bookmark:', error)
+      console.error('Error removing bookmark:', error);
     }
-  }
+  };
 
   if (!user) {
     return (

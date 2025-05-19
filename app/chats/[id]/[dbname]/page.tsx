@@ -106,6 +106,40 @@ export default function ChatWithDbPage() {
     })()
   }, [connectionId])
 
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+
+        const refreshChatHistory = async () => {
+          try {
+            const hist = await getChatHistory(connectionId)
+            const uniqueMessages = new Map()
+            if (Array.isArray(hist)) {
+              hist.forEach(msg => {
+                if (msg.message) {
+                  if (!uniqueMessages.has(msg.message) || 
+                      (msg.response && Object.keys(msg.response).length > 0)) {
+                    uniqueMessages.set(msg.message, msg)
+                  }
+                }
+              })
+            }
+            setChatHistory(Array.from(uniqueMessages.values()))
+          } catch {
+            setChatHistory([])
+          }
+        }
+        refreshChatHistory()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [connectionId])
+
   // db url
   useEffect(() => {
     (async () => {
@@ -181,7 +215,13 @@ export default function ChatWithDbPage() {
 
   const handleBookmarkToggle = async (index: number) => {
     try {
-      const newBookmarkStatus = await toggleBookmark(connectionId, index);
+      // Get the actual chat entry at this index
+      const chatEntry = chatHistory[index];
+      if (!chatEntry || chatEntry.originalIndex === undefined) return;
+
+      const newBookmarkStatus = await toggleBookmark(connectionId, chatEntry.originalIndex);
+      
+      // Update the local state with the new bookmark status
       setChatHistory(prev => prev.map((chat, idx) => 
         idx === index ? { ...chat, bookmarked: newBookmarkStatus } : chat
       ));

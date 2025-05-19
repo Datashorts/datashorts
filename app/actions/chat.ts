@@ -349,35 +349,58 @@ export async function getChatHistory(connectionId: string | number) {
     
     console.log(`Processing ${chatHistory[0].conversation.length} conversation items`);
     
-    return chatHistory[0].conversation.map((chat, index) => {
-      try {
-        const parsedResponse = JSON.parse(chat.response);
-        return {
-          id: `${connectionId}-${index}`,
-          message: chat.message,
-          response: {
-            agentType: parsedResponse.agentType,
-            agentOutput: parsedResponse.agentOutput
-          },
-          timestamp: chat.timestamp,
-          connectionId,
-          bookmarked: chat.bookmarked || false
-        };
-      } catch (error) {
-        console.error(`Error parsing response for chat item ${index}:`, error);
-        return {
-          id: `${connectionId}-${index}`,
-          message: chat.message || '',
-          response: {
-            agentType: 'unknown',
-            agentOutput: 'Error parsing response'
-          },
-          timestamp: chat.timestamp || new Date().toISOString(),
-          connectionId,
-          bookmarked: chat.bookmarked || false
-        };
+    // Create a map to track unique messages while preserving indices
+    const uniqueMessages = new Map();
+    const originalConversation = chatHistory[0].conversation;
+    
+    originalConversation.forEach((chat, originalIndex) => {
+      if (chat.message) {
+        const key = chat.message;
+        // Only update if this message doesn't exist or if it has a response
+        if (!uniqueMessages.has(key) || 
+            (chat.response && Object.keys(chat.response).length > 0)) {
+          uniqueMessages.set(key, {
+            ...chat,
+            originalIndex // Store the original index
+          });
+        }
       }
     });
+    
+    // Convert map to array and sort by original index
+    return Array.from(uniqueMessages.values())
+      .sort((a, b) => a.originalIndex - b.originalIndex)
+      .map((chat, displayIndex) => {
+        try {
+          const parsedResponse = JSON.parse(chat.response);
+          return {
+            id: `${connectionId}-${displayIndex}`,
+            message: chat.message,
+            response: {
+              agentType: parsedResponse.agentType,
+              agentOutput: parsedResponse.agentOutput
+            },
+            timestamp: chat.timestamp,
+            connectionId,
+            bookmarked: chat.bookmarked || false,
+            originalIndex: chat.originalIndex // Keep the original index
+          };
+        } catch (error) {
+          console.error(`Error parsing response for chat item ${displayIndex}:`, error);
+          return {
+            id: `${connectionId}-${displayIndex}`,
+            message: chat.message || '',
+            response: {
+              agentType: 'unknown',
+              agentOutput: 'Error parsing response'
+            },
+            timestamp: chat.timestamp || new Date().toISOString(),
+            connectionId,
+            bookmarked: chat.bookmarked || false,
+            originalIndex: chat.originalIndex // Keep the original index
+          };
+        }
+      });
   } catch (error) {
     console.error('Error fetching chat history:', error);
     return [];
@@ -950,49 +973,43 @@ function formatDatabaseContext(context: {
   return formattedContext;
 }
 
-export async function toggleBookmark(connectionId: string | number, messageIndex: number) {
+export async function toggleBookmark(connectionId: string | number, index: number) {
   try {
-    console.log(`Toggling bookmark for connection ID: ${connectionId}, message index: ${messageIndex}`);
+    console.log(`Toggling bookmark for connection ID: ${connectionId}, index: ${index}`);
     
-    const existingChats = await db
+    // Get the current chat history
+    const chatHistory = await db
       .select()
       .from(chats)
-      .where(eq(chats.connectionId, Number(connectionId)));
+      .where(eq(chats.connectionId, Number(connectionId)))
+      .orderBy(chats.createdAt);
     
-    if (existingChats.length === 0) {
-      console.log('No chat found for this connection');
-      return false;
+    if (!chatHistory.length || !chatHistory[0].conversation) {
+      throw new Error('No chat history found');
     }
-
-    const existingChat = existingChats[0];
-    const conversation = existingChat.conversation as Array<{
-      message: string;
-      response: string;
-      timestamp: string;
-      bookmarked?: boolean;
-    }>;
-
-    if (messageIndex >= conversation.length) {
-      console.log('Message index out of bounds');
-      return false;
+    
+    const conversation = chatHistory[0].conversation;
+    if (index < 0 || index >= conversation.length) {
+      throw new Error('Invalid index');
     }
-
+    
     // Toggle the bookmark status
-    conversation[messageIndex].bookmarked = !conversation[messageIndex].bookmarked;
+    const newBookmarkStatus = !conversation[index].bookmarked;
+    conversation[index].bookmarked = newBookmarkStatus;
     
+    // Update the database
     await db
       .update(chats)
       .set({
         conversation,
         updatedAt: new Date()
       })
-      .where(eq(chats.id, existingChat.id));
+      .where(eq(chats.id, chatHistory[0].id));
     
-    console.log(`Bookmark toggled for message ${messageIndex}`);
-    return conversation[messageIndex].bookmarked;
+    return newBookmarkStatus;
   } catch (error) {
     console.error('Error toggling bookmark:', error);
-    return false;
+    throw error;
   }
 }
   
