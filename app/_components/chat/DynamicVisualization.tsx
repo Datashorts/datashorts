@@ -46,6 +46,11 @@ const REFRESH_OPTIONS = [
   { label: '5 minutes', value: 300000 },
 ];
 
+
+const getStorageKey = (connectionId: string, sqlQuery: string) => {
+  return `refresh_interval_${connectionId}_${sqlQuery}`;
+};
+
 const DynamicVisualization: React.FC<DynamicVisualizationProps> = ({
   visualization,
   connectionId,
@@ -55,7 +60,22 @@ const DynamicVisualization: React.FC<DynamicVisualizationProps> = ({
   const [currentVisualization, setCurrentVisualization] = useState(visualization);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedInterval, setSelectedInterval] = useState(refreshInterval);
+  
+  // Initialize selectedInterval from localStorage or default
+  const [selectedInterval, setSelectedInterval] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(getStorageKey(connectionId, sqlQuery));
+      return stored ? parseInt(stored, 10) : refreshInterval;
+    }
+    return refreshInterval;
+  });
+
+  // Update localStorage when interval changes
+  const handleIntervalChange = (value: string) => {
+    const newInterval = Number(value);
+    setSelectedInterval(newInterval);
+    localStorage.setItem(getStorageKey(connectionId, sqlQuery), newInterval.toString());
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -82,7 +102,6 @@ const DynamicVisualization: React.FC<DynamicVisualizationProps> = ({
           setError('No data available for visualization');
           return;
         }
-
 
         setCurrentVisualization(prev => ({
           ...prev,
@@ -145,7 +164,7 @@ const DynamicVisualization: React.FC<DynamicVisualizationProps> = ({
         <span className="text-sm text-gray-500">Refresh every:</span>
         <Select
           value={selectedInterval.toString()}
-          onValueChange={(value) => setSelectedInterval(Number(value))}
+          onValueChange={handleIntervalChange}
         >
           <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Select interval" />
