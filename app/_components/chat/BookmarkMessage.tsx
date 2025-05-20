@@ -45,7 +45,7 @@ const BookmarkMessage: React.FC<BookmarkMessageProps> = ({ response, isUser, con
                         visualization={analysisResult.visualization}
                         connectionId={connectionId || response.connectionId}
                         sqlQuery={analysisResult.sqlQuery}
-                        refreshInterval={10000} // 10 seconds refresh interval
+                        refreshInterval={5000} // Default to 5 seconds
                       />
                     ) : (
                       <VisualizationRenderer visualization={analysisResult.visualization} />

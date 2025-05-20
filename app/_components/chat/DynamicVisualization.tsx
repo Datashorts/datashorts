@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import VisualizationRenderer from '@/components/VisualizationRenderer';
 import { fetchVisualizationData } from '@/app/actions/fetchVisualizationData';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface DynamicVisualizationProps {
   visualization: {
@@ -36,6 +37,15 @@ interface DynamicVisualizationProps {
   refreshInterval?: number;
 }
 
+const REFRESH_OPTIONS = [
+  { label: '3 seconds', value: 3000 },
+  { label: '5 seconds', value: 5000 },
+  { label: '10 seconds', value: 10000 },
+  { label: '30 seconds', value: 30000 },
+  { label: '1 minute', value: 60000 },
+  { label: '5 minutes', value: 300000 },
+];
+
 const DynamicVisualization: React.FC<DynamicVisualizationProps> = ({
   visualization,
   connectionId,
@@ -45,6 +55,7 @@ const DynamicVisualization: React.FC<DynamicVisualizationProps> = ({
   const [currentVisualization, setCurrentVisualization] = useState(visualization);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedInterval, setSelectedInterval] = useState(refreshInterval);
 
   useEffect(() => {
     let isMounted = true;
@@ -72,7 +83,7 @@ const DynamicVisualization: React.FC<DynamicVisualizationProps> = ({
           return;
         }
 
-        // Update visualization with new data
+
         setCurrentVisualization(prev => ({
           ...prev,
           data: result.data
@@ -91,7 +102,7 @@ const DynamicVisualization: React.FC<DynamicVisualizationProps> = ({
 
     const startPolling = () => {
       fetchData();
-      timeoutId = setTimeout(startPolling, refreshInterval);
+      timeoutId = setTimeout(startPolling, selectedInterval);
     };
 
     startPolling();
@@ -102,7 +113,7 @@ const DynamicVisualization: React.FC<DynamicVisualizationProps> = ({
         clearTimeout(timeoutId);
       }
     };
-  }, [connectionId, sqlQuery, refreshInterval, visualization.chartType]);
+  }, [connectionId, sqlQuery, selectedInterval, visualization.chartType]);
 
   if (error) {
     return (
@@ -128,7 +139,29 @@ const DynamicVisualization: React.FC<DynamicVisualizationProps> = ({
     );
   }
 
-  return <VisualizationRenderer visualization={currentVisualization} />;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-end space-x-2">
+        <span className="text-sm text-gray-500">Refresh every:</span>
+        <Select
+          value={selectedInterval.toString()}
+          onValueChange={(value) => setSelectedInterval(Number(value))}
+        >
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Select interval" />
+          </SelectTrigger>
+          <SelectContent>
+            {REFRESH_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value.toString()}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <VisualizationRenderer visualization={currentVisualization} />
+    </div>
+  );
 };
 
 export default DynamicVisualization; 
