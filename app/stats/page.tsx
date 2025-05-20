@@ -77,30 +77,29 @@ export default function StatsPage() {
           <div className="text-gray-400">No folders or connections found.</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {folders.map((folder) => {
-              const firstConn = folder.connections[0]
-              return firstConn ? (
+            {folders.flatMap((folder) =>
+              folder.connections.map((conn) => (
                 <Link
-                  href={`/chats/${firstConn.id}/${encodeURIComponent(firstConn.name)}/dashboard`}
-                  key={folder.id}
+                  key={`${folder.id}-${conn.id}`}
+                  href={`/chats/${conn.id}/${encodeURIComponent(conn.name)}/dashboard`}
                   className="hover:scale-[1.02] transition-transform"
                 >
                   <Card className="bg-[#1a1a1a] border border-blue-900/20 hover:border-blue-500/30">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">
-                        {folder.name}
+                        {folder.name} – {conn.name}
                       </CardTitle>
                       <BarChart3 className="h-4 w-4 text-yellow-400" />
                     </CardHeader>
                     <CardContent>
                       <p className="text-gray-400 text-sm">
-                        {firstConn.name} ({firstConn.type})
+                        {conn.type === 'postgres' ? 'PostgreSQL' : 'MongoDB'} Connection
                       </p>
                     </CardContent>
                   </Card>
                 </Link>
-              ) : null
-            })}
+              ))
+            )}
           </div>
         )}
       </div>
