@@ -10,34 +10,66 @@ let pool: Pool | null = null;
 
 
 function getDbPool(connectionString: string): Pool {
-  if (!pool) {
-    const hasSSLParam = connectionString.includes('sslmode=');
-    let connectionOptions: any = {
-      connectionString,
-      statement_timeout: 30000,
-      query_timeout: 30000,
+
+  if (pool) {
+    pool.end().catch(err => console.error('Error closing previous pool:', err));
+    pool = null;
+  }
+  
+
+  const isLocalConnection = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
+  
+
+  let modifiedConnectionString = connectionString;
+  
+
+  if (modifiedConnectionString.startsWith('postgres://')) {
+    modifiedConnectionString = modifiedConnectionString.replace('postgres://', 'postgresql://');
+  }
+
+
+  let poolConfig: any = {
+    connectionString: modifiedConnectionString,
+    statement_timeout: 30000,
+    query_timeout: 30000,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  };
+  
+
+  if (isLocalConnection) {
+
+    poolConfig.ssl = false;
+
+    modifiedConnectionString = modifiedConnectionString.replace(/[?&]sslmode=[^&]+/, '');
+
+    modifiedConnectionString = modifiedConnectionString.includes('?')
+      ? `${modifiedConnectionString}&sslmode=disable`
+      : `${modifiedConnectionString}?sslmode=disable`;
+    console.log('Local connection detected, explicitly disabling SSL');
+  } else {
+
+    poolConfig.ssl = {
+      rejectUnauthorized: false
     };
 
-    if (!hasSSLParam) {
-      connectionOptions.connectionString = connectionString.includes('?')
-        ? `${connectionString}&sslmode=no-verify`
-        : `${connectionString}?sslmode=no-verify`;
-      connectionOptions.ssl = {
-        rejectUnauthorized: false,
-      };
+    if (!modifiedConnectionString.includes('sslmode=')) {
+      modifiedConnectionString = modifiedConnectionString.includes('?')
+        ? `${modifiedConnectionString}&sslmode=require`
+        : `${modifiedConnectionString}?sslmode=require`;
     }
-
-    pool = new Pool({
-      ...connectionOptions,
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
-    });
-
-    pool.on('error', (err) => {
-      console.error('Unexpected error on idle client', err);
-    });
   }
+  
+  poolConfig.connectionString = modifiedConnectionString;
+  
+  console.log(`Creating pool with connection string (password hidden): ${modifiedConnectionString.replace(/\/\/[^:]+:[^@]+@/, '//****:****@')}`);
+  
+  pool = new Pool(poolConfig);
+
+  pool.on('error', (err) => {
+    console.error('Unexpected error on idle client', err);
+  });
 
   return pool;
 }
@@ -105,101 +137,94 @@ export async function POST(request: NextRequest) {
       );
     }
 
-
-    pool = getDbPool(url);
-    console.log('Using database pool for connection...');
-
-
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
-
-    client = await pool.connect();
     try {
+      console.log('Creating database pool for connection...');
+      pool = getDbPool(url);
+      
+      console.log('Attempting to connect to database with modified connection string...');
+      client = await pool.connect();
+      
       console.log('Successfully acquired connection from pool');
       await client.query('SELECT NOW()');
-    } finally {
+      console.log('Test query executed successfully');
       client.release();
       console.log('Released client back to pool');
-    }
 
+      const schemaResult = await pool.query(`
+        SELECT 
+          t.table_name,
+          c.column_name,
+          c.data_type,
+          c.is_nullable,
+          c.column_default
+        FROM information_schema.tables t
+        LEFT JOIN information_schema.columns c ON t.table_name = c.table_name AND t.table_schema = c.table_schema
+        WHERE t.table_schema = 'public'
+        ORDER BY t.table_name, c.column_name
+      `);
 
-    const schemaResult = await pool.query(`
-      SELECT 
-        t.table_name,
-        c.column_name,
-        c.data_type,
-        c.is_nullable,
-        c.column_default
-      FROM information_schema.tables t
-      LEFT JOIN information_schema.columns c ON t.table_name = c.table_name
-      WHERE t.table_schema = 'public'
-      ORDER BY t.table_name, c.column_name
-    `);
+      const schemaData = schemaResult.rows;
+      console.log('Retrieved schema for', schemaData.length, 'columns');
 
-    const schemaData = schemaResult.rows;
-    console.log('Retrieved schema for', schemaData.length, 'columns');
-
-
-    const schemaByTable: { [key: string]: any[] } = {};
-    schemaData.forEach((row) => {
-      if (!schemaByTable[row.table_name]) {
-        schemaByTable[row.table_name] = [];
-      }
-      schemaByTable[row.table_name].push({
-        column_name: row.column_name,
-        data_type: row.data_type,
-        is_nullable: row.is_nullable,
-        column_default: row.column_default,
+      const schemaByTable: { [key: string]: any[] } = {};
+      schemaData.forEach((row) => {
+        if (!schemaByTable[row.table_name]) {
+          schemaByTable[row.table_name] = [];
+        }
+        schemaByTable[row.table_name].push({
+          column_name: row.column_name,
+          data_type: row.data_type,
+          is_nullable: row.is_nullable,
+          column_default: row.column_default,
+        });
       });
-    });
 
-
-    console.log('Saving connection information and schema to application database...');
-    const [newConnection] = await db.insert(dbConnections).values({
-      userId: user.id,
-      folderId: folderId,
-      connectionName: name,
-      postgresUrl: url,
-      dbType: type,
-      pipeline: 'pipeline2', 
-      tableSchema: JSON.stringify(
-        Object.entries(schemaByTable).map(([tableName, columns]) => ({
-          tableName,
-          columns,
-        }))
-      ),
-    }).returning();
-
-    console.log('Connection and schema saved successfully with ID:', newConnection.id);
-
-
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
-
-    return NextResponse.json({
-      success: true,
-      message: 'Connection established and schema stored successfully',
-      connection: {
-        id: newConnection.id,
-        name: name,
-        type: type,
+      console.log('Saving connection information and schema to application database...');
+      const [newConnection] = await db.insert(dbConnections).values({
+        userId: user.id,
         folderId: folderId,
-        url: url.replace(/\/\/[^:]+:[^@]+@/, '//****:****@'),
-      },
-      schema: schemaByTable,
-    });
+        connectionName: name,
+        postgresUrl: url,
+        dbType: type,
+        pipeline: 'pipeline2', 
+        tableSchema: JSON.stringify(
+          Object.entries(schemaByTable).map(([tableName, columns]) => ({
+            tableName,
+            columns,
+          }))
+        ),
+      }).returning();
+
+      console.log('Connection and schema saved successfully with ID:', newConnection.id);
+
+      return NextResponse.json({
+        success: true,
+        message: 'Connection established and schema stored successfully',
+        connection: {
+          id: newConnection.id,
+          name: name,
+          type: type,
+          folderId: folderId,
+          url: url.replace(/\/\/[^:]+:[^@]+@/, '//****:****@'),
+        },
+        schema: schemaByTable,
+      });
+    } finally {
+
+      if (pool) {
+        await pool.end().catch(err => console.error('Error closing pool:', err));
+      }
+    }
   } catch (error) {
-    console.error('Error:', error);
-
-
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+    console.error('Error connecting to database:', error);
 
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : 'An unknown error occurred',
-        code: error instanceof Error && 'code' in error ? error.code : undefined,
+        code: error instanceof Error && 'code' in error ? (error as any).code : undefined,
         details: 'Check that your PostgreSQL URL is correct and the server is accessible',
       },
       { status: 500 }
     );
   }
-} 
+}

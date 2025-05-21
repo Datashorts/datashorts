@@ -34,15 +34,42 @@ export function getPool(connectionId: string, connectionString: string): Pool {
     cleanupOldPools();
   }
 
-  const pool = new Pool({
-    connectionString,
-    ssl: {
+  const isLocalConnection = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
+  
+  let modifiedConnectionString = connectionString;
+  if (modifiedConnectionString.startsWith('postgres://')) {
+    modifiedConnectionString = modifiedConnectionString.replace('postgres://', 'postgresql://');
+  }
+
+  const poolConfig: any = {
+    connectionString: modifiedConnectionString,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
+  };
+
+  if (isLocalConnection) {
+    poolConfig.ssl = false;
+    modifiedConnectionString = modifiedConnectionString.replace(/[?&]sslmode=[^&]+/, '');
+    modifiedConnectionString = modifiedConnectionString.includes('?')
+      ? `${modifiedConnectionString}&sslmode=disable`
+      : `${modifiedConnectionString}?sslmode=disable`;
+    console.log('Local connection detected, explicitly disabling SSL');
+  } else {
+    poolConfig.ssl = {
       rejectUnauthorized: false
-    },
-    max: 20, // Maximum number of clients in the pool
-    idleTimeoutMillis: 30000, // How long a client is allowed to remain idle before being closed
-    connectionTimeoutMillis: 2000, // How long to wait for a connection
-  });
+    };
+    if (!modifiedConnectionString.includes('sslmode=')) {
+      modifiedConnectionString = modifiedConnectionString.includes('?')
+        ? `${modifiedConnectionString}&sslmode=require`
+        : `${modifiedConnectionString}?sslmode=require`;
+    }
+  }
+
+  poolConfig.connectionString = modifiedConnectionString;
+  console.log(`Creating pool with connection string (password hidden): ${modifiedConnectionString.replace(/\/\/[^:]+:[^@]+@/, '//****:****@')}`);
+
+  const pool = new Pool(poolConfig);
 
   // Store pool in map
   connectionPools.set(connectionId, pool);

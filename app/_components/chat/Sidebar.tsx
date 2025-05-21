@@ -22,6 +22,7 @@ import { useRouter } from 'next/navigation'
 import { useUser } from '@clerk/nextjs'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { embeddings } from '@/app/actions/chat'
 import { processPipeline2Embeddings } from '@/app/actions/pipeline2Embeddings'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -60,6 +61,14 @@ export default function Sidebar() {
     name: '',
     type: 'postgres',
     url: ''
+  })
+  const [isDirectUrl, setIsDirectUrl] = useState(true)
+  const [connectionDetails, setConnectionDetails] = useState({
+    host: '',
+    port: '',
+    database: '',
+    username: '',
+    password: ''
   })
 
   useEffect(() => {
@@ -116,6 +125,11 @@ export default function Sidebar() {
         useFoldersStore.setState({ isLoading: true })
         
         if (selectedPipeline === 'pipeline 2') {
+          let finalUrl = newConnection.url;
+          if (!isDirectUrl) {
+            finalUrl = `postgresql://${connectionDetails.username}:${connectionDetails.password}@${connectionDetails.host}:${connectionDetails.port}/${connectionDetails.database}?sslmode=no-verify`;
+          }
+
           const response = await fetch('/api/connectdb-persistent', {
             method: 'POST',
             headers: {
@@ -124,7 +138,7 @@ export default function Sidebar() {
             body: JSON.stringify({
               name: newConnection.name,
               type: newConnection.type,
-              url: newConnection.url,
+              url: finalUrl,
               folderId: selectedFolderForConnection
             })
           })
@@ -142,7 +156,7 @@ export default function Sidebar() {
               connectionName: data.connection.name,
               dbType: data.connection.type,
               schema: data.schema,
-              postgresUrl: newConnection.url
+              postgresUrl: finalUrl
             }
             
             processPipeline2Embeddings(formattedData).catch(error => {
@@ -151,7 +165,8 @@ export default function Sidebar() {
 
             const connectionWithId = {
               ...newConnection,
-              id: data.connection.id
+              id: data.connection.id,
+              url: finalUrl
             }
             
             addConnectionToFolder(selectedFolderForConnection, connectionWithId)
@@ -610,14 +625,97 @@ export default function Sidebar() {
                 
                 <div className="space-y-2">
                   <Label htmlFor="connection-url" className="text-gray-400">Connection URL</Label>
-                  <Input
-                    id="connection-url"
-                    placeholder="postgresql://username:password@host:port/database"
-                    value={newConnection.url}
-                    onChange={(e) => setNewConnection(prev => ({ ...prev, url: e.target.value }))}
-                    className="bg-[#1a1a1a] border-gray-800 text-white focus:border-blue-500 focus:ring-blue-500"
-                    disabled={isLoading}
-                  />
+                  {selectedPipeline === 'pipeline 2' && (
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Switch
+                        checked={isDirectUrl}
+                        onCheckedChange={setIsDirectUrl}
+                        className="data-[state=checked]:bg-blue-600"
+                      />
+                      <Label className="text-sm text-gray-400">
+                        {isDirectUrl ? 'Direct URL' : 'Connection Details'}
+                      </Label>
+                    </div>
+                  )}
+                  {selectedPipeline === 'pipeline 2' && !isDirectUrl ? (
+                    <div className="space-y-3">
+                      <Input
+                        placeholder="Host (e.g. localhost)"
+                        value={connectionDetails.host}
+                        onChange={(e) => {
+                          setConnectionDetails(prev => ({ ...prev, host: e.target.value }))
+                          setNewConnection(prev => ({
+                            ...prev,
+                            url: `postgresql://${connectionDetails.username}:${connectionDetails.password}@${e.target.value}:${connectionDetails.port}/${connectionDetails.database}`
+                          }))
+                        }}
+                        className="bg-[#1a1a1a] border-gray-800 text-white focus:border-blue-500 focus:ring-blue-500"
+                        disabled={isLoading}
+                      />
+                      <Input
+                        placeholder="Port (e.g. 5432)"
+                        value={connectionDetails.port}
+                        onChange={(e) => {
+                          setConnectionDetails(prev => ({ ...prev, port: e.target.value }))
+                          setNewConnection(prev => ({
+                            ...prev,
+                            url: `postgresql://${connectionDetails.username}:${connectionDetails.password}@${connectionDetails.host}:${e.target.value}/${connectionDetails.database}`
+                          }))
+                        }}
+                        className="bg-[#1a1a1a] border-gray-800 text-white focus:border-blue-500 focus:ring-blue-500"
+                        disabled={isLoading}
+                      />
+                      <Input
+                        placeholder="Database Name (e.g. techkareer)"
+                        value={connectionDetails.database}
+                        onChange={(e) => {
+                          setConnectionDetails(prev => ({ ...prev, database: e.target.value }))
+                          setNewConnection(prev => ({
+                            ...prev,
+                            url: `postgresql://${connectionDetails.username}:${connectionDetails.password}@${connectionDetails.host}:${connectionDetails.port}/${e.target.value}`
+                          }))
+                        }}
+                        className="bg-[#1a1a1a] border-gray-800 text-white focus:border-blue-500 focus:ring-blue-500"
+                        disabled={isLoading}
+                      />
+                      <Input
+                        placeholder="Username (e.g. postgres)"
+                        value={connectionDetails.username}
+                        onChange={(e) => {
+                          setConnectionDetails(prev => ({ ...prev, username: e.target.value }))
+                          setNewConnection(prev => ({
+                            ...prev,
+                            url: `postgresql://${e.target.value}:${connectionDetails.password}@${connectionDetails.host}:${connectionDetails.port}/${connectionDetails.database}`
+                          }))
+                        }}
+                        className="bg-[#1a1a1a] border-gray-800 text-white focus:border-blue-500 focus:ring-blue-500"
+                        disabled={isLoading}
+                      />
+                      <Input
+                        type="password"
+                        placeholder="Password (e.g. your_password)"
+                        value={connectionDetails.password}
+                        onChange={(e) => {
+                          setConnectionDetails(prev => ({ ...prev, password: e.target.value }))
+                          setNewConnection(prev => ({
+                            ...prev,
+                            url: `postgresql://${connectionDetails.username}:${e.target.value}@${connectionDetails.host}:${connectionDetails.port}/${connectionDetails.database}`
+                          }))
+                        }}
+                        className="bg-[#1a1a1a] border-gray-800 text-white focus:border-blue-500 focus:ring-blue-500"
+                        disabled={isLoading}
+                      />
+                    </div>
+                  ) : (
+                    <Input
+                      id="connection-url"
+                      placeholder="postgresql://username:password@host:port/database"
+                      value={newConnection.url}
+                      onChange={(e) => setNewConnection(prev => ({ ...prev, url: e.target.value }))}
+                      className="bg-[#1a1a1a] border-gray-800 text-white focus:border-blue-500 focus:ring-blue-500"
+                      disabled={isLoading}
+                    />
+                  )}
                 </div>
               </div>
             </div>

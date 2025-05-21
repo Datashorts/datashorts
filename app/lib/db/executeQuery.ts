@@ -11,9 +11,6 @@ import { getExistingPool, getPool } from '@/app/lib/db/pool';
  */
 export async function executeSQLQuery(connectionId: string, sqlQuery: string) {
   try {
-    // Set SSL verification to false for self-signed certificates
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
     const [connection] = await db
       .select()
       .from(dbConnections)
@@ -29,12 +26,8 @@ export async function executeSQLQuery(connectionId: string, sqlQuery: string) {
 
     let pool = getExistingPool(connectionId);
     if (!pool) {
-    // https://stackoverflow.com/questions/45088006/nodejs-error-self-signed-certificate-in-certificate-chain
       console.log('No existing pool found, creating new pool for connection:', connectionId);
-      const connectionUrl = connection.postgresUrl.includes('sslmode=') 
-        ? connection.postgresUrl 
-        : `${connection.postgresUrl}${connection.postgresUrl.includes('?') ? '&' : '?'}sslmode=no-verify`;
-      pool = getPool(connectionId, connectionUrl);
+      pool = getPool(connectionId, connection.postgresUrl);
     }
 
     const result = await pool.query(sqlQuery);
@@ -51,8 +44,5 @@ export async function executeSQLQuery(connectionId: string, sqlQuery: string) {
       success: false,
       error: error instanceof Error ? error.message : 'An unknown error occurred'
     };
-  } finally {
-    // Reset SSL verification
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
   }
 } 
