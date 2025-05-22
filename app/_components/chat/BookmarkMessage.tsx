@@ -121,7 +121,11 @@ const BookmarkMessage: React.FC<BookmarkMessageProps> = ({ response, isUser, con
                   {analysisResult.content.metrics && Object.keys(analysisResult.content.metrics).length > 0 && (
                     <div className="grid grid-cols-2 gap-4 mt-4">
                       {Object.entries(analysisResult.content.metrics).map(([key, value], index) => (
-                        <MetricCard key={index} label={key} value={value} />
+                        <MetricCard 
+                          key={index} 
+                          label={key} 
+                          value={typeof value === 'string' || typeof value === 'number' ? value : String(value)} 
+                        />
                       ))}
                     </div>
                   )}
