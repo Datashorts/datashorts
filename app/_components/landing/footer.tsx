@@ -44,7 +44,7 @@ export default function Footer() {
             <h3 className="font-semibold mb-4 text-white">Get in Touch</h3>
             <div className="space-y-3">
               <p className="text-gray-400">
-                📧 hello@datashorts.com
+                📧 datashorts15@gmail.com
               </p>
               <p className="text-gray-400">
                 💬 Questions? We'd love to help!

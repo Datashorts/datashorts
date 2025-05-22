@@ -128,15 +128,10 @@ export default function ContactForm() {
               <ContactInfoItem
                 icon={<Mail className="h-5 w-5" />}
                 title="Email Us"
-                description="hello@datashorts.com"
+                description="datashorts15@gmail.com"
                 subtitle="We typically respond within 2 hours"
               />
-              <ContactInfoItem
-                icon={<MessageSquare className="h-5 w-5" />}
-                title="Schedule a Demo"
-                description="Book a 15-minute walkthrough"
-                subtitle="See DataShorts in action with your data"
-              />
+              
             </div>
 
             <div className="pt-8">
@@ -144,7 +139,7 @@ export default function ContactForm() {
               <ul className="space-y-3">
                 <li className="flex items-center gap-3 text-gray-400">
                   <div className="w-2 h-2 bg-blue-500 rounded-full" />
-                  Quick response within 24 hours
+                  Quick response within 2 hours
                 </li>
                 <li className="flex items-center gap-3 text-gray-400">
                   <div className="w-2 h-2 bg-blue-500 rounded-full" />
