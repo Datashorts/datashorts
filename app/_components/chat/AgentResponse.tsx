@@ -1,9 +1,30 @@
 import React, { useState } from "react";
 import VisualizationRenderer from "@/components/VisualizationRenderer";
 import ResearcherResponse from "./ResearcherResponse";
+import PredictiveResponse from "./PredictiveResponse";
 import PieChart from "@/components/PieChart";
 import BarChart from "@/components/BarChart";
 import { Bookmark } from "lucide-react";
+
+// Helper function to safely format cell values
+function formatValue(value: any): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  
+  // Handle Date objects
+  if (value instanceof Date) {
+    return value.toLocaleString();
+  }
+  
+  // Handle objects by converting to JSON string
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  
+  // Return strings and numbers as is
+  return String(value);
+}
 
 interface AgentResponseProps {
   agentType: string;
@@ -108,7 +129,7 @@ const MetricCard: React.FC<{
 }> = ({ label, value }) => (
   <div className="bg-gradient-to-br from-[#1b1c1d] to-[#161718] p-3 rounded border border-blue-500/10 hover:border-blue-500/20 transition-colors duration-150">
     <p className="text-xs text-gray-400 capitalize mb-1">{label}</p>
-    <p className="font-medium text-gray-200">{String(value)}</p>
+    <p className="font-medium text-gray-200">{formatValue(value)}</p>
   </div>
 );
 
@@ -227,6 +248,16 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                     </div>
                   )}
                 </>
+              )}
+              
+              {/* predictive task */}
+              {task.agentType === "predictive" && (
+                <PredictiveResponse
+                  content={task.response.content}
+                  prediction={task.response.prediction}
+                  sqlQuery={task.response.sqlQuery}
+                  queryResult={task.response.queryResult}
+                />
               )}
             </Card>
           ))}
@@ -362,6 +393,17 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
       );
     }
 
+    /* ───────────── PREDICTIVE AGENT ───────────── */
+    case "predictive":
+      return (
+        <PredictiveResponse
+          content={agentOutput.content}
+          prediction={agentOutput.prediction}
+          sqlQuery={agentOutput.sqlQuery}
+          queryResult={agentOutput.queryResult}
+        />
+      );
+
     /* ───────────── 5. PIPELINE2 (detailed) ───────────── */
     case "pipeline2":
       return (
@@ -466,6 +508,14 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                     </div>
                   </Card>
                 </>
+              ) : agentOutput.taskResult?.next === "predictive" ? (
+                /* ---------- PREDICTIVE branch ---------- */
+                <PredictiveResponse
+                  content={agentOutput.analysisResult.content}
+                  prediction={agentOutput.analysisResult.prediction}
+                  sqlQuery={agentOutput.analysisResult.sqlQuery}
+                  queryResult={agentOutput.analysisResult.queryResult}
+                />
               ) : (
                 /* ---------- RESEARCHER branch ---------- */
                 <>
@@ -546,7 +596,8 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-blue-500/10">
-                              {agentOutput.analysisResult.queryResult.rows.map(
+                              {/* Limited to 10 rows */}
+                              {agentOutput.analysisResult.queryResult.rows.slice(0, 10).map(
                                 (row: any, i: number) => (
                                   <tr
                                     key={i}
@@ -558,12 +609,23 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                                           key={j}
                                           className="px-4 py-3 whitespace-nowrap text-gray-300"
                                         >
-                                          {val}
+                                          {formatValue(val)}
                                         </td>
                                       )
                                     )}
                                   </tr>
                                 )
+                              )}
+                              {/* Show 'more rows' message if there are more than 10 rows */}
+                              {agentOutput.analysisResult.queryResult.rows.length > 10 && (
+                                <tr>
+                                  <td 
+                                    colSpan={Object.keys(agentOutput.analysisResult.queryResult.rows[0]).length}
+                                    className="px-4 py-3 text-center text-gray-400 italic"
+                                  >
+                                    ... and {agentOutput.analysisResult.queryResult.rows.length - 10} more rows
+                                  </td>
+                                </tr>
                               )}
                             </tbody>
                           </table>

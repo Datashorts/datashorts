@@ -10,6 +10,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { taskManager } from '@/lib/agents2/taskManager';
 import { researcher } from '@/lib/agents2/researcher';
 import { visualizer } from '@/lib/agents2/visualizer';
+import predictive from '@/lib/agents2/predictive'; 
 
 
 const openai = new OpenAI({
@@ -410,6 +411,9 @@ export async function processPipeline2Query(query: string, connectionId: string)
         { role: 'user', content: query }
       ];
       analysisResult = await visualizer(messages, reconstructedSchema, connectionId);
+    } else if (taskResult.next === 'predictive') {
+      // Handle predictive agent
+      analysisResult = await predictive(query, reconstructedSchema, connectionId);
     } else {
       throw new Error('Invalid task manager result');
     }
@@ -486,4 +490,4 @@ export async function processPipeline2Query(query: string, connectionId: string)
       }
     };
   }
-} 
+}
