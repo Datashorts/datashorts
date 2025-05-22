@@ -56,8 +56,8 @@ export async function predictive(
   console.log("Connection ID:", connectionId);
   console.log("Schema Tables:", JSON.stringify(reconstructedSchema, null, 2));
 
-  const systemPrompt = {
-    role: "system",
+  const systemPrompt: { role: 'system'; content: string } = {
+    role: 'system',
     content: `You are a predictive analytics agent that generates predictions based on historical data using statistical methods.
 
 For the given query and database schema, you will:
