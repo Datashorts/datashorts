@@ -1,5 +1,21 @@
 import React from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { 
+  LineChart, 
+  Line, 
+  BarChart, 
+  Bar, 
+  ScatterChart, 
+  Scatter, 
+  PieChart, 
+  Pie, 
+  Cell,
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer 
+} from 'recharts';
 
 interface PredictiveResponseProps {
   content: {
@@ -14,10 +30,12 @@ interface PredictiveResponseProps {
       label: string;
       value: number;
       confidenceInterval?: { lower: number; upper: number };
+      color?: string;
     }>;
     config: {
       title: string;
       description: string;
+      chartType: "line" | "bar" | "scatter" | "pie";
       xAxis: {
         label: string;
         type: "category" | "time" | "linear";
@@ -48,48 +66,43 @@ function formatValue(value: any): string {
     return '';
   }
   
-  // Handle Date objects
   if (value instanceof Date) {
     return value.toLocaleString();
   }
   
-  // Handle objects by converting to JSON string
   if (typeof value === 'object') {
     return JSON.stringify(value);
   }
   
-  // Return strings and numbers as is
   return String(value);
 }
 
 // Helper function to safely process the data array for chart rendering
-function processChartData(data: any[]): any[] {
+function processChartData(data: any[], chartType: string): any[] {
   if (!Array.isArray(data)) return [];
   
-  return data.map(item => {
-    // Create a new object with processed values
+  return data.map((item, index) => {
     const processedItem: any = {};
     
-    // Process each property
     Object.keys(item).forEach(key => {
       const value = item[key];
       
-      // For nested objects like confidenceInterval
       if (key === 'confidenceInterval' && value) {
         processedItem.confidenceInterval = {
           lower: Number(value.lower) || 0,
           upper: Number(value.upper) || 0
         };
       } 
-      // Handle the label property
       else if (key === 'label') {
         processedItem.label = formatValue(value);
+        // For pie charts, we also need 'name' property
+        if (chartType === 'pie') {
+          processedItem.name = formatValue(value);
+        }
       }
-      // Handle the value property and ensure it's a number
       else if (key === 'value') {
         processedItem.value = Number(value) || 0;
       }
-      // Copy over any other properties
       else {
         processedItem[key] = value;
       }
@@ -99,14 +112,210 @@ function processChartData(data: any[]): any[] {
   });
 }
 
+// Custom tooltip for different chart types
+const CustomTooltip = ({ active, payload, label, chartType }: any) => {
+  if (!active || !payload?.length) return null;
+  
+  const data = payload[0].payload;
+  
+  return (
+    <div className="bg-[#333] p-3 border border-gray-700 rounded shadow-lg text-white">
+      <p className="font-bold text-lg">{label || data.name}</p>
+      <p className="text-blue-300">{`Value: ${formatValue(data.value)}`}</p>
+      {data.confidenceInterval && (
+        <>
+          <p className="text-green-300">{`Upper: ${formatValue(data.confidenceInterval.upper)}`}</p>
+          <p className="text-yellow-300">{`Lower: ${formatValue(data.confidenceInterval.lower)}`}</p>
+        </>
+      )}
+      {chartType === 'pie' && (
+        <p className="text-green-300">{`Percentage: ${((data.value / payload[0].payload.total) * 100).toFixed(1)}%`}</p>
+      )}
+    </div>
+  );
+};
+
+// Render different chart types
+const renderChart = (chartType: string, chartData: any[], prediction: PredictiveResponseProps['prediction']) => {
+  const colors = ['#4CAF50', '#2196F3', '#FFC107', '#F44336', '#9C27B0', '#00BCD4', '#FF9800', '#795548'];
+  
+  switch (chartType) {
+    case 'line':
+      return (
+        <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 25 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+          <XAxis 
+            dataKey="label" 
+            label={{ 
+              value: prediction.config.xAxis.label, 
+              position: 'bottom',
+              offset: 0,
+              fill: '#aaa'
+            }}
+            tick={{ fill: '#aaa' }}
+          />
+          <YAxis 
+            label={{ 
+              value: prediction.config.yAxis.label, 
+              angle: -90, 
+              position: 'left',
+              offset: -5,
+              fill: '#aaa'
+            }}
+            tick={{ fill: '#aaa' }}
+          />
+          <Tooltip 
+            content={(props) => <CustomTooltip {...props} chartType="line" />}
+          />
+          <Legend wrapperStyle={{ color: '#eee' }} />
+          <Line 
+            type="monotone" 
+            dataKey="value" 
+            stroke="#4dabf7" 
+            name="Predicted Value" 
+            strokeWidth={2}
+            dot={{ fill: '#4dabf7', strokeWidth: 0, r: 4 }}
+            activeDot={{ fill: '#4dabf7', stroke: '#fff', strokeWidth: 2, r: 6 }}
+          />
+          {chartData[0]?.confidenceInterval && (
+            <>
+              <Line 
+                type="monotone" 
+                dataKey="confidenceInterval.upper" 
+                stroke="#4dabf755" 
+                name="Upper Bound" 
+                strokeWidth={1}
+                strokeDasharray="5 5"
+                dot={false}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="confidenceInterval.lower" 
+                stroke="#4dabf755" 
+                name="Lower Bound" 
+                strokeWidth={1}
+                strokeDasharray="5 5"
+                dot={false}
+              />
+            </>
+          )}
+        </LineChart>
+      );
+      
+    case 'bar':
+      return (
+        <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 25 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+          <XAxis 
+            dataKey="label" 
+            label={{ 
+              value: prediction.config.xAxis.label, 
+              position: 'bottom',
+              offset: 0,
+              fill: '#aaa'
+            }}
+            tick={{ fill: '#aaa' }}
+          />
+          <YAxis 
+            label={{ 
+              value: prediction.config.yAxis.label, 
+              angle: -90, 
+              position: 'left',
+              offset: -5,
+              fill: '#aaa'
+            }}
+            tick={{ fill: '#aaa' }}
+          />
+          <Tooltip 
+            content={(props) => <CustomTooltip {...props} chartType="bar" />}
+          />
+          <Legend wrapperStyle={{ color: '#eee' }} />
+          <Bar dataKey="value" name="Predicted Value" radius={[4, 4, 0, 0]}>
+            {chartData.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color || colors[index % colors.length]} />
+            ))}
+          </Bar>
+        </BarChart>
+      );
+      
+    case 'scatter':
+      return (
+        <ScatterChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 25 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+          <XAxis 
+            dataKey="label" 
+            label={{ 
+              value: prediction.config.xAxis.label, 
+              position: 'bottom',
+              offset: 0,
+              fill: '#aaa'
+            }}
+            tick={{ fill: '#aaa' }}
+          />
+          <YAxis 
+            dataKey="value"
+            label={{ 
+              value: prediction.config.yAxis.label, 
+              angle: -90, 
+              position: 'left',
+              offset: -5,
+              fill: '#aaa'
+            }}
+            tick={{ fill: '#aaa' }}
+          />
+          <Tooltip 
+            content={(props) => <CustomTooltip {...props} chartType="scatter" />}
+          />
+          <Legend wrapperStyle={{ color: '#eee' }} />
+          <Scatter dataKey="value" fill="#4dabf7" name="Predicted Values" />
+        </ScatterChart>
+      );
+    
+    case 'pie':
+      // Calculate total for percentage calculation
+      const total = chartData.reduce((sum, item) => sum + item.value, 0);
+      const dataWithTotal = chartData.map(item => ({ ...item, total }));
+      
+      return (
+        <PieChart>
+          <Pie
+            data={dataWithTotal}
+            dataKey="value"
+            nameKey="name"
+            cx="50%"
+            cy="50%"
+            outerRadius={80}
+            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+          >
+            {chartData.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color || colors[index % colors.length]} />
+            ))}
+          </Pie>
+          <Tooltip 
+            content={(props) => <CustomTooltip {...props} chartType="pie" />}
+          />
+          <Legend wrapperStyle={{ color: '#eee' }} />
+        </PieChart>
+      );
+    
+    default:
+      return (
+        <div className="text-center text-gray-400 py-8">
+          Unsupported chart type: {chartType}
+        </div>
+      );
+  }
+};
+
 const PredictiveResponse: React.FC<PredictiveResponseProps> = ({ 
   content, 
   prediction,
   sqlQuery,
   queryResult
 }) => {
-  // Process the prediction data to ensure dates are properly formatted
-  const chartData = processChartData(prediction.data);
+  // Process the prediction data to ensure it's properly formatted
+  const chartData = processChartData(prediction.data, prediction.config.chartType);
+  const chartType = prediction.config.chartType || 'line';
   
   return (
     <div className="space-y-6">
@@ -132,73 +341,13 @@ const PredictiveResponse: React.FC<PredictiveResponseProps> = ({
         
         <div className="bg-[#222] p-4 rounded-lg h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 25 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-              <XAxis 
-                dataKey="label" 
-                label={{ 
-                  value: prediction.config.xAxis.label, 
-                  position: 'bottom',
-                  offset: 0,
-                  fill: '#aaa'
-                }}
-                tick={{ fill: '#aaa' }}
-              />
-              <YAxis 
-                label={{ 
-                  value: prediction.config.yAxis.label, 
-                  angle: -90, 
-                  position: 'left',
-                  offset: -5,
-                  fill: '#aaa'
-                }}
-                tick={{ fill: '#aaa' }}
-              />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#333', borderColor: '#555', color: '#eee' }}
-                labelStyle={{ color: '#eee' }}
-                itemStyle={{ color: '#4dabf7' }}
-                formatter={(value) => formatValue(value)}
-                labelFormatter={(label) => formatValue(label)}
-              />
-              <Legend wrapperStyle={{ color: '#eee' }} />
-              <Line 
-                type="monotone" 
-                dataKey="value" 
-                stroke="#4dabf7" 
-                name="Predicted Value" 
-                strokeWidth={2}
-                dot={{ fill: '#4dabf7', strokeWidth: 0, r: 4 }}
-                activeDot={{ fill: '#4dabf7', stroke: '#fff', strokeWidth: 2, r: 6 }}
-              />
-              {chartData[0]?.confidenceInterval && (
-                <>
-                  <Line 
-                    type="monotone" 
-                    dataKey="confidenceInterval.upper" 
-                    stroke="#4dabf755" 
-                    name="Upper Bound" 
-                    strokeWidth={1}
-                    strokeDasharray="5 5"
-                    dot={false}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="confidenceInterval.lower" 
-                    stroke="#4dabf755" 
-                    name="Lower Bound" 
-                    strokeWidth={1}
-                    strokeDasharray="5 5"
-                    dot={false}
-                  />
-                </>
-              )}
-            </LineChart>
+            {renderChart(chartType, chartData, prediction)}
           </ResponsiveContainer>
         </div>
         
-        <div className="mt-4 text-sm text-gray-400">
-          <span className="font-medium">Prediction Method:</span> {content.method}
+        <div className="mt-4 text-sm text-gray-400 flex justify-between">
+          <span><span className="font-medium">Prediction Method:</span> {content.method}</span>
+          <span><span className="font-medium">Chart Type:</span> {chartType.charAt(0).toUpperCase() + chartType.slice(1)}</span>
         </div>
       </div>
 
