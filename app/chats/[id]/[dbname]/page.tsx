@@ -57,6 +57,7 @@ export default function ChatWithDbPage() {
   const [copyOK,      setCopyOK]      = useState(false)
   const [dbUrl,       setDbUrl]       = useState('')
   const [isSyncing,   setIsSyncing]   = useState(false)
+  const [isPredictiveMode, setIsPredictiveMode] = useState(false)
 
   const chatRef = useRef<HTMLDivElement>(null)
 
@@ -175,7 +176,8 @@ export default function ChatWithDbPage() {
     setIsLoading(true)
 
     try {
-      const result = await submitChat(q, window.location.href)
+      // If predictive mode is enabled, force the task manager to use predictive agent
+      const result = await submitChat(q, window.location.href, isPredictiveMode)
       setChatHistory(h =>
         h
           .filter(m => m.id !== tempId)
@@ -328,15 +330,29 @@ export default function ChatWithDbPage() {
         {/* ─── INPUT BAR ─────────────────────────── */}
         <footer className="sticky bottom-0 backdrop-blur border-t border-blue-500/20 px-4 py-3">
           <div className="max-w-3xl mx-auto flex gap-3">
-            <textarea
-              rows={2}
-              className="flex-1 resize-none bg-[#0a0a0a]/80 border border-blue-500/20 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none placeholder-gray-400 scrollbar-thin scrollbar-thumb-blue-500/30"
-              placeholder="Ask something about your database…"
-              value={userQuery}
-              onChange={e => setUserQuery(e.target.value)}
-              onKeyDown={onKey}
-              disabled={isLoading}
-            />
+            <div className="flex-1 flex gap-2">
+              <textarea
+                rows={2}
+                className="flex-1 resize-none bg-[#0a0a0a]/80 border border-blue-500/20 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none placeholder-gray-400 scrollbar-thin scrollbar-thumb-blue-500/30"
+                placeholder="Ask something about your database…"
+                value={userQuery}
+                onChange={e => setUserQuery(e.target.value)}
+                onKeyDown={onKey}
+                disabled={isLoading}
+              />
+              <div className="flex flex-col justify-center">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={isPredictiveMode}
+                    onChange={(e) => setIsPredictiveMode(e.target.checked)}
+                  />
+                  <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  <span className="ml-2 text-sm font-medium text-gray-300">Predict</span>
+                </label>
+              </div>
+            </div>
 
             <button
               onClick={() => handleSend()}

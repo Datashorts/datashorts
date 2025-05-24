@@ -294,11 +294,13 @@ async function generateQueryEmbeddings(query: string) {
  * Process a query for pipeline 2
  * @param query The user's query
  * @param connectionId The database connection ID
+ * @param predictiveMode Whether to force predictive mode
  */
-export async function processPipeline2Query(query: string, connectionId: string) {
+export async function processPipeline2Query(query: string, connectionId: string, predictiveMode: boolean = false) {
   try {
     console.log('Processing Pipeline 2 query:', query);
     console.log('Connection ID:', connectionId);
+    console.log('Predictive Mode:', predictiveMode);
     
     const user = await currentUser();
     if (!user) {
@@ -386,15 +388,23 @@ export async function processPipeline2Query(query: string, connectionId: string)
 
     console.log('Final reconstructed schema:', reconstructedSchema);
 
-
-    const taskResult = await taskManager(query, reconstructedSchema);
+    let taskResult;
+    if (predictiveMode) {
+      console.log('Predictive mode enabled, forcing predictive agent');
+      taskResult = {
+        next: 'predictive',
+        reason: 'Predictive mode is enabled',
+        requiresMultiAgent: false
+      };
+    } else {
+      taskResult = await taskManager(query, reconstructedSchema);
+    }
     console.log('Task manager result:', taskResult);
 
     let analysisResult;
     if (taskResult.next === 'researcher') {
       analysisResult = await researcher(query, reconstructedSchema, connectionId);
       
-
       if (analysisResult && analysisResult.queryResult && analysisResult.queryResult.rows) {
         const rows = analysisResult.queryResult.rows;
         if (rows.length === 0) {
@@ -412,7 +422,7 @@ export async function processPipeline2Query(query: string, connectionId: string)
       ];
       analysisResult = await visualizer(messages, reconstructedSchema, connectionId);
     } else if (taskResult.next === 'predictive') {
-      // Handle predictive agent
+      console.log('Calling predictive agent with database context and user query');
       analysisResult = await predictive(query, reconstructedSchema, connectionId);
     } else {
       throw new Error('Invalid task manager result');

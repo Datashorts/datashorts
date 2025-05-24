@@ -13,6 +13,7 @@ import { researcher } from "@/lib/agents/researcher";
 import { visualiser } from "@/lib/agents/visualiser";
 import { executeTasks } from "@/lib/agents/orchestrator";
 import { processPipeline2Query } from "./pipeline2Query";
+import { predictive } from "@/lib/agents2/predictive";
 
 interface EmbeddingsData {
   id: string;
@@ -454,9 +455,10 @@ export async function getChatHistory(connectionId: string | number) {
   }
 }
 
-export async function submitChat(userQuery: string, url: string) {
+export async function submitChat(userQuery: string, url: string, predictiveMode: boolean = false) {
   console.log("Submitting chat with query:", userQuery);
   console.log("URL:", url);
+  console.log("Predictive Mode:", predictiveMode);
 
   const urlParts = url.split("/");
   const connectionId = urlParts[urlParts.length - 2];
@@ -485,7 +487,7 @@ export async function submitChat(userQuery: string, url: string) {
       console.log("Processing pipeline 2 query");
 
       // Process the query using pipeline 2 embeddings
-      const result = await processPipeline2Query(userQuery, connectionId);
+      const result = await processPipeline2Query(userQuery, connectionId, predictiveMode);
 
       // Store the chat in the database
       await storeChatInDatabase(
@@ -523,7 +525,7 @@ export async function submitChat(userQuery: string, url: string) {
       ...(msg.name && { name: msg.name }),
     }));
 
-    const taskAnalysis = await taskManager([
+    const taskResult = await taskManager([
       {
         role: "system",
         content:
@@ -533,9 +535,7 @@ export async function submitChat(userQuery: string, url: string) {
       { role: "user", content: userQuery },
     ]);
 
-    console.log("Task analysis:", taskAnalysis);
-
-    const taskResult = taskAnalysis;
+    console.log("Task analysis:", taskResult);
 
     // Get database context for all agent types
     const databaseContext = formatDatabaseContext(embeddingsResult.context);
