@@ -42,7 +42,7 @@ const features: Feature[] = [
     callout: 'Natural language meets database intelligence.',
     title: "Ask Anything, Get Agentic Responses",
     description:
-      'Ask questions like “how many?” and our smart agent guides you to clarity—automatically understanding intent and context across tables.',
+      'Ask questions ILIKE “how many?” and our smart agent guides you to clarity—automatically understanding intent and context across tables.',
     contentPosition: 'r',
     Icon: FiPlay,
     image: '/agentic.jpeg',
@@ -52,7 +52,7 @@ const features: Feature[] = [
     callout: 'From tables to charts—automatically.',
     title: 'Auto-Generated Visualizations',
     description:
-      'Whether it’s column distribution or schema stats, DataChat instantly transforms your query results into interactive visuals like pie charts.',
+      'Whether it’s column distribution or schema stats, DataChat instantly transforms your query results into interactive visuals ILIKE pie charts.',
     contentPosition: 'l',
     Icon: FiDollarSign,
     image: '/pie_chart.jpeg',

@@ -5,499 +5,358 @@ import { index as pinecone } from '@/app/lib/pinecone';
 import { db } from '@/configs/db';
 import { dbConnections, chats } from '@/configs/schema';
 import { eq } from 'drizzle-orm';
-import { getExistingPool, getPool } from '@/app/lib/db/pool';
+import { 
+  getExistingPool, 
+  getPool, 
+  getMySQLPool, 
+  getExistingMySQLPool 
+} from '@/app/lib/db/pool';
 import { currentUser } from '@clerk/nextjs/server';
 import { taskManager } from '@/lib/agents2/taskManager';
 import { researcher } from '@/lib/agents2/researcher';
 import { visualizer } from '@/lib/agents2/visualizer';
-import predictive from '@/lib/agents2/predictive'; 
-
+import predictive from '@/lib/agents2/predictive';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-/**
- * Execute SQL query on the database connection
- * @param connectionId The database connection ID
- * @param sqlQuery The SQL query to execute
- * @returns The query results
- */
-async function executeSQLQuery(connectionId: string, sqlQuery: string) {
+// Type definitions for better type safety
+type QueryResult = {
+  success: boolean;
+  rows?: any[];
+  rowCount?: number;
+  error?: string;
+  suggestion?: string;
+  errorCode?: string;
+};
+
+type SchemaMatch = {
+  tableName: string;
+  text: string;
+  columns: string;
+  score: number;
+};
+
+// Main pipeline processing function
+export async function processPipeline2Query(
+  query: string, 
+  connectionId: string, 
+  predictiveMode: boolean = false
+) {
   try {
-
-    const [connection] = await db
-      .select()
-      .from(dbConnections)
-      .where(eq(dbConnections.id, Number(connectionId)));
-
-    if (!connection) {
-      throw new Error('Connection not found');
-    }
-
-
-    let pool = getExistingPool(connectionId);
-    if (!pool) {
-      console.log('No existing pool found, creating new pool for connection:', connectionId);
-      if (!connection.postgresUrl) {
-        throw new Error('Database connection URL is missing');
-      }
-      pool = getPool(connectionId, connection.postgresUrl);
-    }
-
-
-    const result = await pool.query(sqlQuery);
-    console.log('Query executed successfully');
-
-    return {
-      success: true,
-      rows: result.rows,
-      rowCount: result.rowCount
-    };
-  } catch (error) {
-    console.error('Error executing SQL query:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'An unknown error occurred'
-    };
-  }
-}
-
-/**
- * Generate SQL query using Grok based on schema and user query
- * @param schema The reconstructed schema information
- * @param userQuery The original user query
- * @returns The generated SQL query
- */
-export async function generateSQLQuery(schema: any[], userQuery: string) {
-  try {
-    // Analyze schema to identify relationships and key columns
-    type SchemaAnalysis = {
-      [key: string]: {
-        columns: Array<{
-          name: string;
-          type: string;
-          isId: boolean;
-          isPrimaryKey: boolean;
-          isForeignKey: boolean;
-          referencesTable: string | null;
-          isNameColumn: boolean;
-        }>;
-        primaryKey: { name: string } | undefined;
-        foreignKeys: Array<{ name: string; referencesTable: string | null }>;
-        nameColumns: Array<{ name: string }>;
-        referencedBy: Array<{ table: string; foreignKey: string }>;
-      };
-    };
-
-    const schemaAnalysis = schema.reduce<SchemaAnalysis>((acc, table) => {
-      const columns = table.columns.split(',').map((col: string) => {
-        const [name, type] = col.trim().split('(');
-        const colName = name.trim();
-        return {
-          name: colName,
-          type: type ? type.replace(')', '').trim() : '',
-          isId: colName.toLowerCase().endsWith('id'),
-          isPrimaryKey: colName.toLowerCase() === 'id',
-          isForeignKey: colName.toLowerCase().endsWith('id') && colName.toLowerCase() !== 'id',
-          referencesTable: colName.toLowerCase().endsWith('id') ? 
-            colName.toLowerCase().slice(0, -2).trim() : null,
-          isNameColumn: colName.toLowerCase().includes('name') || 
-                       colName.toLowerCase().includes('title') ||
-                       colName.toLowerCase().includes('description')
-        };
-      });
-
-      acc[table.tableName] = {
-        columns,
-        primaryKey: columns.find((col: { isPrimaryKey: boolean }) => col.isPrimaryKey),
-        foreignKeys: columns.filter((col: { isForeignKey: boolean }) => col.isForeignKey).map((fk: { name: string; referencesTable: string | null }) => ({
-          name: fk.name,
-          referencesTable: fk.referencesTable
-        })),
-        nameColumns: columns.filter((col: { isNameColumn: boolean }) => col.isNameColumn),
-        referencedBy: [] // Will be populated below
-      };
-      return acc;
-    }, {});
-
-    // Populate referencedBy relationships
-    Object.entries(schemaAnalysis).forEach(([tableName, analysis]) => {
-      analysis.foreignKeys.forEach(fk => {
-        const referencedTable = fk.referencesTable;
-        if (referencedTable && schemaAnalysis[referencedTable]) {
-          schemaAnalysis[referencedTable].referencedBy.push({
-            table: tableName,
-            foreignKey: fk.name
-          });
-        }
-      });
-    });
-
-    // Analyze user query to identify relevant tables and relationships
-    const queryAnalysis = {
-      mentionedTables: Object.keys(schemaAnalysis).filter(tableName => 
-        userQuery.toLowerCase().includes(tableName.toLowerCase())
-      ),
-      searchTerms: userQuery.toLowerCase().split(/\s+/).filter(term => 
-        term.length > 3 && !['what', 'when', 'where', 'which', 'that', 'this', 'have', 'does', 'doesn\'t'].includes(term)
-      )
-    };
-
-    const prompt = `Given the following database schema analysis and user query, generate a SQL query to answer the question. IMPORTANT: 
-1. Always use double quotes around table and column names in PostgreSQL
-2. Use ILIKE for case-insensitive text matching
-3. When searching for names or text, use ILIKE with wildcards to handle variations
-4. For text searches, use: column ILIKE '%term%' to match partial text
-5. Consider common variations and typos
-6. Use appropriate JOINs based on the schema relationships
-7. Consider all relevant table relationships when generating the query
-8. Use table aliases for better readability
-9. Only include necessary columns in the SELECT clause
-
-Schema Analysis:
-${Object.entries(schemaAnalysis).map(([tableName, analysis]) => `
-Table: "${tableName}"
-- Primary Key: ${analysis.primaryKey?.name || 'None'}
-- Foreign Keys: ${analysis.foreignKeys.map(fk => `${fk.name} (references ${fk.referencesTable})`).join(', ') || 'None'}
-- Referenced By: ${analysis.referencedBy.map(ref => `${ref.table} (via ${ref.foreignKey})`).join(', ') || 'None'}
-- Name/Text Columns: ${analysis.nameColumns.map(col => col.name).join(', ') || 'None'}
-- All Columns: ${analysis.columns.map(col => `${col.name} (${col.type})`).join(', ')}
-`).join('\n')}
-
-Query Analysis:
-- Mentioned Tables: ${queryAnalysis.mentionedTables.join(', ') || 'None'}
-- Search Terms: ${queryAnalysis.searchTerms.join(', ') || 'None'}
-
-User Query: ${userQuery}
-
-Please generate a SQL query that will answer this question. Only return the SQL query without any explanation. Remember to use double quotes around table and column names and ILIKE for text matching.`;
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        {
-          role: "system",
-          content: `You are a SQL expert. Generate only the SQL query without any explanation or additional text. 
-Consider the following when generating the query:
-1. Use appropriate JOINs based on the schema relationships
-2. For text searches, use ILIKE with wildcards
-3. Consider all possible relationships between tables
-4. Use table aliases for better readability
-5. Only include necessary columns in the SELECT clause
-6. Use the actual table and column names from the schema
-7. Consider both direct and indirect relationships between tables`
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.1,
-      max_tokens: 150
-    });
-
-    
-    if (!response.choices?.[0]?.message?.content) {
-      throw new Error('No response content from OpenAI');
-    }
-
-    let sqlQuery = response.choices[0].message.content.trim();
-    
-
-    const queryValidation = {
-      hasJoins: sqlQuery.toLowerCase().includes('join'),
-      hasWhere: sqlQuery.toLowerCase().includes('where'),
-      hasIlike: sqlQuery.toLowerCase().includes('ilike'),
-      mentionedTables: Object.keys(schemaAnalysis).filter(table => 
-        sqlQuery.toLowerCase().includes(`"${table.toLowerCase()}"`)
-      )
-    };
-
-
-    if (!queryValidation.hasJoins && queryValidation.mentionedTables.length > 1) {
-      const tables = queryValidation.mentionedTables;
-      const relationships = [];
-      
-
-      for (let i = 0; i < tables.length; i++) {
-        for (let j = i + 1; j < tables.length; j++) {
-          const table1 = schemaAnalysis[tables[i]];
-          const table2 = schemaAnalysis[tables[j]];
-          
-
-          const directRelationship = table1.foreignKeys.find(fk => 
-            fk.referencesTable === tables[j]
-          ) || table2.foreignKeys.find(fk => 
-            fk.referencesTable === tables[i]
-          );
-          
-          if (directRelationship) {
-            relationships.push({
-              table1: tables[i],
-              table2: tables[j],
-              foreignKey: directRelationship.name
-            });
-          }
-        }
-      }
-      
-
-      if (relationships.length > 0) {
-        const baseTable = relationships[0].table1;
-        let joinClause = `FROM "${baseTable}"`;
-        
-        relationships.forEach(rel => {
-          const joinTable = rel.table1 === baseTable ? rel.table2 : rel.table1;
-          const fkColumn = rel.foreignKey;
-          joinClause += ` JOIN "${joinTable}" ON "${baseTable}"."${fkColumn}" = "${joinTable}"."id"`;
-        });
-        
-        sqlQuery = sqlQuery.replace(/FROM\s+"[^"]+"/i, joinClause);
-      }
-    }
-
-    return sqlQuery;
-  } catch (error) {
-    console.error('Error generating SQL query:', error);
-    throw new Error('Failed to generate SQL query');
-  }
-}
-
-/**
- * Generate embeddings for a query using OpenAI
- * @param query The user's query text
- * @returns The embedding vector
- */
-async function generateQueryEmbeddings(query: string) {
-  try {
-
-    const enhancedQuery = `Find database tables containing: ${query}`;
-
-    console.log('Generating embeddings for query:', enhancedQuery);
-    
-    const response = await openai.embeddings.create({
-      model: "text-embedding-ada-002",
-      input: enhancedQuery,
-      encoding_format: "float"
-    });
-
-    console.log('Successfully generated query embeddings');
-    return response.data[0].embedding;
-  } catch (error) {
-    console.error('Error generating query embeddings:', error);
-    throw new Error('Failed to generate query embeddings');
-  }
-}
-
-/**
- * Process a query for pipeline 2
- * @param query The user's query
- * @param connectionId The database connection ID
- * @param predictiveMode Whether to force predictive mode
- */
-export async function processPipeline2Query(query: string, connectionId: string, predictiveMode: boolean = false) {
-  try {
-    console.log('Processing Pipeline 2 query:', query);
-    console.log('Connection ID:', connectionId);
-    console.log('Predictive Mode:', predictiveMode);
-    
     const user = await currentUser();
-    if (!user) {
-      throw new Error('No authenticated user found');
-    }
-
+    if (!user) throw new Error('Authentication required');
+    
+    // 1. Verify database connection
+    const connection = await verifyDatabaseConnection(connectionId);
+    
+    // 2. Generate query embeddings
     const queryEmbedding = await generateQueryEmbeddings(query);
-    console.log('Generated query embeddings, length:', queryEmbedding.length);
-
-
-    const queryResponse = await pinecone.query({
-      vector: queryEmbedding,
-      topK: 10, 
-      filter: {
-        connectionId: connectionId,
-        pipeline: 'pipeline2',
-        type: 'schema'
-      },
-      includeMetadata: true
+    
+    // 3. Query Pinecone for schema matches
+    const schemaMatches = await queryPineconeSchema(connectionId, queryEmbedding);
+    
+    // 4. Reconstruct schema with scoring
+    const reconstructedSchema = reconstructSchema(schemaMatches, query);
+    
+    // 5. Determine analysis type
+    const taskResult = await determineAnalysisType(query, reconstructedSchema, predictiveMode);
+    
+    // 6. Execute analysis
+    const analysisResult = await executeAnalysis(taskResult, query, reconstructedSchema, connectionId);
+    
+    // 7. Save conversation history
+    await saveConversationHistory(connectionId, user.id, query, {
+      taskResult,
+      analysisResult,
+      tablesUsed: reconstructedSchema.map(t => t.tableName)
     });
 
-    console.log('Raw Pinecone query response:', JSON.stringify(queryResponse, null, 2));
-    console.log('Number of matches found:', queryResponse.matches?.length || 0);
+    return formatSuccessResponse(reconstructedSchema, schemaMatches, taskResult, analysisResult);
 
-    if (!queryResponse.matches || queryResponse.matches.length === 0) {
-      console.log('No matches found in Pinecone. Checking if embeddings exist...');
-      return {
-        success: true,
-        reconstructedSchema: [],
-        matches: [],
-        debug: {
-          message: 'No matches found in Pinecone',
-          connectionId,
-          query
-        }
-      };
-    }
+  } catch (error) {
+    console.error('Pipeline processing error:', error);
+    return formatErrorResponse(error, connectionId, query);
+  }
+}
 
+// Helper functions -----------------------------------------------------------
 
-    const tableMatches = new Map();
-    queryResponse.matches.forEach(match => {
-      console.log('Processing match:', match);
-      const tableName = match.metadata?.tableName;
-      if (!tableName) {
-        console.log('Match has no tableName in metadata:', match);
-        return;
-      }
+async function verifyDatabaseConnection(connectionId: string) {
+  const [connection] = await db
+    .select()
+    .from(dbConnections)
+    .where(eq(dbConnections.id, Number(connectionId)));
 
-      let relevanceScore = match.score || 0;
-      
+  if (!connection) throw new Error('Database connection not found');
+  if (!connection.postgresUrl && !connection.mongoUrl) {
+    throw new Error('Missing database connection URL');
+  }
+  return connection;
+}
 
-      if (query.toLowerCase().includes(String(tableName).toLowerCase())) {
-        relevanceScore += 0.2;
-        console.log(`Boosted score for table ${tableName} due to name match`);
-      }
+async function generateQueryEmbeddings(query: string) {
+  const enhancedQuery = `Find database tables containing: ${query}`;
+  const response = await openai.embeddings.create({
+    model: "text-embedding-ada-002",
+    input: enhancedQuery,
+    encoding_format: "float"
+  });
+  return response.data[0].embedding;
+}
 
+async function queryPineconeSchema(connectionId: string, embedding: number[]) {
+  const result = await pinecone.query({
+    vector: embedding,
+    topK: 15,
+    filter: {
+      connectionId: connectionId,
+      pipeline: 'pipeline2',
+      type: 'schema'
+    },
+    includeMetadata: true
+  });
 
-      const columns = String(match.metadata?.columns || '');
-      const columnMatches = columns.toLowerCase().split(',').filter(col => {
-        const colName = col.split('(')[0].trim().toLowerCase();
-        return query.toLowerCase().includes(colName) || 
-               colName.includes('id') || 
-               colName.includes('user') || 
-               colName.includes('post'); 
+  if (!result.matches?.length) throw new Error('No relevant schema data found');
+  return result.matches;
+}
+
+function reconstructSchema(matches: any[], query: string): SchemaMatch[] {
+  const tableMap = new Map<string, SchemaMatch>();
+
+  matches.forEach(match => {
+    const metadata = match.metadata || {};
+    if (!metadata.tableName) return;
+
+    let score = match.score || 0;
+    const queryLower = query.toLowerCase();
+    
+    // Boost score for direct matches
+    if (queryLower.includes(metadata.tableName.toLowerCase())) score += 0.2;
+    
+    // Boost for column matches
+    const columnMatches = (metadata.columns || '')
+      .toLowerCase()
+      .split(',')
+      .filter((col: string) => queryLower.includes(col.split('(')[0].trim()));
+    score += columnMatches.length * 0.1;
+
+    const existing = tableMap.get(metadata.tableName);
+    if (!existing || score > existing.score) {
+      tableMap.set(metadata.tableName, {
+        tableName: metadata.tableName,
+        text: metadata.text,
+        columns: metadata.columns,
+        score: score
       });
-
-      if (columnMatches.length > 0) {
-        relevanceScore += 0.1 * columnMatches.length;
-        console.log(`Boosted score for table ${tableName} due to column matches:`, columnMatches);
-      }
-
-
-      if (!tableMatches.has(tableName) || relevanceScore > tableMatches.get(tableName).score) {
-        tableMatches.set(tableName, {
-          tableName,
-          text: match.metadata?.text,
-          columns: match.metadata?.columns,
-          score: relevanceScore
-        });
-      }
-    });
-
-    const reconstructedSchema = Array.from(tableMatches.values())
-      .sort((a, b) => b.score - a.score);
-
-    console.log('Final reconstructed schema:', reconstructedSchema);
-
-    let taskResult;
-    if (predictiveMode) {
-      console.log('Predictive mode enabled, forcing predictive agent');
-      taskResult = {
-        next: 'predictive',
-        reason: 'Predictive mode is enabled',
-        requiresMultiAgent: false
-      };
-    } else {
-      taskResult = await taskManager(query, reconstructedSchema);
     }
-    console.log('Task manager result:', taskResult);
+  });
 
-    let analysisResult;
-    if (taskResult.next === 'researcher') {
-      analysisResult = await researcher(query, reconstructedSchema, connectionId);
-      
-      if (analysisResult && analysisResult.queryResult && analysisResult.queryResult.rows) {
-        const rows = analysisResult.queryResult.rows;
-        if (rows.length === 0) {
-          analysisResult.details.push(
-            "Note: The query returned no results. This could mean either:",
-            "1. The user doesn't exist in the database",
-            "2. The user exists but has no posts",
-            "3. The query might need to be adjusted to better match the database schema"
-          );
-        }
-      }
-    } else if (taskResult.next === 'visualizer') {
-      const messages = [
-        { role: 'user', content: query }
-      ];
-      analysisResult = await visualizer(messages, reconstructedSchema, connectionId);
-    } else if (taskResult.next === 'predictive') {
-      console.log('Calling predictive agent with database context and user query');
-      analysisResult = await predictive(query, reconstructedSchema, connectionId);
-    } else {
-      throw new Error('Invalid task manager result');
-    }
+  return Array.from(tableMap.values()).sort((a, b) => b.score - a.score);
+}
 
-    const tablesUsed = reconstructedSchema.map(table => table.tableName);
-    const chatEntry = {
-      message: query,
-      response: JSON.stringify({
-        taskResult,
-        analysisResult,
-        tablesUsed,
-        timestamp: new Date().toISOString()
-      }),
-      timestamp: new Date().toISOString()
-    };
+async function determineAnalysisType(
+  query: string,
+  schema: SchemaMatch[],
+  predictiveMode: boolean
+) {
+  return predictiveMode 
+    ? { next: 'predictive', reason: 'Forced predictive mode' }
+    : await taskManager(query, schema);
+}
 
-    const existingChats = await db
+async function executeAnalysis(
+  taskResult: any,
+  query: string,
+  schema: SchemaMatch[],
+  connectionId: string
+) {
+  switch (taskResult.next) {
+    case 'researcher':
+      return await researcher(query, schema, connectionId);
+    case 'visualizer':
+      return await visualizer([{ role: 'user', content: query }], schema, connectionId);
+    case 'predictive':
+      return await predictive(query, schema, connectionId);
+    default:
+      throw new Error('Invalid analysis type');
+  }
+}
+
+async function saveConversationHistory(
+  connectionId: string,
+  userId: string,
+  query: string,
+  results: any
+) {
+  const newEntry = {
+    message: query,
+    response: JSON.stringify(results),
+    timestamp: new Date().toISOString()
+  };
+
+  await db.transaction(async (tx) => {
+    const existing = await tx
       .select()
       .from(chats)
       .where(eq(chats.connectionId, Number(connectionId)));
 
-    if (existingChats.length > 0) {
-      const existingChat = existingChats[0];
-
-      const conversation = ((existingChat.conversation as unknown) as Array<{
-        message: string;
-        response: string;
-        timestamp: string;
-        bookmarked?: boolean;
-      }>) || [];
-      
-
-      conversation.push(chatEntry);
-      
-      await db
-        .update(chats)
-        .set({
-          conversation,
-          updatedAt: new Date()
-        })
-        .where(eq(chats.id, existingChat.id));
+    if (existing.length > 0) {
+      const conversation = [...existing[0].conversation, newEntry];
+      await tx.update(chats)
+        .set({ conversation, updatedAt: new Date() })
+        .where(eq(chats.id, existing[0].id));
     } else {
-      await db.insert(chats).values({
-        userId: user.id,
-        connectionId: parseInt(String(connectionId)),
-        conversation: [chatEntry],
+      await tx.insert(chats).values({
+        userId,
+        connectionId: Number(connectionId),
+        conversation: [newEntry],
         createdAt: new Date(),
         updatedAt: new Date()
       });
     }
+  });
+}
 
-    return {
-      success: true,
-      reconstructedSchema,
-      matches: queryResponse.matches,
-      taskResult,
-      analysisResult,
-      debug: {
-        message: 'Query processed successfully',
-        connectionId,
-        query,
-        matchCount: reconstructedSchema.length
-      }
+function formatSuccessResponse(
+  schema: SchemaMatch[],
+  matches: any[],
+  taskResult: any,
+  analysisResult: any
+) {
+  return {
+    success: true,
+    data: {
+      schema,
+      matches: matches.slice(0, 10),
+      analysisType: taskResult.next,
+      results: analysisResult,
+      timestamp: new Date().toISOString()
+    },
+    metrics: {
+      schemaTables: schema.length,
+      matchConfidence: Math.round(matches[0]?.score * 100) || 0,
+      processingTime: Date.now() - startTime
+    }
+  };
+}
+
+function formatErrorResponse(error: unknown, connectionId: string, query: string) {
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+  
+  return {
+    success: false,
+    error: errorMessage,
+    details: {
+      connectionId,
+      query,
+      timestamp: new Date().toISOString()
+    },
+    suggestion: getErrorSuggestion(errorMessage)
+  };
+}
+
+function getErrorSuggestion(error: string) {
+  const suggestions = {
+    'ETIMEDOUT': 'Check database server availability and network connection',
+    'SSL': 'Verify SSL certificate configuration',
+    'syntax': 'Review generated SQL query for database-specific syntax',
+    'authentication': 'Validate database credentials',
+    'default': 'Try rephrasing your query or contact support'
+  };
+
+  return Object.entries(suggestions).find(([key]) => 
+    error.toLowerCase().includes(key.toLowerCase())
+  )?.[1] || suggestions.default;
+}
+
+// SQL Generation functions ----------------------------------------------------
+
+export async function generateSQLQuery(
+  schema: SchemaMatch[],
+  userQuery: string,
+  connectionId: string
+) {
+  const [connection] = await db
+    .select()
+    .from(dbConnections)
+    .where(eq(dbConnections.id, Number(connectionId)));
+
+  if (!connection) throw new Error('Connection not found');
+  
+  const dbType = connection.dbType as 'postgres' | 'mysql';
+  const quoteChar = dbType === 'mysql' ? '`' : '"';
+  const likeOperator = dbType === 'mysql' ? 'LIKE' : 'ILIKE';
+
+  const schemaAnalysis = buildSchemaAnalysis(schema, quoteChar);
+  const prompt = buildGenerationPrompt(dbType, schemaAnalysis, userQuery, quoteChar, likeOperator);
+  
+  const rawQuery = await getAIResponse(prompt);
+  return sanitizeGeneratedQuery(rawQuery, dbType, quoteChar, likeOperator);
+}
+
+function buildSchemaAnalysis(schema: SchemaMatch[], quoteChar: string) {
+  return schema.reduce((acc, table) => {
+    acc[table.tableName] = {
+      columns: table.columns.split(',').map(col => {
+        const [name, type] = col.trim().split('(');
+        return { name: name.trim(), type: type?.replace(')', '').trim() || 'text' };
+      })
     };
-  } catch (error) {
-    console.error('Error processing Pipeline 2 query:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'An unknown error occurred',
-      debug: {
-        message: 'Error occurred during query processing',
-        connectionId,
-        query
-      }
-    };
-  }
+    return acc;
+  }, {} as Record<string, { columns: Array<{ name: string; type: string }> }>);
+}
+
+function buildGenerationPrompt(
+  dbType: string,
+  schema: any,
+  query: string,
+  quote: string,
+  likeOp: string
+) {
+  return `
+Generate ${dbType.toUpperCase()} SQL query following these rules:
+1. Use ${quote} for identifiers
+2. Use ${likeOp} for text matching
+3. Include EXPLICIT joins
+4. Use table aliases
+5. Only necessary columns
+
+Schema:
+${Object.entries(schema).map(([table, details]) => `
+- ${quote}${table}${quote}: 
+  ${(details as any).columns.map((c: any) => `${quote}${c.name}${quote} (${c.type})`).join(', ')}`).join('\n')}
+
+Query: "${query}"
+
+Output ONLY SQL:`;
+}
+
+async function getAIResponse(prompt: string) {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [
+      { role: "system", content: "You are a SQL expert. Generate valid SQL only." },
+      { role: "user", content: prompt }
+    ],
+    temperature: 0.1,
+    max_tokens: 500
+  });
+  
+  return response.choices[0]?.message?.content?.trim() || '';
+}
+
+function sanitizeGeneratedQuery(
+  query: string,
+  dbType: string,
+  quoteChar: string,
+  likeOp: string
+) {
+  return query
+    .replace(/```sql/gi, '')
+    .replace(/```/g, '')
+    .replace(dbType === 'mysql' ? /"/g : /`/g, quoteChar)
+    .replace(/ilike/gi, likeOp)
+    .trim();
 }

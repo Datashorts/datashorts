@@ -1,167 +1,145 @@
-import { grokClient } from "@/app/lib/clients";
-import { executeSQLQuery } from "@/app/lib/db/executeQuery";
-import { generateSQLQuery } from "@/app/actions/pipeline2Query";
+// File path: lib/agents2/researcher.ts
 
-interface SchemaTable {
-  tableName: string;
-  columns: string;
-  score: number;
-}
-
-interface QueryResult {
-  success: boolean;
-  rows: any[];
-  rowCount: number;
-  error?: string;
-}
-
-interface ResearcherResponse {
-  summary: string;
-  details: string[];
-  metrics: {
-    [key: string]: number | string;
-  };
-  sqlQuery?: string;
-  queryResult?: QueryResult;
-}
-
-type Message =
-  | { role: "system"; content: string }
-  | { role: "user"; content: string }
-  | { role: "assistant"; content: string }
-  | { role: "function"; content: string; name: string };
+import { executeSQLQuery } from '@/app/lib/db/executeQuery';
+import { generateSQLQuery } from '@/app/actions/generateSQLQuery';
 
 export async function researcher(
   userQuery: string,
-  reconstructedSchema: SchemaTable[],
+  reconstructedSchema: any[],
   connectionId: string
-): Promise<ResearcherResponse> {
+): Promise<{
+  summary: string;
+  details: string[];
+  metrics: Record<string, number | string>;
+  sqlQuery?: string;
+  queryResult?: any;
+}> {
   console.log("\n=== Researcher Agent Started ===");
   console.log("User Query:", userQuery);
+  console.log("Schema Tables:", reconstructedSchema.map(s => s.tableName));
   console.log("Connection ID:", connectionId);
-  console.log("Schema Tables:", JSON.stringify(reconstructedSchema, null, 2));
-
-  const systemPrompt: Message = {
-    role: "system",
-    content: `You are a data analyst that provides direct answers to data queries. Return results in this strict JSON format:
-{
-  "summary": string,    // A concise summary of the analysis
-  "details": string[],  // Array of detailed insights and observations
-  "metrics": {         // Key metrics and their values
-    [key: string]: number | string
-  }
-}
-
-Guidelines:
-1. For simple questions:
-   - Provide direct, factual answers
-   - Focus on specific numbers and values
-   - Keep explanations brief and clear
-
-2. For complex analysis:
-   - Break down the analysis into clear points
-   - Highlight key trends and patterns
-   - Provide context for the numbers
-   - Explain any significant findings
-
-3. For metrics:
-   - Include relevant numerical values
-   - Add percentages where appropriate
-   - Include time periods if relevant
-   - Format numbers appropriately
-
-4. For details:
-   - Each point should be a complete thought
-   - Focus on actionable insights
-   - Explain the significance of findings
-   - Connect related data points
-
-Consider the provided database schema and query results when making your analysis:
-- Verify data accuracy
-- Check for any anomalies
-- Consider data relationships
-- Look for patterns and trends
-
-Return JSON format.`,
-  };
 
   try {
     console.log("\n--- Generating SQL Query ---");
-    const sqlQuery = await generateSQLQuery(reconstructedSchema, userQuery);
+    const sqlQuery = await generateSQLQuery(reconstructedSchema, userQuery, connectionId);
     console.log("Generated SQL Query:", sqlQuery);
 
     console.log("\n--- Executing SQL Query ---");
     const queryResult = await executeSQLQuery(connectionId, sqlQuery);
-    console.log(
-      "SQL Query Execution Result:",
-      JSON.stringify(queryResult, null, 2)
-    );
+    console.log("Query Result:", {
+      success: queryResult.success,
+      rowCount: queryResult.rowCount,
+      error: queryResult.error
+    });
 
     if (!queryResult.success) {
       console.error("SQL Query Execution Failed:", queryResult.error);
-      throw new Error(queryResult.error || "Failed to execute SQL query");
-    }
-
-    console.log("\n--- Preparing Analysis Prompt ---");
-    const prompt = `User Query: ${userQuery}
-
-Database Schema:
-${reconstructedSchema
-  .map(
-    (table) => `
-Table: "${table.tableName}"
-Columns: ${table.columns}
-`
-  )
-  .join("\n")}
-
-Query Results:
-${JSON.stringify(queryResult, null, 2)}`;
-
-    console.log("\n--- Sending to Grok for Analysis ---");
-    const response = await grokClient.chat.completions.create({
-      model: "grok-2-latest",
-      messages: [
-        systemPrompt,
-        {
-          role: "user",
-          content: prompt,
+      return {
+        summary: `Unable to execute query: ${queryResult.error}`,
+        details: [
+          "The query could not be executed due to an error.",
+          "Please check your query and try again."
+        ],
+        metrics: {
+          error: queryResult.error || "Unknown error"
         },
-      ],
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-    });
-
-    console.log("\n--- Processing Grok Response ---");
-    const content = response.choices[0].message.content;
-    if (!content) {
-      throw new Error("No content in response");
+        sqlQuery,
+        queryResult
+      };
     }
-    const result = JSON.parse(content);
-    console.log("Analysis Result:", JSON.stringify(result, null, 2));
 
-    const finalResponse = {
-      ...result,
-      sqlQuery,
-      queryResult,
-    } as ResearcherResponse;
+    console.log("\n--- Analyzing Results ---");
+    const rows = queryResult.rows || [];
+    console.log(`Total rows returned: ${rows.length}`);
+
+    // Analyze the results
+    let summary = "";
+    let details: string[] = [];
+    let metrics: Record<string, number | string> = {};
+
+    if (rows.length === 0) {
+      summary = "No data found matching your query.";
+      details = [
+        "The query executed successfully but returned no results.",
+        "This could mean the data doesn't exist or the query criteria are too specific."
+      ];
+      metrics = {
+        rowCount: 0,
+        status: "No results"
+      };
+    } else if (rows.length === 1) {
+      summary = `Found 1 record matching your query.`;
+      details = [`The query returned a single result.`];
+      
+      // Add key fields to details
+      const firstRow = rows[0];
+      const importantFields = Object.entries(firstRow)
+        .filter(([key, value]) => value !== null && value !== undefined)
+        .slice(0, 5); // Show first 5 non-null fields
+      
+      importantFields.forEach(([key, value]) => {
+        details.push(`${key}: ${value}`);
+      });
+      
+      metrics = {
+        rowCount: 1,
+        ...firstRow
+      };
+    } else {
+      summary = `Found ${rows.length} records matching your query.`;
+      
+      // Analyze data patterns
+      const columns = Object.keys(rows[0]);
+      details.push(`Returned columns: ${columns.join(", ")}`);
+      
+      // Calculate basic statistics for numeric columns
+      columns.forEach(col => {
+        const values = rows.map(row => row[col]).filter(v => typeof v === 'number');
+        if (values.length > 0) {
+          const sum = values.reduce((a, b) => a + b, 0);
+          const avg = sum / values.length;
+          const min = Math.min(...values);
+          const max = Math.max(...values);
+          
+          if (values.length === rows.length) { // All values are numeric
+            details.push(`${col}: Min=${min}, Max=${max}, Avg=${avg.toFixed(2)}`);
+            metrics[`${col}_min`] = min;
+            metrics[`${col}_max`] = max;
+            metrics[`${col}_avg`] = parseFloat(avg.toFixed(2));
+          }
+        }
+      });
+      
+      metrics.rowCount = rows.length;
+    }
 
     console.log("\n=== Researcher Agent Completed ===");
-    console.log("Final Response:", JSON.stringify(finalResponse, null, 2));
+    console.log("Summary:", summary);
+    console.log("Metrics:", metrics);
 
-    return finalResponse;
+    return {
+      summary,
+      details,
+      metrics,
+      sqlQuery,
+      queryResult
+    };
   } catch (error) {
     console.error("\n=== Researcher Agent Error ===");
     console.error("Error Details:", error);
-    // Return a basic response in case of error
+    
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     const errorResponse = {
       summary: "Unable to complete analysis due to an error",
-      details: ["Please try rephrasing your query or try again later"],
+      details: [
+        "Please try rephrasing your query or try again later"
+      ],
       metrics: {
-        error: "Analysis failed",
-      },
+        error: "Analysis failed"
+      }
     };
-    console.log("Error Response:", JSON.stringify(errorResponse, null, 2));
+    
+    console.error("Error Response:", errorResponse);
     return errorResponse;
   }
 }

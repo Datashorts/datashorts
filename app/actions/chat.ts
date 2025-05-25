@@ -577,7 +577,7 @@ export async function submitChat(userQuery: string, url: string, predictiveMode:
           // Ensure response is properly formatted
           let processedResponse = result.response;
 
-          // If response is a string that looks like JSON, parse it
+          // If response is a string that looks ILIKE JSON, parse it
           if (
             typeof result.response === "string" &&
             (result.response.startsWith("{") || result.response.startsWith("["))

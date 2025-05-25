@@ -91,7 +91,7 @@ export const researcher = async function researcher(messages: Message[]) {
         }
       }
       
-      For simple questions like "how many tables are there" or "what is the schema", provide a direct answer.
+      For simple questions ILIKE "how many tables are there" or "what is the schema", provide a direct answer.
       Focus on providing clear, concise information without visualizations.
       
       Return JSON format.`
