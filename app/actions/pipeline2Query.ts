@@ -398,6 +398,13 @@ export async function processPipeline2Query(query: string, connectionId: string,
       };
     } else {
       taskResult = await taskManager(query, reconstructedSchema);
+      if (taskResult.next === 'predictive') {
+        taskResult = {
+          next: 'researcher',
+          reason: 'Predictive mode is disabled, using researcher instead',
+          requiresMultiAgent: false
+        };
+      }
     }
     console.log('Task manager result:', taskResult);
 
