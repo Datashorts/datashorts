@@ -269,11 +269,11 @@ export default function ChatWithDbPage() {
                 {copyOK ? 'Copied' : 'Copy URL'}
               </Button>
 
-              <Button variant="outline" size="sm" onClick={syncDB} disabled={isSyncing}
+              {/* <Button variant="outline" size="sm" onClick={syncDB} disabled={isSyncing}
                 className="relative border-blue-400/30 hover:bg-blue-500/10">
                 <RefreshCw className={`h-4 w-4 mr-1 ${isSyncing ? 'animate-spin' : ''}`} />
                 {isSyncing ? 'Syncing…' : 'Sync DB'}
-              </Button>
+              </Button> */}
             </div>
           </div>
         </header>
