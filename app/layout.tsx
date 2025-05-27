@@ -11,6 +11,7 @@ import {
 import { Inter } from "next/font/google"
 import './globals.css'
 import { ThemeProvider } from "@/components/theme-provider"
+import ActivityTracker from './_components/activity-tracker'
 
 
 const inter = Inter({ subsets: ["latin"] })
@@ -30,7 +31,7 @@ export default function RootLayout({
       <html lang="en" suppressHydrationWarning>
         <body className={`${inter.className} bg-[#121212] text-white antialiased`}>
           <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-            
+            <ActivityTracker />
             {children}
           </ThemeProvider>
         </body>
