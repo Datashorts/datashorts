@@ -133,9 +133,175 @@ const MetricCard: React.FC<{
   </div>
 );
 
+// New component for showing query results with pagination
+const QueryResultTable: React.FC<{
+  queryResult: any;
+  initialRowCount?: number;
+}> = ({ queryResult, initialRowCount = 10 }) => {
+  const [showAllRows, setShowAllRows] = useState(false);
+  const [rowsToShow, setRowsToShow] = useState(initialRowCount);
+  
+  if (!queryResult) {
+    return (
+      <div className="bg-yellow-900/20 inline-block px-3 py-2 rounded-lg mb-3">
+        <p className="text-yellow-300 text-sm">No query results available</p>
+      </div>
+    );
+  }
+  
+  if (!queryResult.success) {
+    return (
+      <div className="bg-red-900/20 p-3 rounded-lg border border-red-500/20">
+        <p className="text-red-400">
+          Error: {queryResult.error || "Failed to execute query"}
+        </p>
+      </div>
+    );
+  }
+  
+  if (!queryResult.rows || queryResult.rows.length === 0) {
+    return (
+      <div className="bg-blue-900/20 inline-block px-3 py-2 rounded-lg mb-3">
+        <p className="text-blue-300 text-sm">Query returned no results</p>
+      </div>
+    );
+  }
+  
+  const totalRows = queryResult.rows.length;
+  const hasMoreRows = totalRows > rowsToShow;
+  
+  const handleShowMore = () => {
+    if (showAllRows) {
+      setRowsToShow(initialRowCount);
+      setShowAllRows(false);
+    } else {
+      setRowsToShow(totalRows);
+      setShowAllRows(true);
+    }
+  };
+
+  return (
+    <>
+      <div className="bg-blue-900/20 inline-block px-3 py-1 rounded-full mb-3">
+        <p className="text-blue-300 text-sm">
+          Rows returned: {queryResult.rowCount}
+        </p>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-blue-500/20">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gradient-to-r from-[#151821] to-[#0f1015]">
+            <tr>
+              {Object.keys(queryResult.rows[0]).map((header) => (
+                <th
+                  key={header}
+                  className="px-4 py-3 text-left font-medium text-gray-100 border-b border-blue-500/20"
+                >
+                  {header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-blue-500/10">
+            {queryResult.rows.slice(0, rowsToShow).map(
+              (row: any, i: number) => (
+                <tr
+                  key={i}
+                  className="hover:bg-blue-500/5 transition-colors duration-150"
+                >
+                  {Object.values(row).map(
+                    (val: any, j: number) => (
+                      <td
+                        key={j}
+                        className="px-4 py-3 whitespace-nowrap text-gray-300"
+                      >
+                        {formatValue(val)}
+                      </td>
+                    )
+                  )}
+                </tr>
+              )
+            )}
+            {/* Show 'more rows' message if there are more than the limit */}
+            {hasMoreRows && !showAllRows && (
+              <tr>
+                <td 
+                  colSpan={Object.keys(queryResult.rows[0]).length}
+                  className="px-4 py-3 text-center text-gray-400 italic"
+                >
+                  ... and {totalRows - rowsToShow} more rows
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      
+      {totalRows > initialRowCount && (
+        <Button
+          onClick={handleShowMore}
+          variant="text"
+          className="mt-2 flex items-center space-x-1"
+        >
+          <span>{showAllRows ? "Show Less" : `Show All (${totalRows} rows)`}</span>
+          <svg
+            className={`w-4 h-4 transition-transform duration-200 ${showAllRows ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M19 9l-7 7-7-7"
+            />
+          </svg>
+        </Button>
+      )}
+    </>
+  );
+};
+
+// Function to detect agent failures from result content
+const detectAgentFailure = (agentOutput: any): boolean => {
+  // Check if agentFailure flag is explicitly set
+  if (agentOutput?.taskResult?.agentFailure === true) {
+    return true;
+  }
+  
+  // Check for error indicators in the analysis result
+  const analysisResult = agentOutput?.analysisResult;
+  if (analysisResult) {
+    // Check for error messages in summary
+    if (analysisResult.summary?.includes("error") || 
+        analysisResult.content?.summary?.includes("error")) {
+      return true;
+    }
+    
+    // Check for error metrics
+    if (analysisResult.metrics?.error || 
+        analysisResult.content?.metrics?.error) {
+      return true;
+    }
+    
+    // Check for error details
+    const details = analysisResult.details || analysisResult.content?.details;
+    if (details && details.some((d: string) => 
+        d.includes("error") || d.includes("try again") || d.includes("failed"))) {
+      return true;
+    }
+  }
+  
+  return false;
+};
+
 const AgentResponse: React.FC<AgentResponseProps> = ({
   agentType,
   agentOutput,
+  onOptionClick,
+  userQuery,
+  onUserQueryChange,
   onSubmitResponse,
 }) => {
   const [selected, setSelected] = useState<string>("");
@@ -405,7 +571,9 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
       );
 
     /* ───────────── 5. PIPELINE2 (detailed) ───────────── */
-    case "pipeline2":
+    case "pipeline2": {
+      const isAgentFailure = detectAgentFailure(agentOutput);
+      
       return (
         <div className="space-y-6">
           {/* 5.1 Task analysis */}
@@ -413,23 +581,49 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
             <p className="text-gray-200 leading-relaxed">
               {agentOutput.taskResult?.reason}
             </p>
+            {(agentOutput.taskResult?.agentFailure || isAgentFailure) && (
+              <div className="mt-3 p-2 bg-yellow-900/20 rounded-lg border border-yellow-500/20">
+                <p className="text-yellow-300 text-sm">
+                  Note: The agent encountered context limitations but query results are still available below.
+                </p>
+              </div>
+            )}
           </Card>
 
+          {/* Always show SQL Query separately for better visibility */}
+          {agentOutput.analysisResult?.sqlQuery && (
+            <Card title="SQL Query">
+              <pre className="whitespace-pre-wrap text-xs bg-[#0d0e10] p-3 rounded-lg border border-blue-500/10 text-gray-300 overflow-x-auto">
+                {agentOutput.analysisResult.sqlQuery}
+              </pre>
+            </Card>
+          )}
+          
+          {/* Always show query results if available */}
+          {agentOutput.analysisResult?.queryResult && (
+            <Card title="Query Results">
+              <QueryResultTable 
+                queryResult={agentOutput.analysisResult.queryResult} 
+                initialRowCount={10}
+              />
+            </Card>
+          )}
+
           {/* 5.2 Main analysis (summary/details/metrics or visualizer branch) */}
-          {agentOutput.analysisResult && (
+          {agentOutput.analysisResult && !isAgentFailure && (
             <>
               {agentOutput.taskResult?.next === "visualizer" ? (
                 /* ---------- VISUALIZER branch ---------- */
                 <>
                   <Card
-                    title={agentOutput.analysisResult.content.title}
+                    title={agentOutput.analysisResult.content?.title || "Visualization"}
                     gradient
                   >
                     <p className="text-gray-200 leading-relaxed">
-                      {agentOutput.analysisResult.content.summary}
+                      {agentOutput.analysisResult.content?.summary || "Visualization analysis"}
                     </p>
 
-                    {agentOutput.analysisResult.content.details?.length > 0 && (
+                    {agentOutput.analysisResult.content?.details?.length > 0 && (
                       <ul className="list-disc list-inside space-y-2 mt-3">
                         {agentOutput.analysisResult.content.details.map(
                           (d: string, i: number) => (
@@ -444,7 +638,7 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                       </ul>
                     )}
 
-                    {agentOutput.analysisResult.content.metrics &&
+                    {agentOutput.analysisResult.content?.metrics &&
                       Object.keys(agentOutput.analysisResult.content.metrics)
                         .length > 0 && (
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
@@ -466,47 +660,47 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                   </Card>
 
                   {/* chart */}
-                  <Card
-                    title={
-                      agentOutput.analysisResult.visualization.config.title
-                    }
-                  >
-                    <p className="text-gray-200 mb-4 leading-relaxed">
-                      {
-                        agentOutput.analysisResult.visualization.config
-                          .description
+                  {agentOutput.analysisResult.visualization && (
+                    <Card
+                      title={
+                        agentOutput.analysisResult.visualization.config?.title || "Visualization"
                       }
-                    </p>
-                    <div className="p-4 bg-[#0d0e10]/80 rounded-lg">
-                      {agentOutput.analysisResult.visualization.chartType ===
-                      "pie" ? (
-                        <PieChart
-                          data={agentOutput.analysisResult.visualization.data}
-                          config={{
-                            donut: false,
-                            showPercentages: true,
-                            ...agentOutput.analysisResult.visualization.config
-                              .pieConfig,
-                          }}
-                        />
-                      ) : (
-                        <BarChart
-                          data={agentOutput.analysisResult.visualization.data}
-                          config={{
-                            barThickness: 40,
-                            horizontal: false,
-                            showGridLines: true,
-                            xAxisLabel:
-                              agentOutput.analysisResult.visualization.config
-                                .xAxis,
-                            yAxisLabel:
-                              agentOutput.analysisResult.visualization.config
-                                .yAxis,
-                          }}
-                        />
+                    >
+                      {agentOutput.analysisResult.visualization.config?.description && (
+                        <p className="text-gray-200 mb-4 leading-relaxed">
+                          {
+                            agentOutput.analysisResult.visualization.config.description
+                          }
+                        </p>
                       )}
-                    </div>
-                  </Card>
+                      <div className="p-4 bg-[#0d0e10]/80 rounded-lg">
+                        {agentOutput.analysisResult.visualization.chartType ===
+                        "pie" ? (
+                          <PieChart
+                            data={agentOutput.analysisResult.visualization.data}
+                            config={{
+                              donut: false,
+                              showPercentages: true,
+                              ...(agentOutput.analysisResult.visualization.config?.pieConfig || {})
+                            }}
+                          />
+                        ) : (
+                          <BarChart
+                            data={agentOutput.analysisResult.visualization.data}
+                            config={{
+                              barThickness: 40,
+                              horizontal: false,
+                              showGridLines: true,
+                              xAxisLabel:
+                                agentOutput.analysisResult.visualization.config?.xAxis,
+                              yAxisLabel:
+                                agentOutput.analysisResult.visualization.config?.yAxis,
+                            }}
+                          />
+                        )}
+                      </div>
+                    </Card>
+                  )}
                 </>
               ) : agentOutput.taskResult?.next === "predictive" ? (
                 /* ---------- PREDICTIVE branch ---------- */
@@ -519,9 +713,9 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
               ) : (
                 /* ---------- RESEARCHER branch ---------- */
                 <>
-                  <Card title="Summary" gradient>
+                  <Card title={agentOutput.analysisResult.content?.title || "Summary"} gradient>
                     <p className="text-gray-200 leading-relaxed">
-                      {agentOutput.analysisResult.summary}
+                      {agentOutput.analysisResult.summary || agentOutput.analysisResult.content?.summary || "Analysis"}
                     </p>
                   </Card>
 
@@ -530,10 +724,21 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                       <ul className="list-disc list-inside space-y-2">
                         {agentOutput.analysisResult.details.map(
                           (d: string, i: number) => (
-                            <li
-                              key={i}
-                              className="text-gray-200 leading-relaxed"
-                            >
+                            <li key={i} className="text-gray-200 leading-relaxed">
+                              {d}
+                            </li>
+                          )
+                        )}
+                      </ul>
+                    </Card>
+                  )}
+                  
+                  {agentOutput.analysisResult.content?.details?.length > 0 && (
+                    <Card title="Details">
+                      <ul className="list-disc list-inside space-y-2">
+                        {agentOutput.analysisResult.content.details.map(
+                          (d: string, i: number) => (
+                            <li key={i} className="text-gray-200 leading-relaxed">
                               {d}
                             </li>
                           )
@@ -543,8 +748,7 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                   )}
 
                   {agentOutput.analysisResult.metrics &&
-                    Object.keys(agentOutput.analysisResult.metrics).length >
-                      0 && (
+                    Object.keys(agentOutput.analysisResult.metrics).length > 0 && (
                       <Card title="Metrics">
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                           {Object.entries(
@@ -563,112 +767,45 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                         </div>
                       </Card>
                     )}
-                </>
-              )}
-
-              {/* 5.3 Query Results (always visible) */}
-              {agentOutput.analysisResult.queryResult && (
-                <Card title="Query Results">
-                  {agentOutput.analysisResult.queryResult.success ? (
-                    <>
-                      <div className="bg-blue-900/20 inline-block px-3 py-1 rounded-full mb-3">
-                        <p className="text-blue-300 text-sm">
-                          Rows returned:{" "}
-                          {agentOutput.analysisResult.queryResult.rowCount}
-                        </p>
-                      </div>
-                      {agentOutput.analysisResult.queryResult.rows?.length >
-                        0 && (
-                        <div className="overflow-x-auto rounded-lg border border-blue-500/20">
-                          <table className="min-w-full text-sm">
-                            <thead className="bg-gradient-to-r from-[#151821] to-[#0f1015]">
-                              <tr>
-                                {Object.keys(
-                                  agentOutput.analysisResult.queryResult.rows[0]
-                                ).map((header) => (
-                                  <th
-                                    key={header}
-                                    className="px-4 py-3 text-left font-medium text-gray-100 border-b border-blue-500/20"
-                                  >
-                                    {header}
-                                  </th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-blue-500/10">
-                              {/* Limited to 10 rows */}
-                              {agentOutput.analysisResult.queryResult.rows.slice(0, 10).map(
-                                (row: any, i: number) => (
-                                  <tr
-                                    key={i}
-                                    className="hover:bg-blue-500/5 transition-colors duration-150"
-                                  >
-                                    {Object.values(row).map(
-                                      (val: any, j: number) => (
-                                        <td
-                                          key={j}
-                                          className="px-4 py-3 whitespace-nowrap text-gray-300"
-                                        >
-                                          {formatValue(val)}
-                                        </td>
-                                      )
-                                    )}
-                                  </tr>
-                                )
-                              )}
-                              {/* Show 'more rows' message if there are more than 10 rows */}
-                              {agentOutput.analysisResult.queryResult.rows.length > 10 && (
-                                <tr>
-                                  <td 
-                                    colSpan={Object.keys(agentOutput.analysisResult.queryResult.rows[0]).length}
-                                    className="px-4 py-3 text-center text-gray-400 italic"
-                                  >
-                                    ... and {agentOutput.analysisResult.queryResult.rows.length - 10} more rows
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
+                    
+                  {agentOutput.analysisResult.content?.metrics &&
+                    Object.keys(agentOutput.analysisResult.content.metrics).length > 0 && (
+                      <Card title="Metrics">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          {Object.entries(
+                            agentOutput.analysisResult.content.metrics
+                          ).map(([k, v]) => (
+                            <MetricCard
+                              key={k}
+                              label={k}
+                              value={
+                                typeof v === "string" || typeof v === "number"
+                                  ? v
+                                  : String(v)
+                              }
+                            />
+                          ))}
                         </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="bg-red-900/20 p-3 rounded-lg border border-red-500/20">
-                      <p className="text-red-400">
-                        Error: {agentOutput.analysisResult.queryResult.error}
-                      </p>
-                    </div>
-                  )}
-                </Card>
+                      </Card>
+                    )}
+                </>
               )}
             </>
           )}
 
-          {/* 5.4 "Show More" section (SQL + Debug) */}
-          {expand && (
-            <>
-              {agentOutput.analysisResult?.sqlQuery && (
-                <Card title="SQL Query">
-                  <pre className="whitespace-pre-wrap text-xs bg-[#0d0e10] p-3 rounded-lg border border-blue-500/10 text-gray-300 overflow-x-auto">
-                    {agentOutput.analysisResult.sqlQuery}
-                  </pre>
-                </Card>
-              )}
-
-              {agentOutput.debug && (
-                <Card title="Debug Info">
-                  <pre className="whitespace-pre-wrap text-xs bg-[#0d0e10] p-3 rounded-lg border border-blue-500/10 text-gray-300 overflow-x-auto">
-                    {`Message:       ${agentOutput.debug.message}
+          {/* 5.4 Debug Info (only when expanded) */}
+          {expand && agentOutput.debug && (
+            <Card title="Debug Info">
+              <pre className="whitespace-pre-wrap text-xs bg-[#0d0e10] p-3 rounded-lg border border-blue-500/10 text-gray-300 overflow-x-auto">
+                {`Message:       ${agentOutput.debug.message}
 Connection ID: ${agentOutput.debug.connectionId}
 Query:         ${agentOutput.debug.query}
 Match Count:   ${agentOutput.debug.matchCount}`}
-                  </pre>
-                </Card>
-              )}
-            </>
+              </pre>
+            </Card>
           )}
 
-          {/* toggle button */}
+          {/* toggle button for debug info */}
           <Button
             onClick={() => setExpand(!expand)}
             variant="text"
@@ -692,6 +829,7 @@ Match Count:   ${agentOutput.debug.matchCount}`}
           </Button>
         </div>
       );
+    }
 
     /* ───────────── 6. DEFAULT ───────────── */
     default:

@@ -285,13 +285,36 @@ export default function ChatWithDbPage() {
           className="flex-1 overflow-y-auto px-4 py-6 scrollbar-thin scrollbar-thumb-blue-500/30 scrollbar-track-transparent">
           <div className="max-w-3xl mx-auto space-y-6">
             {chatHistory.length === 0 && (
-              <div className="text-center text-gray-400">No conversations yet. Ask anything!</div>
+              <div className="text-center py-10 px-6 rounded-xl bg-gradient-to-b from-blue-900/10 to-blue-900/5 border border-blue-500/20">
+                <h3 className="text-lg font-medium text-blue-400 mb-2">Welcome to DataShorts</h3>
+                <p className="text-gray-400 mb-3">No conversations yet. Ask anything about your database!</p>
+                <div className="flex flex-wrap gap-2 justify-center text-sm">
+                  <button 
+                    className="px-3 py-1.5 rounded-lg bg-blue-900/20 hover:bg-blue-900/30 border border-blue-500/30 text-blue-300"
+                    onClick={() => setUserQuery("What tables are in this database?")}
+                  >
+                    Show tables
+                  </button>
+                  <button 
+                    className="px-3 py-1.5 rounded-lg bg-blue-900/20 hover:bg-blue-900/30 border border-blue-500/30 text-blue-300"
+                    onClick={() => setUserQuery("How many users are in the database?")}
+                  >
+                    Count users
+                  </button>
+                  <button 
+                    className="px-3 py-1.5 rounded-lg bg-blue-900/20 hover:bg-blue-900/30 border border-blue-500/30 text-blue-300"
+                    onClick={() => setUserQuery("Show me a visualization of top data")}
+                  >
+                    Visualize data
+                  </button>
+                </div>
+              </div>
             )}
 
             {chatHistory.map((chat, idx) => (
               <div key={idx} className="space-y-4">
                 {/* user bubble */}
-                <div className="self-end bg-gradient-to-br from-blue-600/30 to-blue-600/10 border border-blue-500/30 px-4 py-3 rounded-2xl rounded-tr-none shadow-md">
+                <div className="self-end">
                   <ChatMessage
                     message={chat.message}
                     response={{}}
@@ -302,9 +325,9 @@ export default function ChatWithDbPage() {
 
                 {/* bot bubble */}
                 {chat.response && (
-                  <div className="bg-[#111214]/80 border border-blue-500/20 px-4 py-3 rounded-2xl rounded-tl-none shadow-lg relative">
+                  <div className="relative">
                     <div 
-                      className="absolute top-3 right-3 text-blue-400 hover:text-blue-300 cursor-pointer transition-colors"
+                      className="absolute top-3 right-3 z-10 text-blue-400 hover:text-blue-300 cursor-pointer transition-colors"
                       onClick={() => handleBookmarkToggle(idx)}
                     >
                       <Bookmark size={18} className={chat.bookmarked ? "fill-current" : ""} />
@@ -322,7 +345,12 @@ export default function ChatWithDbPage() {
             ))}
 
             {isLoading && (
-              <div className="animate-pulse text-sm text-blue-400">Thinking…</div>
+              <div className="flex items-center gap-2 text-blue-400 px-4 py-3 bg-blue-900/10 w-fit rounded-xl border border-blue-500/20">
+                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                <span className="text-sm font-medium ml-1">Thinking</span>
+              </div>
             )}
           </div>
         </section>
@@ -333,7 +361,7 @@ export default function ChatWithDbPage() {
             <div className="flex-1 flex gap-2">
               <textarea
                 rows={2}
-                className="flex-1 resize-none bg-[#0a0a0a]/80 border border-blue-500/20 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none placeholder-gray-400 scrollbar-thin scrollbar-thumb-blue-500/30"
+                className="flex-1 resize-none bg-[#0f1013] border border-blue-500/20 rounded-lg p-3 focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 focus:outline-none placeholder-gray-500 text-gray-200 scrollbar-thin scrollbar-thumb-blue-500/30"
                 placeholder="Ask something about your database…"
                 value={userQuery}
                 onChange={e => setUserQuery(e.target.value)}
@@ -357,7 +385,7 @@ export default function ChatWithDbPage() {
             <button
               onClick={() => handleSend()}
               disabled={isLoading || !userQuery.trim()}
-              className="px-5 py-2 rounded-lg border border-blue-500/40 bg-blue-600/20 hover:bg-blue-600/30 transition disabled:opacity-50">
+              className="px-5 py-2 rounded-lg bg-gradient-to-r from-blue-600/90 to-blue-500/90 hover:from-blue-600 hover:to-blue-500 text-white transition shadow-md shadow-blue-500/10 disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed">
               {isLoading ? '…' : 'Send'}
             </button>
           </div>
@@ -366,5 +394,3 @@ export default function ChatWithDbPage() {
     </div>
   )
 }
-
-

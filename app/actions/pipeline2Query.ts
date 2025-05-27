@@ -12,10 +12,72 @@ import { researcher } from '@/lib/agents2/researcher';
 import { visualizer } from '@/lib/agents2/visualizer';
 import predictive from '@/lib/agents2/predictive'; 
 
-
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+/**
+ * Validate SQL query for common syntax errors and attempt to fix them
+ * @param sqlQuery The SQL query to validate
+ * @returns Object indicating if the query is valid, with optional fixed query and error
+ */
+function validateSqlQuery(sqlQuery: string): { valid: boolean; fixedQuery?: string; error?: string } {
+  if (!sqlQuery || typeof sqlQuery !== 'string') {
+    return { valid: false, error: 'Empty or invalid SQL query' };
+  }
+
+  try {
+    // Check for unbalanced quotes
+    let inSingleQuote = false;
+    let inDoubleQuote = false;
+    let lastChar = '';
+    
+    for (let i = 0; i < sqlQuery.length; i++) {
+      const char = sqlQuery[i];
+      
+      // Handle single quotes
+      if (char === "'" && lastChar !== '\\') {
+        inSingleQuote = !inSingleQuote;
+      }
+      
+      // Handle double quotes
+      if (char === '"' && lastChar !== '\\' && !inSingleQuote) {
+        inDoubleQuote = !inDoubleQuote;
+      }
+      
+      lastChar = char;
+    }
+    
+    // If we're still in a quote at the end, the query has unbalanced quotes
+    if (inSingleQuote || inDoubleQuote) {
+      let fixedQuery = sqlQuery;
+      
+      // Try to fix the query by adding closing quotes
+      if (inSingleQuote) {
+        fixedQuery += "'";
+      }
+      
+      if (inDoubleQuote) {
+        fixedQuery += '"';
+      }
+      
+      return { 
+        valid: false, 
+        fixedQuery, 
+        error: `Unbalanced quotes in SQL query${inDoubleQuote ? ': missing closing double quote (")' : ''}${inSingleQuote ? ': missing closing single quote (\')' : ''}`
+      };
+    }
+    
+    // Check for basic syntax issues
+    if (!sqlQuery.toUpperCase().includes('SELECT')) {
+      return { valid: false, error: 'Query must include a SELECT statement' };
+    }
+    
+    return { valid: true };
+  } catch (error) {
+    return { valid: false, error: error instanceof Error ? error.message : 'Unknown validation error' };
+  }
+}
 
 /**
  * Execute SQL query on the database connection
@@ -25,6 +87,23 @@ const openai = new OpenAI({
  */
 async function executeSQLQuery(connectionId: string, sqlQuery: string) {
   try {
+    // Validate the SQL query before executing
+    const validation = validateSqlQuery(sqlQuery);
+    if (!validation.valid) {
+      console.log('SQL validation failed:', validation.error);
+      
+      // If we have a fixed query, use it
+      if (validation.fixedQuery) {
+        console.log('Using fixed SQL query:', validation.fixedQuery);
+        sqlQuery = validation.fixedQuery;
+      } else {
+        // If we couldn't fix it, return the error
+        return {
+          success: false,
+          error: validation.error
+        };
+      }
+    }
 
     const [connection] = await db
       .select()
@@ -35,7 +114,6 @@ async function executeSQLQuery(connectionId: string, sqlQuery: string) {
       throw new Error('Connection not found');
     }
 
-
     let pool = getExistingPool(connectionId);
     if (!pool) {
       console.log('No existing pool found, creating new pool for connection:', connectionId);
@@ -44,7 +122,6 @@ async function executeSQLQuery(connectionId: string, sqlQuery: string) {
       }
       pool = getPool(connectionId, connection.postgresUrl);
     }
-
 
     const result = await pool.query(sqlQuery);
     console.log('Query executed successfully');
@@ -154,6 +231,7 @@ export async function generateSQLQuery(schema: any[], userQuery: string) {
 7. Consider all relevant table relationships when generating the query
 8. Use table aliases for better readability
 9. Only include necessary columns in the SELECT clause
+10. Make sure all quotes are properly closed in the SQL query
 
 Schema Analysis:
 ${Object.entries(schemaAnalysis).map(([tableName, analysis]) => `
@@ -171,7 +249,7 @@ Query Analysis:
 
 User Query: ${userQuery}
 
-Please generate a SQL query that will answer this question. Only return the SQL query without any explanation. Remember to use double quotes around table and column names and ILIKE for text matching.`;
+Please generate a SQL query that will answer this question. Only return the SQL query without any explanation. Remember to use double quotes around table and column names, ILIKE for text matching, and ensure all quotes are properly closed.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4",
@@ -186,7 +264,8 @@ Consider the following when generating the query:
 4. Use table aliases for better readability
 5. Only include necessary columns in the SELECT clause
 6. Use the actual table and column names from the schema
-7. Consider both direct and indirect relationships between tables`
+7. Consider both direct and indirect relationships between tables
+8. CRITICAL: Ensure all quotes in the SQL are properly closed and balanced`
         },
         {
           role: "user",
@@ -204,6 +283,12 @@ Consider the following when generating the query:
 
     let sqlQuery = response.choices[0].message.content.trim();
     
+    // Validate the generated SQL query
+    const validation = validateSqlQuery(sqlQuery);
+    if (!validation.valid && validation.fixedQuery) {
+      console.log('Fixing SQL query:', validation.error);
+      sqlQuery = validation.fixedQuery;
+    }
 
     const queryValidation = {
       hasJoins: sqlQuery.toLowerCase().includes('join'),
@@ -409,31 +494,171 @@ export async function processPipeline2Query(query: string, connectionId: string,
     console.log('Task manager result:', taskResult);
 
     let analysisResult;
-    if (taskResult.next === 'researcher') {
-      analysisResult = await researcher(query, reconstructedSchema, connectionId);
+    let agentFailure = false;
+    let fallbackQueryResult = null;
+    let fallbackSqlQuery = null;
+    
+    try {
+      if (taskResult.next === 'researcher') {
+        analysisResult = await researcher(query, reconstructedSchema, connectionId);
+        
+        if (analysisResult && analysisResult.queryResult && analysisResult.queryResult.rows) {
+          const rows = analysisResult.queryResult.rows;
+          if (rows.length === 0) {
+            analysisResult.details.push(
+              "Note: The query returned no results. This could mean either:",
+              "1. The user doesn't exist in the database",
+              "2. The user exists but has no posts",
+              "3. The query might need to be adjusted to better match the database schema"
+            );
+          }
+        }
+      } else if (taskResult.next === 'visualizer') {
+        const messages = [
+          { role: 'user', content: query }
+        ];
+        analysisResult = await visualizer(messages, reconstructedSchema, connectionId);
+      } else if (taskResult.next === 'predictive') {
+        console.log('Calling predictive agent with database context and user query');
+        analysisResult = await predictive(query, reconstructedSchema, connectionId);
+      } else {
+        throw new Error('Invalid task manager result');
+      }
+    } catch (agentError) {
+      console.error(`Agent ${taskResult.next} failed:`, agentError);
+      agentFailure = true;
       
-      if (analysisResult && analysisResult.queryResult && analysisResult.queryResult.rows) {
-        const rows = analysisResult.queryResult.rows;
-        if (rows.length === 0) {
-          analysisResult.details.push(
-            "Note: The query returned no results. This could mean either:",
-            "1. The user doesn't exist in the database",
-            "2. The user exists but has no posts",
-            "3. The query might need to be adjusted to better match the database schema"
-          );
+      // Extract SQL query from the error or generate a simple one
+      if (agentError && typeof agentError === 'object' && 'sqlQuery' in agentError && (agentError as any).sqlQuery) {
+        fallbackSqlQuery = agentError.sqlQuery;
+      } else if (analysisResult && analysisResult.sqlQuery) {
+        fallbackSqlQuery = analysisResult.sqlQuery;
+      } else {
+        // Try to generate a simple query based on the schema
+        try {
+          fallbackSqlQuery = await generateSQLQuery(reconstructedSchema, query);
+          console.log('Generated fallback SQL query:', fallbackSqlQuery);
+        } catch (sqlGenError) {
+          console.error('Failed to generate fallback SQL query:', sqlGenError);
         }
       }
-    } else if (taskResult.next === 'visualizer') {
-      const messages = [
-        { role: 'user', content: query }
-      ];
-      analysisResult = await visualizer(messages, reconstructedSchema, connectionId);
-    } else if (taskResult.next === 'predictive') {
-      console.log('Calling predictive agent with database context and user query');
-      analysisResult = await predictive(query, reconstructedSchema, connectionId);
-    } else {
-      throw new Error('Invalid task manager result');
+      
+      // If we have a SQL query, execute it to get results
+      if (fallbackSqlQuery) {
+        try {
+          fallbackQueryResult = await executeSQLQuery(connectionId, fallbackSqlQuery);
+          console.log('Executed fallback SQL query with results:', fallbackQueryResult);
+          
+          // Create a minimal analysis result with just the query and results
+          analysisResult = {
+            content: {
+              title: "Query Results",
+              summary: "Agent processing failed, but here are the raw query results.",
+              details: ["The agent encountered an error due to context limitations.", 
+                      "Below are the raw results from the SQL query."],
+              metrics: {}
+            },
+            sqlQuery: fallbackSqlQuery,
+            queryResult: fallbackQueryResult
+          };
+        } catch (sqlExecError) {
+          console.error('Failed to execute fallback SQL query:', sqlExecError);
+          // If the fallback query fails, try a simpler query
+          try {
+            const simpleQuery = `SELECT * FROM "${reconstructedSchema[0]?.tableName}" LIMIT 10`;
+            console.log('Trying simple fallback query:', simpleQuery);
+            const simpleResult = await executeSQLQuery(connectionId, simpleQuery);
+            
+            if (simpleResult.success) {
+              fallbackQueryResult = simpleResult;
+              fallbackSqlQuery = simpleQuery;
+              
+              analysisResult = {
+                content: {
+                  title: "Query Results",
+                  summary: "Agent processing failed, using simplified query.",
+                  details: [
+                    "The agent encountered an error due to context limitations.",
+                    "A simplified query was used to show some data from the main table."
+                  ],
+                  metrics: {}
+                },
+                sqlQuery: simpleQuery,
+                queryResult: simpleResult
+              };
+            }
+          } catch (simpleQueryError) {
+            console.error('Failed to execute simple fallback query:', simpleQueryError);
+          }
+        }
+      }
+      
+      if (!analysisResult) {
+        // Provide minimal fallback if everything else fails
+        analysisResult = {
+          content: {
+            title: "Query Error",
+            summary: "Unable to process your query due to context limitations.",
+            details: ["The agent encountered an error while processing your query.", 
+                    "This might be due to complexity or context limitations."],
+            metrics: {}
+          },
+          sqlQuery: fallbackSqlQuery
+        };
+      }
     }
+    
+    // Add a check after the try-catch block to detect if the agent failed but the error wasn't caught
+    // This handles cases where the agent returns a result but it's actually an error message
+    if (!agentFailure && analysisResult && 
+        (analysisResult.summary === "Unable to complete analysis due to an error" ||
+         analysisResult.content?.summary === "Unable to complete analysis due to an error" ||
+         (analysisResult.metrics && analysisResult.metrics.error === "Analysis failed"))) {
+      
+      console.log('Detected agent failure from result content');
+      agentFailure = true;
+      
+      // Try to generate a SQL query if one doesn't exist
+      if (!analysisResult.sqlQuery) {
+        try {
+          const generatedSqlQuery = await generateSQLQuery(reconstructedSchema, query);
+          console.log('Generated SQL query after detecting failure:', generatedSqlQuery);
+          
+          // Execute the generated SQL query
+          const queryResult = await executeSQLQuery(connectionId, generatedSqlQuery);
+          console.log('Executed SQL query after detecting failure:', queryResult);
+          
+          if (queryResult.success) {
+            // Update the analysis result with the SQL query and results
+            analysisResult.sqlQuery = generatedSqlQuery;
+            analysisResult.queryResult = queryResult;
+          } else {
+            // If the query failed, try a simpler query
+            const simpleQuery = `SELECT * FROM "${reconstructedSchema[0]?.tableName}" LIMIT 10`;
+            console.log('Trying simple query after failure:', simpleQuery);
+            const simpleResult = await executeSQLQuery(connectionId, simpleQuery);
+            
+            if (simpleResult.success) {
+              analysisResult.sqlQuery = simpleQuery;
+              analysisResult.queryResult = simpleResult;
+              
+              // Update the content to reflect the simplified query
+              if (analysisResult.content) {
+                analysisResult.content.details = [
+                  ...(analysisResult.content.details || []),
+                  "Using a simplified query to show some data from the main table."
+                ];
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Failed to generate or execute SQL query after detecting failure:', error);
+        }
+      }
+    }
+    
+    // Update the taskResult with the agent failure flag
+    taskResult = { ...taskResult, agentFailure };
 
     const tablesUsed = reconstructedSchema.map(table => table.tableName);
     const chatEntry = {
@@ -442,7 +667,8 @@ export async function processPipeline2Query(query: string, connectionId: string,
         taskResult,
         analysisResult,
         tablesUsed,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        agentFailure
       }),
       timestamp: new Date().toISOString()
     };
@@ -488,8 +714,9 @@ export async function processPipeline2Query(query: string, connectionId: string,
       matches: queryResponse.matches,
       taskResult,
       analysisResult,
+      agentFailure,
       debug: {
-        message: 'Query processed successfully',
+        message: agentFailure ? 'Query processed with fallback' : 'Query processed successfully',
         connectionId,
         query,
         matchCount: reconstructedSchema.length
