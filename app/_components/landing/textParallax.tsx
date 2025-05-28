@@ -25,7 +25,7 @@ const features: Feature[] = [
       "Just paste your database connection string, choose your DB type, and you're in. No setup headaches, no manual configs—just pure productivity.",
     contentPosition: 'r',
     Icon: FiEye,
-    image: '/get_started.png',
+    image: '/addconnection.png',
   },
   {
     id: 2,
@@ -39,23 +39,23 @@ const features: Feature[] = [
   },
   {
     id: 3,
-    callout: 'Natural language meets database intelligence.',
-    title: "Ask Anything, Get Agentic Responses",
-    description:
-      'Ask questions like “how many?” and our smart agent guides you to clarity—automatically understanding intent and context across tables.',
-    contentPosition: 'r',
-    Icon: FiPlay,
-    image: '/agentic.jpeg',
-  },
-  {
-    id: 4,
     callout: 'From tables to charts—automatically.',
     title: 'Auto-Generated Visualizations',
     description:
       'Whether it’s column distribution or schema stats, DataChat instantly transforms your query results into interactive visuals like pie charts.',
-    contentPosition: 'l',
+    contentPosition: 'r',
     Icon: FiDollarSign,
     image: '/pie_chart.jpeg',
+  },
+  {
+    id: 4,
+    callout: 'Generate Dashboards',
+    title: 'Bookmark your queries',
+    description:
+      'Bookmark your visualizations and queries to create a dashboard that auto-updates in real-time',
+    contentPosition: 'l',
+    Icon: FiDollarSign,
+    image: '/bookmark.png',
   },
 ];
 
