@@ -15,7 +15,7 @@ export default function Home() {
     <main className="flex min-h-screen flex-col">
       <Header />
       <Hero />
-      <Features />
+     
       <VerticalSlideFeatures />
       
       <TabsFAQ />
