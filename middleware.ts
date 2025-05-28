@@ -10,30 +10,36 @@ const isPublicRoute = createRouteMatcher([
   '/api/beta-test(.*)', 
 ])
 
+const adminUsers = [
+  'user_2vGWjztVmYNM9zTMg9qHghGuSbI',
+  'user_2vp5iU5LkPu3SIhsxNYLjkXaN86'
+]
+
 export default clerkMiddleware(async (auth, req) => {
+  // Check if it's an admin route
+  if (req.nextUrl.pathname.startsWith('/admin')) {
+    const { userId } = await auth.protect()
+    if (!adminUsers.includes(userId)) {
+      return new Response('Access denied. Admin access required.', { 
+        status: 403 
+      })
+    }
+    return
+  }
+
   if (!isPublicRoute(req)) {
     const { userId } = await auth.protect()
     
-
-    const adminUsers = [
-      'user_2vGWjztVmYNM9zTMg9qHghGuSbI',
-      'user_2vp5iU5LkPu3SIhsxNYLjkXaN86'
-    ]
-    
-
     if (adminUsers.includes(userId)) {
       return
     }
     
-
     const betaTester = await db.select()
       .from(betaTesters)
       .where(eq(betaTesters.userId, userId))
       .limit(1)
     
-
     if (!betaTester.length || !betaTester[0].accepted) {
-
       return new Response('Access denied. Beta testing approval required.', { 
         status: 403 
       })

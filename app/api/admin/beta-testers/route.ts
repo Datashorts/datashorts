@@ -4,12 +4,21 @@ import { betaTesters } from '@/configs/schema'
 import { auth } from '@clerk/nextjs/server'
 import { eq } from 'drizzle-orm'
 
+const adminUsers = [
+  'user_2vGWjztVmYNM9zTMg9qHghGuSbI',
+  'user_2vp5iU5LkPu3SIhsxNYLjkXaN86'
+]
 
 export async function GET() {
   try {
     const { userId } = await auth()
     if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 })
+    }
+
+    // Check if user is admin
+    if (!adminUsers.includes(userId)) {
+      return new NextResponse('Forbidden - Admin access required', { status: 403 })
     }
 
     const testers = await db.select().from(betaTesters).orderBy(betaTesters.createdAt)
@@ -26,6 +35,11 @@ export async function PATCH(req: Request) {
     const { userId } = await auth()
     if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 })
+    }
+
+    // Check if user is admin
+    if (!adminUsers.includes(userId)) {
+      return new NextResponse('Forbidden - Admin access required', { status: 403 })
     }
 
     const body = await req.json()
