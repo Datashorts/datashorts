@@ -224,7 +224,6 @@ export async function POST(request: NextRequest) {
         });
 
         pgClient.release();
-        pgClient = undefined; // Mark as released
         console.log('Released PostgreSQL client back to pool');
 
       } else if (type === 'mysql') {
@@ -278,7 +277,6 @@ export async function POST(request: NextRequest) {
         });
 
         mysqlConnection.release();
-        mysqlConnection = undefined; // Mark as released
         console.log('Released MySQL connection back to pool');
       }
 
@@ -314,22 +312,12 @@ export async function POST(request: NextRequest) {
       });
 
     } finally {
-      // Cleanup connections - only release if not already released
+      // Cleanup connections
       if (pgClient) {
-        try {
-          pgClient.release();
-          console.log('Released PostgreSQL client in finally block');
-        } catch (err) {
-          console.log('PostgreSQL client already released');
-        }
+        pgClient.release();
       }
       if (mysqlConnection) {
-        try {
-          mysqlConnection.release();
-          console.log('Released MySQL connection in finally block');
-        } catch (err) {
-          console.log('MySQL connection already released');
-        }
+        mysqlConnection.release();
       }
       
       // Close pools

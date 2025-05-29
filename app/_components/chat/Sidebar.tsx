@@ -117,16 +117,20 @@ export default function Sidebar() {
     return `/chats/${connectionId}/${encodeURIComponent(dbName)}`
   }
 
-  const buildConnectionUrl = () => {
+const buildConnectionUrl = () => {
     if (isDirectUrl) return newConnection.url;
     
     const { host, port, database, username, password } = connectionDetails;
     
     if (newConnection.type === 'postgres') {
-      return `postgresql://${username}:${password}@${host}:${port}/${database}?sslmode=no-verify`;
+      return `postgresql://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/${database}?sslmode=no-verify`;
     } else if (newConnection.type === 'mysql') {
-      // MySQL connection string format
-      return `mysql://${username}:${password}@${host}:${port}/${database}`;
+      // Improved MySQL connection string format handling
+      // Remove any leading username prefix if present
+      const cleanUsername = username.includes('@') ? username.split('@')[0] : username;
+      const cleanHost = host.includes('@') ? host.split('@')[1] : host;
+      
+      return `mysql://${encodeURIComponent(cleanUsername)}:${encodeURIComponent(password)}@${cleanHost}:${port}/${database}`;
     }
     
     return '';
