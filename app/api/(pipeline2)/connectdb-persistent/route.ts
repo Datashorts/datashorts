@@ -285,7 +285,8 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         folderId: folderId,
         connectionName: name,
-        postgresUrl: url, // Store all connection strings here for now
+        postgresUrl: type === 'postgres' ? url : null,
+        mysqlUrl: type === 'mysql' ? url : null,
         dbType: type,
         pipeline: 'pipeline2',
         tableSchema: JSON.stringify(

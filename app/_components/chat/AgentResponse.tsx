@@ -138,6 +138,8 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
   agentOutput,
   onSubmitResponse,
 }) => {
+  console.log("AgentResponse received:", { agentType, agentOutput });
+  
   const [selected, setSelected] = useState<string>("");
   const [custom, setCustom] = useState<string>("");
   const [expand, setExpand] = useState<boolean>(false);
@@ -154,6 +156,21 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
   const submit = () => onSubmitResponse?.(selected || custom);
 
   switch (agentType) {
+    case "researcher":
+    case "pipeline2":
+      console.log("Rendering researcher/pipeline2 response:", agentOutput);
+      const researcherContent = agentOutput?.data?.results || agentOutput;
+      return (
+        <div className="space-y-6">
+          <Card title="Analysis" gradient>
+            <ResearcherResponse
+              content={researcherContent}
+              visualization={researcherContent.visualization}
+            />
+          </Card>
+        </div>
+      );
+
     case "multi":
       return (
         <div className="space-y-6">

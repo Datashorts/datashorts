@@ -44,6 +44,7 @@ export async function processPipeline2Query(
   connectionId: string, 
   predictiveMode: boolean = false
 ) {
+  const startTime = Date.now();
   try {
     const user = await currentUser();
     if (!user) throw new Error('Authentication required');
@@ -73,7 +74,7 @@ export async function processPipeline2Query(
       tablesUsed: reconstructedSchema.map(t => t.tableName)
     });
 
-    return formatSuccessResponse(reconstructedSchema, schemaMatches, taskResult, analysisResult);
+    return formatSuccessResponse(reconstructedSchema, schemaMatches, taskResult, analysisResult, startTime);
 
   } catch (error) {
     console.error('Pipeline processing error:', error);
@@ -90,9 +91,16 @@ async function verifyDatabaseConnection(connectionId: string) {
     .where(eq(dbConnections.id, Number(connectionId)));
 
   if (!connection) throw new Error('Database connection not found');
-  if (!connection.postgresUrl && !connection.mongoUrl) {
-    throw new Error('Missing database connection URL');
+  
+  // Check for the correct URL based on database type
+  const url = connection.dbType === 'postgres' ? connection.postgresUrl :
+              connection.dbType === 'mysql' ? connection.mysqlUrl :
+              connection.dbType === 'mongodb' ? connection.mongoUrl : null;
+              
+  if (!url) {
+    throw new Error(`Missing ${connection.dbType} connection URL`);
   }
+  
   return connection;
 }
 
@@ -196,19 +204,20 @@ async function saveConversationHistory(
     timestamp: new Date().toISOString()
   };
 
-  await db.transaction(async (tx) => {
-    const existing = await tx
+  try {
+    const existing = await db
       .select()
       .from(chats)
       .where(eq(chats.connectionId, Number(connectionId)));
 
     if (existing.length > 0) {
       const conversation = [...existing[0].conversation, newEntry];
-      await tx.update(chats)
+      await db
+        .update(chats)
         .set({ conversation, updatedAt: new Date() })
         .where(eq(chats.id, existing[0].id));
     } else {
-      await tx.insert(chats).values({
+      await db.insert(chats).values({
         userId,
         connectionId: Number(connectionId),
         conversation: [newEntry],
@@ -216,14 +225,17 @@ async function saveConversationHistory(
         updatedAt: new Date()
       });
     }
-  });
+  } catch (error) {
+    console.error('Error saving conversation history:', error);
+  }
 }
 
 function formatSuccessResponse(
   schema: SchemaMatch[],
   matches: any[],
   taskResult: any,
-  analysisResult: any
+  analysisResult: any,
+  startTime: number
 ) {
   return {
     success: true,
@@ -278,10 +290,16 @@ export async function generateSQLQuery(
   userQuery: string,
   connectionId: string
 ) {
+  // Ensure connectionId is a valid number
+  const numericConnectionId = parseInt(connectionId, 10);
+  if (isNaN(numericConnectionId)) {
+    throw new Error('Invalid connection ID');
+  }
+
   const [connection] = await db
     .select()
     .from(dbConnections)
-    .where(eq(dbConnections.id, Number(connectionId)));
+    .where(eq(dbConnections.id, numericConnectionId));
 
   if (!connection) throw new Error('Connection not found');
   

@@ -140,7 +140,10 @@ export async function getAnyPool(connectionId: string): Promise<{ pool: Pool | m
       return null;
     }
 
-    const connectionUrl = connection.postgresUrl || connection.mongoUrl;
+    const connectionUrl = connection.dbType === 'postgres' ? connection.postgresUrl :
+                         connection.dbType === 'mysql' ? connection.mysqlUrl :
+                         connection.dbType === 'mongodb' ? connection.mongoUrl : null;
+
     if (!connectionUrl) {
       console.error('No connection URL found for connection:', connectionId);
       return null;
