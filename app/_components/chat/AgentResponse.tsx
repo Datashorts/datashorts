@@ -1,6 +1,4 @@
 import React, { useState } from "react";
-import VisualizationRenderer from "@/components/VisualizationRenderer";
-import ResearcherResponse from "./ResearcherResponse";
 import PredictiveResponse from "./PredictiveResponse";
 import PieChart from "@/components/PieChart";
 import BarChart from "@/components/BarChart";
@@ -33,6 +31,12 @@ interface AgentResponseProps {
   userQuery?: string;
   onUserQueryChange?: (v: string) => void;
   onSubmitResponse?: (v: string) => void;
+  expand?: boolean;
+  onExpand?: (isExpanded: boolean) => void;
+  onBookmark?: () => void;
+  onChoose?: (opt: string) => void;
+  selected?: string;
+  connectionId?: string;
 }
 
 const Card: React.FC<{
@@ -303,179 +307,53 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
   userQuery,
   onUserQueryChange,
   onSubmitResponse,
+  expand,
+  onExpand,
+  onBookmark,
+  onChoose,
+  selected,
+  connectionId,
 }) => {
-  const [selected, setSelected] = useState<string>("");
+  const [isExpanded, setIsExpanded] = useState(expand);
   const [custom, setCustom] = useState<string>("");
-  const [expand, setExpand] = useState<boolean>(false);
 
   const submitEnabled = selected !== "" || custom.trim() !== "";
   const choose = (opt: string) => {
-    setSelected(opt);
+    onChoose?.(opt);
     setCustom("");
   };
   const type = (v: string) => {
     setCustom(v);
-    setSelected("");
+    onChoose?.(v);
   };
   const submit = () => onSubmitResponse?.(selected || custom);
 
   switch (agentType) {
-    case "multi":
+    /* ───────────── 1. ERROR ───────────── */
+    case "error":
       return (
-        <div className="space-y-6">
-          {/* top overview */}
-          <Card title="Overview" gradient>
-            <p className="text-gray-200 leading-relaxed">
-              {agentOutput.summary}
-            </p>
-            {agentOutput.details?.length > 0 && (
-              <ul className="list-disc list-inside space-y-2 mt-3 text-gray-200">
-                {agentOutput.details.map((d: string, i: number) => (
-                  <li key={i} className="leading-relaxed">
-                    {d}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-
-          {/* each sub-task */}
-          {agentOutput.tasks?.map((task: any, i: number) => (
-            <Card
-              key={i}
-              title={`${task.agentType.charAt(0).toUpperCase() + task.agentType.slice(1)} Response`}
-            >
-              <div className="inline-block px-3 py-1 bg-blue-900/20 rounded-full mb-3">
-                <p className="text-xs text-blue-300">Query: {task.query}</p>
-              </div>
-
-              {/* researcher task */}
-              {task.agentType === "researcher" && (
-                <ResearcherResponse
-                  content={task.response}
-                  visualization={task.response.visualization}
-                />
-              )}
-
-              {/* visualize task */}
-              {task.agentType === "visualize" && (
-                <>
-                  <div className="p-2 rounded-lg bg-[#0d0e10]/80 mb-4">
-                    <VisualizationRenderer
-                      visualization={task.response.visualization}
-                    />
-                  </div>
-                  {task.response.content && (
-                    <>
-                      <p className="text-gray-200 leading-relaxed">
-                        {task.response.content.summary}
-                      </p>
-                      {task.response.content.details?.length > 0 && (
-                        <ul className="list-disc list-inside space-y-2 mt-3">
-                          {task.response.content.details.map(
-                            (d: string, idx: number) => (
-                              <li
-                                key={idx}
-                                className="text-gray-200 leading-relaxed"
-                              >
-                                {d}
-                              </li>
-                            )
-                          )}
-                        </ul>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-
-              {/* inquire task */}
-              {task.agentType === "inquire" && (
-                <>
-                  <p className="font-medium text-gray-100 mb-2">
-                    {task.response.question}
-                  </p>
-                  <p className="text-xs text-gray-400 mb-4">
-                    {task.response.context}
-                  </p>
-
-                  {task.response.options?.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {task.response.options.map((opt: string) => (
-                        <Button
-                          key={opt}
-                          onClick={() => choose(opt)}
-                          selected={selected === opt}
-                          size="sm"
-                        >
-                          {opt}
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-              
-              {/* predictive task */}
-              {task.agentType === "predictive" && (
-                <PredictiveResponse
-                  content={task.response.content}
-                  prediction={task.response.prediction}
-                  sqlQuery={task.response.sqlQuery}
-                  queryResult={task.response.queryResult}
-                />
-              )}
-            </Card>
-          ))}
-        </div>
+        <Card gradient>
+          <div className="flex items-center space-x-2 mb-3">
+            <div className="animate-pulse w-2 h-2 rounded-full bg-red-500" />
+            <p className="text-sm text-red-400 font-medium">Error</p>
+          </div>
+          <p className="font-medium text-gray-200 leading-relaxed">
+            {agentOutput.message || "An error occurred"}
+          </p>
+        </Card>
       );
 
-    /* ───────────── 2. INQUIRE ───────────── */
-    case "inquire":
+    /* ───────────── 2. LOADING ───────────── */
+    case "loading":
       return (
-        <Card gradient className="space-y-4">
-          <p className="font-medium text-gray-100 text-lg">
-            {agentOutput.question}
+        <Card gradient>
+          <div className="flex items-center space-x-2 mb-3">
+            <div className="animate-pulse w-2 h-2 rounded-full bg-blue-500" />
+            <p className="text-sm text-blue-400 font-medium">Processing</p>
+          </div>
+          <p className="font-medium text-gray-200 leading-relaxed">
+            {agentOutput.message || "Processing your request..."}
           </p>
-          <p className="text-sm text-gray-400">{agentOutput.context}</p>
-
-          {agentOutput.options?.length > 0 && (
-            <div className="flex flex-wrap gap-2 my-4">
-              {agentOutput.options.map((opt: string) => (
-                <Button
-                  key={opt}
-                  onClick={() => choose(opt)}
-                  selected={selected === opt}
-                  size="sm"
-                >
-                  {opt}
-                </Button>
-              ))}
-            </div>
-          )}
-
-          {agentOutput.allowCustomInput && (
-            <div className="relative">
-              <input
-                type={agentOutput.inputType || "text"}
-                className="w-full bg-[#1b1c1d] border border-blue-500/20 focus:border-blue-500/40 outline-none rounded-lg p-3 text-sm text-gray-200 placeholder-gray-500 transition-colors duration-150"
-                placeholder="Type your answer…"
-                value={custom}
-                onChange={(e) => type(e.target.value)}
-              />
-            </div>
-          )}
-
-          {onSubmitResponse && (
-            <Button
-              disabled={!submitEnabled}
-              onClick={submit}
-              variant="primary"
-              className="w-full mt-3"
-            >
-              Submit Response
-            </Button>
-          )}
         </Card>
       );
 
@@ -492,72 +370,6 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
           </p>
         </Card>
       );
-
-    /* ───────────── 4. VISUALIZE ───────────── */
-    case "visualize": {
-      let out = agentOutput;
-      if (typeof out === "string") {
-        try {
-          out = JSON.parse(out);
-        } catch {
-          return <Card>No visualization data</Card>;
-        }
-      }
-      if (!out.visualization) return <Card>No visualization data</Card>;
-
-      return (
-        <div className="space-y-6">
-          {/* content summary/details/metrics */}
-          {out.content && (
-            <>
-              <Card title={out.content.title || "Visualization"} gradient>
-                <p className="text-gray-200 leading-relaxed">
-                  {out.content.summary}
-                </p>
-              </Card>
-
-              {out.content.details?.length > 0 && (
-                <Card title="Details">
-                  <ul className="list-disc list-inside space-y-2">
-                    {out.content.details.map((d: string, i: number) => (
-                      <li key={i} className="text-gray-200 leading-relaxed">
-                        {d}
-                      </li>
-                    ))}
-                  </ul>
-                </Card>
-              )}
-
-              {out.content.metrics &&
-                Object.keys(out.content.metrics).length > 0 && (
-                  <Card title="Metrics">
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                      {Object.entries(out.content.metrics).map(([k, v]) => (
-                        <MetricCard
-                          key={k}
-                          label={k}
-                          value={
-                            typeof v === "string" || typeof v === "number"
-                              ? v
-                              : String(v)
-                          }
-                        />
-                      ))}
-                    </div>
-                  </Card>
-                )}
-            </>
-          )}
-
-          {/* visualization itself */}
-          <Card className="p-0 overflow-hidden">
-            <div className="p-4 bg-[#0d0e10]/80 rounded-lg">
-              <VisualizationRenderer visualization={out.visualization} />
-            </div>
-          </Card>
-        </div>
-      );
-    }
 
     /* ───────────── PREDICTIVE AGENT ───────────── */
     case "predictive":
@@ -794,7 +606,7 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
           )}
 
           {/* 5.4 Debug Info (only when expanded) */}
-          {expand && agentOutput.debug && (
+          {isExpanded && agentOutput.debug && (
             <Card title="Debug Info">
               <pre className="whitespace-pre-wrap text-xs bg-[#0d0e10] p-3 rounded-lg border border-blue-500/10 text-gray-300 overflow-x-auto">
                 {`Message:       ${agentOutput.debug.message}
@@ -806,27 +618,17 @@ Match Count:   ${agentOutput.debug.matchCount}`}
           )}
 
           {/* toggle button for debug info */}
-          <Button
-            onClick={() => setExpand(!expand)}
-            variant="text"
-            className="flex items-center space-x-1"
-          >
-            <span>{expand ? "Show Less" : "Show More"}</span>
-            <svg
-              className={`w-4 h-4 transition-transform duration-200 ${expand ? "rotate-180" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
+          <div className="flex justify-end">
+            <button
+              onClick={() => {
+                setIsExpanded(!isExpanded);
+                onExpand?.(!isExpanded);
+              }}
+              className="text-xs text-gray-400 hover:text-gray-300 transition-colors"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          </Button>
+              {isExpanded ? "Hide Debug Info" : "Show Debug Info"}
+            </button>
+          </div>
         </div>
       );
     }
@@ -835,12 +637,11 @@ Match Count:   ${agentOutput.debug.matchCount}`}
     default:
       return (
         <Card gradient>
-          <div className="flex items-center space-x-3">
-            <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full" />
-            <p className="font-medium text-gray-200">
-              Processing your request…
-            </p>
-          </div>
+          <p className="text-gray-200 leading-relaxed">
+            {typeof agentOutput === "string"
+              ? agentOutput
+              : JSON.stringify(agentOutput, null, 2)}
+          </p>
         </Card>
       );
   }
