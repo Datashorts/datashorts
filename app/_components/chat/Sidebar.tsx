@@ -127,6 +127,7 @@ export default function Sidebar() {
           finalUrl = `postgresql://${connectionDetails.username}:${connectionDetails.password}@${connectionDetails.host}:${connectionDetails.port}/${connectionDetails.database}?sslmode=no-verify`;
         }
 
+        
         const response = await fetch('/api/connectdb-persistent', {
           method: 'POST',
           headers: {
