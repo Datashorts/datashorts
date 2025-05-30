@@ -11,10 +11,9 @@ export type Folder = {
 export type Connection = {
   id: string
   name: string
-  type: 'postgres' | 'mongodb'
+  type: 'postgres' | 'mysql' | 'mongodb'
   url: string
 }
-
 type FoldersState = {
   folders: Folder[]
   activeFolderId: number | null

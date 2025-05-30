@@ -64,7 +64,7 @@ Decision Logic Examples:
 - "Predict next month's sales as a bar chart" → PREDICTIVE (has "predict")
 - "Show predicted pizza sales by type" → PREDICTIVE (has "predicted") 
 - "Forecast delivery trends using line graph" → PREDICTIVE (has "forecast")
-- "What will pizza sales look like next quarter as pie chart?" → PREDICTIVE (has "will" + future)
+- "What will pizza sales look ILIKE next quarter as pie chart?" → PREDICTIVE (has "will" + future)
 - "Show correlation between pizza size and predicted sales volume as scatter points" → PREDICTIVE (has "predicted")
 - "Display historical sales trends as line chart" → VISUALIZER (no prediction keywords)
 - "Show current pizza sales by type in bar chart" → VISUALIZER (no prediction keywords)

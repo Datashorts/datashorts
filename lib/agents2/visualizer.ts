@@ -114,32 +114,48 @@ Return a JSON object with:
 
     // If no previous query found or not a follow-up, generate new query
     if (!sqlQuery) {
-      const generatedQuery = await generateSQLQuery(
-        reconstructedSchema,
-        lastUserMessage
-      );
-      // Validate that the generated query is actually SQL
-      if (
-        typeof generatedQuery === "string" &&
-        generatedQuery.trim().toLowerCase().startsWith("select") &&
-        !generatedQuery.toLowerCase().includes("error") &&
-        !generatedQuery.toLowerCase().includes("sorry")
-      ) {
-        sqlQuery = generatedQuery;
-        console.log("Generated new query:", sqlQuery);
-      } else {
+      try {
+        const generatedQuery = await generateSQLQuery(
+          reconstructedSchema,
+          lastUserMessage,
+          connectionId
+        );
+        // Validate that the generated query is actually SQL
+        if (
+          typeof generatedQuery === "string" &&
+          generatedQuery.trim().toLowerCase().startsWith("select") &&
+          !generatedQuery.toLowerCase().includes("error") &&
+          !generatedQuery.toLowerCase().includes("sorry")
+        ) {
+          sqlQuery = generatedQuery;
+          console.log("Generated new query:", sqlQuery);
+        } else {
+          throw new Error(
+            "Failed to generate valid SQL query. Please try rephrasing your question."
+          );
+        }
+      } catch (error) {
+        console.error("Error generating SQL query:", error);
         throw new Error(
-          "Failed to generate valid SQL query. Please try rephrasing your question."
+          "Failed to generate SQL query. Please try rephrasing your question."
         );
       }
     }
 
     // Execute the query
-    const queryResult = await executeSQLQuery(connectionId, sqlQuery);
-    console.log("Query results:", queryResult);
+    let queryResult;
+    try {
+      queryResult = await executeSQLQuery(connectionId, sqlQuery);
+      console.log("Query results:", queryResult);
 
-    if (!queryResult.success) {
-      throw new Error(queryResult.error || "Failed to execute query");
+      if (!queryResult.success) {
+        throw new Error(queryResult.error || "Failed to execute query");
+      }
+    } catch (error) {
+      console.error("Error executing SQL query:", error);
+      throw new Error(
+        "Failed to execute query. Please try rephrasing your question."
+      );
     }
 
     // Validate query results

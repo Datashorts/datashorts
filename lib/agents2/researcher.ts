@@ -1,6 +1,8 @@
+// File path: lib/agents2/researcher.ts
+
 import { grokClient } from "@/app/lib/clients";
-import { executeSQLQuery } from "@/app/lib/db/executeQuery";
-import { generateSQLQuery } from "@/app/actions/pipeline2Query";
+import { executeSQLQuery } from '@/app/lib/db/executeQuery';
+import { generateSQLQuery } from '@/app/actions/generateSQLQuery';
 
 interface SchemaTable {
   tableName: string;
@@ -23,6 +25,7 @@ interface ResearcherResponse {
   };
   sqlQuery?: string;
   queryResult?: QueryResult;
+  visualization?: string;
 }
 
 type Message =
@@ -38,8 +41,8 @@ export async function researcher(
 ): Promise<ResearcherResponse> {
   console.log("\n=== Researcher Agent Started ===");
   console.log("User Query:", userQuery);
+  console.log("Schema Tables:", reconstructedSchema.map(s => s.tableName));
   console.log("Connection ID:", connectionId);
-  console.log("Schema Tables:", JSON.stringify(reconstructedSchema, null, 2));
 
   const systemPrompt: Message = {
     role: "system",
@@ -87,19 +90,31 @@ Return JSON format.`,
 
   try {
     console.log("\n--- Generating SQL Query ---");
-    const sqlQuery = await generateSQLQuery(reconstructedSchema, userQuery);
+    const sqlQuery = await generateSQLQuery(reconstructedSchema, userQuery, connectionId);
     console.log("Generated SQL Query:", sqlQuery);
 
     console.log("\n--- Executing SQL Query ---");
     const queryResult = await executeSQLQuery(connectionId, sqlQuery);
-    console.log(
-      "SQL Query Execution Result:",
-      JSON.stringify(queryResult, null, 2)
-    );
+    console.log("Query Result:", {
+      success: queryResult.success,
+      rowCount: queryResult.rowCount,
+      error: queryResult.error
+    });
 
     if (!queryResult.success) {
       console.error("SQL Query Execution Failed:", queryResult.error);
-      throw new Error(queryResult.error || "Failed to execute SQL query");
+      return {
+        summary: `Unable to execute query: ${queryResult.error}`,
+        details: [
+          "The query could not be executed due to an error.",
+          "Please check your query and try again."
+        ],
+        metrics: {
+          error: queryResult.error || "Unknown error"
+        },
+        sqlQuery,
+        queryResult
+      };
     }
 
     console.log("\n--- Preparing Analysis Prompt ---");
@@ -144,6 +159,7 @@ ${JSON.stringify(queryResult, null, 2)}`;
       ...result,
       sqlQuery,
       queryResult,
+      visualization: result.visualization
     } as ResearcherResponse;
 
     console.log("\n=== Researcher Agent Completed ===");
@@ -153,15 +169,19 @@ ${JSON.stringify(queryResult, null, 2)}`;
   } catch (error) {
     console.error("\n=== Researcher Agent Error ===");
     console.error("Error Details:", error);
-    // Return a basic response in case of error
+    
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     const errorResponse = {
       summary: "Unable to complete analysis due to an error",
-      details: ["Please try rephrasing your query or try again later"],
+      details: [
+        "Please try rephrasing your query or try again later"
+      ],
       metrics: {
-        error: "Analysis failed",
-      },
+        error: "Analysis failed"
+      }
     };
-    console.log("Error Response:", JSON.stringify(errorResponse, null, 2));
+    
+    console.error("Error Response:", errorResponse);
     return errorResponse;
   }
 }

@@ -24,7 +24,7 @@ export default function HowItWorks() {
           <StepCard
             number={2}
             title="Ask Your Question"
-            description="Type natural questions like &quot;Show me monthly sales by region&quot; or &quot;Find top customers from last quarter.&quot;"
+            description="Type natural questions ILIKE &quot;Show me monthly sales by region&quot; or &quot;Find top customers from last quarter.&quot;"
             icon={<div className="mt-4 bg-[#222] rounded-md p-3 text-sm">Show me monthly sales trends...</div>}
           />
           <StepCard

@@ -117,15 +117,31 @@ export default function Sidebar() {
     return `/chats/${connectionId}/${encodeURIComponent(dbName)}`
   }
 
+const buildConnectionUrl = () => {
+    if (isDirectUrl) return newConnection.url;
+    
+    const { host, port, database, username, password } = connectionDetails;
+    
+    if (newConnection.type === 'postgres') {
+      return `postgresql://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}/${database}?sslmode=no-verify`;
+    } else if (newConnection.type === 'mysql') {
+      // Improved MySQL connection string format handling
+      // Remove any leading username prefix if present
+      const cleanUsername = username.includes('@') ? username.split('@')[0] : username;
+      const cleanHost = host.includes('@') ? host.split('@')[1] : host;
+      
+      return `mysql://${encodeURIComponent(cleanUsername)}:${encodeURIComponent(password)}@${cleanHost}:${port}/${database}`;
+    }
+    
+    return '';
+  };
+
   const handleCreateConnection = async () => {
     if (newConnection.name && selectedFolderForConnection) {
       try {
         useFoldersStore.setState({ isLoading: true })
         
-        let finalUrl = newConnection.url;
-        if (!isDirectUrl) {
-          finalUrl = `postgresql://${connectionDetails.username}:${connectionDetails.password}@${connectionDetails.host}:${connectionDetails.port}/${connectionDetails.database}?sslmode=no-verify`;
-        }
+        const finalUrl = buildConnectionUrl();
 
         
         const response = await fetch('/api/connectdb-persistent', {
@@ -189,6 +205,32 @@ export default function Sidebar() {
     const endpoint = generateConnectionEndpoint(connectionId, dbName)
     router.push(endpoint)
   }
+
+  const getConnectionTypeColor = (type: string) => {
+    switch(type) {
+      case 'postgres':
+        return 'bg-blue-900/30 text-blue-400';
+      case 'mysql':
+        return 'bg-yellow-900/30 text-yellow-400';
+      case 'mongodb':
+        return 'bg-green-900/30 text-green-400';
+      default:
+        return 'bg-gray-900/30 text-gray-400';
+    }
+  };
+
+  const getDefaultPort = (dbType: string) => {
+    switch(dbType) {
+      case 'postgres':
+        return '5432';
+      case 'mysql':
+        return '3306';
+      case 'mongodb':
+        return '27017';
+      default:
+        return '';
+    }
+  };
 
   if (!user) {
     return (
@@ -345,11 +387,7 @@ export default function Sidebar() {
                                     : 'text-gray-500'
                                 } />
                                 <span className="text-sm truncate flex-1">{connection.name}</span>
-                                <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                  connection.type === 'postgres' 
-                                    ? 'bg-blue-900/30 text-blue-400' 
-                                    : 'bg-green-900/30 text-green-400'
-                                }`}>
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${getConnectionTypeColor(connection.type)}`}>
                                   {connection.type}
                                 </span>
                                 <Tooltip>
@@ -516,7 +554,11 @@ export default function Sidebar() {
                     <Label htmlFor="connection-type" className="text-xs text-gray-400">Database Type</Label>
                     <Select 
                       value={newConnection.type} 
-                      onValueChange={(value) => setNewConnection(prev => ({ ...prev, type: value as 'postgres' | 'mongodb' }))}
+                      onValueChange={(value) => {
+                        setNewConnection(prev => ({ ...prev, type: value as 'postgres' | 'mysql' | 'mongodb' }));
+                        // Update default port when type changes
+                        setConnectionDetails(prev => ({ ...prev, port: getDefaultPort(value) }));
+                      }}
                       disabled={isLoading}
                     >
                       <SelectTrigger id="connection-type" className="bg-[#161718] border-gray-800/70 text-white h-10 focus:border-blue-500 focus:ring-blue-500">
@@ -524,6 +566,7 @@ export default function Sidebar() {
                       </SelectTrigger>
                       <SelectContent className="bg-[#161718] border-gray-800/70 text-white">
                         <SelectItem value="postgres">PostgreSQL</SelectItem>
+                        <SelectItem value="mysql">MySQL</SelectItem>
                         <SelectItem value="mongodb">MongoDB</SelectItem>
                       </SelectContent>
                     </Select>
@@ -557,13 +600,7 @@ export default function Sidebar() {
                             id="host"
                             placeholder="localhost"
                             value={connectionDetails.host}
-                            onChange={(e) => {
-                              setConnectionDetails(prev => ({ ...prev, host: e.target.value }))
-                              setNewConnection(prev => ({
-                                ...prev,
-                                url: `postgresql://${connectionDetails.username}:${connectionDetails.password}@${e.target.value}:${connectionDetails.port}/${connectionDetails.database}`
-                              }))
-                            }}
+                            onChange={(e) => setConnectionDetails(prev => ({ ...prev, host: e.target.value }))}
                             className="bg-[#161718] border-gray-800/70 text-white focus:border-blue-500 focus:ring-blue-500 h-10"
                             disabled={isLoading}
                           />
@@ -572,15 +609,9 @@ export default function Sidebar() {
                           <Label htmlFor="port" className="text-xs text-gray-400">Port</Label>
                           <Input
                             id="port"
-                            placeholder="5432"
+                            placeholder={getDefaultPort(newConnection.type)}
                             value={connectionDetails.port}
-                            onChange={(e) => {
-                              setConnectionDetails(prev => ({ ...prev, port: e.target.value }))
-                              setNewConnection(prev => ({
-                                ...prev,
-                                url: `postgresql://${connectionDetails.username}:${connectionDetails.password}@${connectionDetails.host}:${e.target.value}/${connectionDetails.database}`
-                              }))
-                            }}
+                            onChange={(e) => setConnectionDetails(prev => ({ ...prev, port: e.target.value }))}
                             className="bg-[#161718] border-gray-800/70 text-white focus:border-blue-500 focus:ring-blue-500 h-10"
                             disabled={isLoading}
                           />
@@ -593,13 +624,7 @@ export default function Sidebar() {
                           id="database"
                           placeholder="mydb"
                           value={connectionDetails.database}
-                          onChange={(e) => {
-                            setConnectionDetails(prev => ({ ...prev, database: e.target.value }))
-                            setNewConnection(prev => ({
-                              ...prev,
-                              url: `postgresql://${connectionDetails.username}:${connectionDetails.password}@${connectionDetails.host}:${connectionDetails.port}/${e.target.value}`
-                            }))
-                          }}
+                          onChange={(e) => setConnectionDetails(prev => ({ ...prev, database: e.target.value }))}
                           className="bg-[#161718] border-gray-800/70 text-white focus:border-blue-500 focus:ring-blue-500 h-10"
                           disabled={isLoading}
                         />
@@ -610,15 +635,9 @@ export default function Sidebar() {
                           <Label htmlFor="username" className="text-xs text-gray-400">Username</Label>
                           <Input
                             id="username"
-                            placeholder="postgres"
+                            placeholder={newConnection.type === 'mysql' ? 'root' : 'postgres'}
                             value={connectionDetails.username}
-                            onChange={(e) => {
-                              setConnectionDetails(prev => ({ ...prev, username: e.target.value }))
-                              setNewConnection(prev => ({
-                                ...prev,
-                                url: `postgresql://${e.target.value}:${connectionDetails.password}@${connectionDetails.host}:${connectionDetails.port}/${connectionDetails.database}`
-                              }))
-                            }}
+                            onChange={(e) => setConnectionDetails(prev => ({ ...prev, username: e.target.value }))}
                             className="bg-[#161718] border-gray-800/70 text-white focus:border-blue-500 focus:ring-blue-500 h-10"
                             disabled={isLoading}
                           />
@@ -630,13 +649,7 @@ export default function Sidebar() {
                             type="password"
                             placeholder="••••••••"
                             value={connectionDetails.password}
-                            onChange={(e) => {
-                              setConnectionDetails(prev => ({ ...prev, password: e.target.value }))
-                              setNewConnection(prev => ({
-                                ...prev,
-                                url: `postgresql://${connectionDetails.username}:${e.target.value}@${connectionDetails.host}:${connectionDetails.port}/${connectionDetails.database}`
-                              }))
-                            }}
+                            onChange={(e) => setConnectionDetails(prev => ({ ...prev, password: e.target.value }))}
                             className="bg-[#161718] border-gray-800/70 text-white focus:border-blue-500 focus:ring-blue-500 h-10"
                             disabled={isLoading}
                           />
@@ -646,7 +659,10 @@ export default function Sidebar() {
                       <div className="mt-3 p-2 rounded bg-gray-900/30 text-xs text-gray-400">
                         <p className="mb-1 font-medium">Connection String Preview:</p>
                         <code className="block overflow-x-auto whitespace-nowrap text-blue-400 pb-1">
-                          postgresql://{connectionDetails.username || 'username'}:{connectionDetails.password ? '••••••••' : 'password'}@{connectionDetails.host || 'host'}:{connectionDetails.port || 'port'}/{connectionDetails.database || 'database'}
+                          {newConnection.type === 'mysql' 
+                            ? `mysql://${connectionDetails.username || 'username'}:${connectionDetails.password ? '••••••••' : 'password'}@${connectionDetails.host || 'host'}:${connectionDetails.port || '3306'}/${connectionDetails.database || 'database'}`
+                            : `postgresql://${connectionDetails.username || 'username'}:${connectionDetails.password ? '••••••••' : 'password'}@${connectionDetails.host || 'host'}:${connectionDetails.port || '5432'}/${connectionDetails.database || 'database'}`
+                          }
                         </code>
                       </div>
                     </div>
@@ -654,7 +670,10 @@ export default function Sidebar() {
                     <div className="space-y-3">
                       <Input
                         id="connection-url"
-                        placeholder="postgresql://username:password@host:port/database"
+                        placeholder={newConnection.type === 'mysql' 
+                          ? "mysql://username:password@host:port/database" 
+                          : "postgresql://username:password@host:port/database"
+                        }
                         value={newConnection.url}
                         onChange={(e) => setNewConnection(prev => ({ ...prev, url: e.target.value }))}
                         className="bg-[#161718] border-gray-800/70 text-white focus:border-blue-500 focus:ring-blue-500 h-10"
@@ -679,7 +698,7 @@ export default function Sidebar() {
               <Button 
                 onClick={handleCreateConnection} 
                 className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                disabled={isLoading || !newConnection.name || !newConnection.url}
+                disabled={isLoading || !newConnection.name || (!isDirectUrl ? (!connectionDetails.host || !connectionDetails.database || !connectionDetails.username) : !newConnection.url)}
               >
                 {isLoading ? (
                   <>
