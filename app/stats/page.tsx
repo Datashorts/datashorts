@@ -35,7 +35,7 @@ export default function StatsPage() {
       <div className="flex h-screen items-center justify-center bg-[#121212]">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Authentication Required</h1>
-          <p className="text-gray-400">Please sign in to view stats.</p>
+          <p className="text-gray-400">Please sign in to view stat.</p>
         </div>
       </div>
     )
