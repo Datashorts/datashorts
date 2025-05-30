@@ -39,6 +39,7 @@ export const dbConnections = pgTable('db_connections', {
   folderId: integer('folder_id').references(() => folders.id),
   connectionName: varchar('connection_name', { length: 256 }).notNull(),
   postgresUrl: text('postgres_url'),
+  mysqlUrl: text('mysql_url'),
   mongoUrl: text('mongo_url'),
   dbType: varchar('db_type', { length: 50 }).notNull(), 
   tableSchema: json('table_schema').notNull(),

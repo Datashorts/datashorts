@@ -51,10 +51,15 @@ const ResearcherResponse: React.FC<ResearcherResponseProps> = ({
   content,
   visualization
 }) => {
-  if (!content) return null;
-
+  console.log("ResearcherResponse received:", { content, visualization });
+  
+  if (!content) {
+    console.log("No content provided to ResearcherResponse");
+    return null;
+  }
 
   const displayVisualization = visualization || content.visualization;
+  console.log("Display visualization:", displayVisualization);
 
   return (
     <div className="space-y-4">

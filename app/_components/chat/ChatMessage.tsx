@@ -84,6 +84,8 @@ const ChatMessage: React.FC<ChatMessageProps> = (props) => {
     onSubmitResponse,
   } = props
 
+  console.log("ChatMessage received:", { message, response, isUser });
+
   /* Handle legacy / mixed props */
   if (typeof message === 'string' || isUser !== undefined) {
     const usr  = typeof message === 'string' ? isUser : message.role === 'user'
@@ -94,12 +96,13 @@ const ChatMessage: React.FC<ChatMessageProps> = (props) => {
       return <UserBubble msg={String(text)} time={time} />
     }
 
+    console.log("Rendering bot response:", { response, text });
     return (
       <BotBubble time={time} loading={isLoading}>
-        {response?.agentType === 'researcher' ? (
+        {response?.agentType === 'researcher' || response?.agentType === 'pipeline2' ? (
           <ResearcherResponse
-            content={response.agentOutput}
-            visualization={response.agentOutput?.visualization}
+            content={response.agentOutput?.data?.results || response.agentOutput}
+            visualization={response.agentOutput?.data?.results?.visualization || response.agentOutput?.visualization}
           />
         ) : response?.agentType ? (
           <AgentResponse
