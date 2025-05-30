@@ -141,6 +141,8 @@ process.on('SIGINT', async () => {
 export async function POST(request: NextRequest) {
   let pgClient: PoolClient | undefined;
   let mysqlConnection: mysql.PoolConnection | undefined;
+  let pgClientReleased = false;
+  let mysqlConnectionReleased = false;
 
   try {
     let user;
@@ -224,6 +226,7 @@ export async function POST(request: NextRequest) {
         });
 
         pgClient.release();
+        pgClientReleased = true;
         console.log('Released PostgreSQL client back to pool');
 
       } else if (type === 'mysql') {
@@ -277,6 +280,7 @@ export async function POST(request: NextRequest) {
         });
 
         mysqlConnection.release();
+        mysqlConnectionReleased = true;
         console.log('Released MySQL connection back to pool');
       }
 
@@ -314,19 +318,21 @@ export async function POST(request: NextRequest) {
 
     } finally {
       // Cleanup connections
-      if (pgClient) {
+      if (pgClient && !pgClientReleased) {
         pgClient.release();
       }
-      if (mysqlConnection) {
+      if (mysqlConnection && !mysqlConnectionReleased) {
         mysqlConnection.release();
       }
       
       // Close pools
       if (pgPool) {
         await pgPool.end().catch(err => console.error('Error closing PostgreSQL pool:', err));
+        pgPool = null;
       }
       if (mysqlPool) {
         await mysqlPool.end().catch(err => console.error('Error closing MySQL pool:', err));
+        mysqlPool = null;
       }
     }
   } catch (error) {
