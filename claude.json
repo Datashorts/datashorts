@@ -1,0 +1,50 @@
+{
+  "name": "DataShorts",
+  "version": "1.0.0",
+  "description": "PostgreSQL database connection and query management tool",
+  "mcp": {
+    "url": "https://datashorts-production.up.railway.app/api/transport",
+    "authentication": {
+      "type": "bearer",
+      "token": "${CLAUDE_AUTH_TOKEN}"
+    }
+  },
+  "tools": [
+    {
+      "name": "add_database",
+      "description": "Add a new PostgreSQL database connection",
+      "examples": [
+        "Add my PostgreSQL database",
+        "Connect to my Postgres database",
+        "Set up a new database connection"
+      ]
+    },
+    {
+      "name": "list_databases",
+      "description": "List all connected PostgreSQL databases",
+      "examples": [
+        "Show my database connections",
+        "List all connected databases",
+        "What databases are available?"
+      ]
+    },
+    {
+      "name": "remove_database",
+      "description": "Remove a PostgreSQL database connection",
+      "examples": [
+        "Remove my database connection",
+        "Delete a database connection",
+        "Disconnect from a database"
+      ]
+    },
+    {
+      "name": "execute_sql_query",
+      "description": "Execute SQL queries on a PostgreSQL database",
+      "examples": [
+        "Run a SQL query on my database",
+        "Execute SELECT * FROM users",
+        "Query my database"
+      ]
+    }
+  ]
+} 
