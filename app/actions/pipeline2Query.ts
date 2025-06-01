@@ -153,13 +153,22 @@ async function executeSQLQuery(connectionId: string, sqlQuery: string) {
 }
 
 /**
- * Generate SQL query using Grok based on schema and user query
- * @param schema The reconstructed schema information
- * @param userQuery The original user query
- * @returns The generated SQL query
+ * Generate SQL query based on database type, schema, and user query
  */
-export async function generateSQLQuery(schema: any[], userQuery: string) {
+export async function generateSQLQuery(schema: any[], userQuery: string, connectionId: string) {
   try {
+    // Get database type from connection
+    const [connection] = await db
+      .select()
+      .from(dbConnections)
+      .where(eq(dbConnections.id, Number(connectionId)));
+
+    if (!connection) {
+      throw new Error('Connection not found');
+    }
+
+    const dbType = connection.dbType;
+
     // Analyze schema to identify relationships and key columns
     type SchemaAnalysis = {
       [key: string]: {
@@ -180,54 +189,44 @@ export async function generateSQLQuery(schema: any[], userQuery: string) {
     };
 
     const schemaAnalysis = schema.reduce<SchemaAnalysis>((acc, table) => {
-      const columns = table.columns.split(",").map((col: string) => {
-        const [name, type] = col.trim().split("(");
+      const columns = table.columns.split(',').map((col: string) => {
+        const [name, type] = col.trim().split('(');
         const colName = name.trim();
         return {
           name: colName,
-          type: type ? type.replace(")", "").trim() : "",
-          isId: colName.toLowerCase().endsWith("id"),
-          isPrimaryKey: colName.toLowerCase() === "id",
-          isForeignKey:
-            colName.toLowerCase().endsWith("id") &&
-            colName.toLowerCase() !== "id",
-          referencesTable: colName.toLowerCase().endsWith("id")
-            ? colName.toLowerCase().slice(0, -2).trim()
-            : null,
-          isNameColumn:
-            colName.toLowerCase().includes("name") ||
-            colName.toLowerCase().includes("title") ||
-            colName.toLowerCase().includes("description"),
+          type: type ? type.replace(')', '').trim() : '',
+          isId: colName.toLowerCase().endsWith('id'),
+          isPrimaryKey: colName.toLowerCase() === 'id',
+          isForeignKey: colName.toLowerCase().endsWith('id') && colName.toLowerCase() !== 'id',
+          referencesTable: colName.toLowerCase().endsWith('id') ? 
+            colName.toLowerCase().slice(0, -2).trim() : null,
+          isNameColumn: colName.toLowerCase().includes('name') || 
+                       colName.toLowerCase().includes('title') ||
+                       colName.toLowerCase().includes('description')
         };
       });
 
       acc[table.tableName] = {
         columns,
-        primaryKey: columns.find(
-          (col: { isPrimaryKey: boolean }) => col.isPrimaryKey
-        ),
-        foreignKeys: columns
-          .filter((col: { isForeignKey: boolean }) => col.isForeignKey)
-          .map((fk: { name: string; referencesTable: string | null }) => ({
-            name: fk.name,
-            referencesTable: fk.referencesTable,
-          })),
-        nameColumns: columns.filter(
-          (col: { isNameColumn: boolean }) => col.isNameColumn
-        ),
-        referencedBy: [], // Will be populated below
+        primaryKey: columns.find((col: { isPrimaryKey: boolean }) => col.isPrimaryKey),
+        foreignKeys: columns.filter((col: { isForeignKey: boolean }) => col.isForeignKey).map((fk: { name: string; referencesTable: string | null }) => ({
+          name: fk.name,
+          referencesTable: fk.referencesTable
+        })),
+        nameColumns: columns.filter((col: { isNameColumn: boolean }) => col.isNameColumn),
+        referencedBy: []
       };
       return acc;
     }, {});
 
     // Populate referencedBy relationships
     Object.entries(schemaAnalysis).forEach(([tableName, analysis]) => {
-      analysis.foreignKeys.forEach((fk) => {
+      analysis.foreignKeys.forEach(fk => {
         const referencedTable = fk.referencesTable;
         if (referencedTable && schemaAnalysis[referencedTable]) {
           schemaAnalysis[referencedTable].referencedBy.push({
             table: tableName,
-            foreignKey: fk.name,
+            foreignKey: fk.name
           });
         }
       });
@@ -235,154 +234,124 @@ export async function generateSQLQuery(schema: any[], userQuery: string) {
 
     // Analyze user query to identify relevant tables and relationships
     const queryAnalysis = {
-      mentionedTables: Object.keys(schemaAnalysis).filter((tableName) =>
+      mentionedTables: Object.keys(schemaAnalysis).filter(tableName => 
         userQuery.toLowerCase().includes(tableName.toLowerCase())
       ),
-      searchTerms: userQuery
-        .toLowerCase()
-        .split(/\s+/)
-        .filter(
-          (term) =>
-            term.length > 3 &&
-            ![
-              "what",
-              "when",
-              "where",
-              "which",
-              "that",
-              "this",
-              "have",
-              "does",
-              "doesn't",
-            ].includes(term)
-        ),
+      searchTerms: userQuery.toLowerCase().split(/\s+/).filter(term => 
+        term.length > 3 && !['what', 'when', 'where', 'which', 'that', 'this', 'have', 'does', 'doesn\'t'].includes(term)
+      )
     };
 
-    const prompt = `Given the following database schema analysis and user query, generate a SQL query to answer the question. IMPORTANT: 
-1. Always use double quotes around table and column names in PostgreSQL
+    // Database-specific SQL generation instructions
+    const dbSpecificInstructions = dbType === 'mysql' ? `
+MySQL-specific rules:
+1. Use backticks (\`) around table and column names instead of double quotes
+2. Use LIKE for case-insensitive text matching (MySQL is case-insensitive by default)
+3. For text searches, use: column LIKE '%term%' to match partial text
+4. Use LIMIT instead of FETCH FIRST
+5. String comparisons are case-insensitive by default
+6. Use DATE_FORMAT() for date formatting
+7. Use CONCAT() for string concatenation
+8. BOOLEAN type is treated as TINYINT(1)
+9. Auto-increment columns use AUTO_INCREMENT
+10. Use SHOW TABLES and DESCRIBE for metadata queries
+` : `
+PostgreSQL-specific rules:
+1. Always use double quotes around table and column names
 2. Use ILIKE for case-insensitive text matching
-3. When searching for names or text, use ILIKE with wildcards to handle variations
-4. For text searches, use: column ILIKE '%term%' to match partial text
-5. Consider common variations and typos
-6. Use appropriate JOINs based on the schema relationships
-7. Consider all relevant table relationships when generating the query
-8. Use table aliases for better readability
-9. Only include necessary columns in the SELECT clause
-10. Make sure all quotes are properly closed in the SQL query
+3. For text searches, use: column ILIKE '%term%' to match partial text
+4. Use LIMIT or FETCH FIRST
+5. String comparisons are case-sensitive by default
+6. Use TO_CHAR() for date formatting
+7. Use || for string concatenation
+8. BOOLEAN is a native type
+9. Auto-increment columns use SERIAL or IDENTITY
+10. Use information_schema for metadata queries
+`;
+
+    const prompt = `Given the following database schema analysis and user query, generate a ${dbType.toUpperCase()} SQL query to answer the question.
+
+${dbSpecificInstructions}
+
+General rules:
+1. Use appropriate JOINs based on the schema relationships
+2. Consider common variations and typos in text searches
+3. Consider all relevant table relationships when generating the query
+4. Use table aliases for better readability
+5. Only include necessary columns in the SELECT clause
 
 Schema Analysis:
-${Object.entries(schemaAnalysis)
-  .map(
-    ([tableName, analysis]) => `
-Table: "${tableName}"
-- Primary Key: ${analysis.primaryKey?.name || "None"}
-- Foreign Keys: ${analysis.foreignKeys.map((fk) => `${fk.name} (references ${fk.referencesTable})`).join(", ") || "None"}
-- Referenced By: ${analysis.referencedBy.map((ref) => `${ref.table} (via ${ref.foreignKey})`).join(", ") || "None"}
-- Name/Text Columns: ${analysis.nameColumns.map((col) => col.name).join(", ") || "None"}
-- All Columns: ${analysis.columns.map((col) => `${col.name} (${col.type})`).join(", ")}
-`
-  )
-  .join("\n")}
+${Object.entries(schemaAnalysis).map(([tableName, analysis]) => `
+Table: ${dbType === 'mysql' ? '`' + tableName + '`' : '"' + tableName + '"'}
+- Primary Key: ${analysis.primaryKey?.name || 'None'}
+- Foreign Keys: ${analysis.foreignKeys.map(fk => `${fk.name} (references ${fk.referencesTable})`).join(', ') || 'None'}
+- Referenced By: ${analysis.referencedBy.map(ref => `${ref.table} (via ${ref.foreignKey})`).join(', ') || 'None'}
+- Name/Text Columns: ${analysis.nameColumns.map(col => col.name).join(', ') || 'None'}
+- All Columns: ${analysis.columns.map(col => `${col.name} (${col.type})`).join(', ')}
+`).join('\n')}
 
 Query Analysis:
-- Mentioned Tables: ${queryAnalysis.mentionedTables.join(", ") || "None"}
-- Search Terms: ${queryAnalysis.searchTerms.join(", ") || "None"}
+- Mentioned Tables: ${queryAnalysis.mentionedTables.join(', ') || 'None'}
+- Search Terms: ${queryAnalysis.searchTerms.join(', ') || 'None'}
 
 User Query: ${userQuery}
 
-Please generate a SQL query that will answer this question. Only return the SQL query without any explanation. Remember to use double quotes around table and column names, ILIKE for text matching, and ensure all quotes are properly closed.`;
+Please generate a ${dbType.toUpperCase()} SQL query that will answer this question. Only return the SQL query without any explanation.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4",
       messages: [
         {
           role: "system",
-          content: `You are a SQL expert. Generate only the SQL query without any explanation or additional text. 
+          content: `You are a ${dbType.toUpperCase()} SQL expert. Generate only the SQL query without any explanation or additional text. 
 Consider the following when generating the query:
 1. Use appropriate JOINs based on the schema relationships
-2. For text searches, use ILIKE with wildcards
+2. For text searches, use ${dbType === 'mysql' ? 'LIKE' : 'ILIKE'} with wildcards
 3. Consider all possible relationships between tables
 4. Use table aliases for better readability
 5. Only include necessary columns in the SELECT clause
 6. Use the actual table and column names from the schema
 7. Consider both direct and indirect relationships between tables
-8. CRITICAL: Ensure all quotes in the SQL are properly closed and balanced`,
+8. Follow ${dbType.toUpperCase()}-specific syntax rules`
         },
         {
           role: "user",
-          content: prompt,
-        },
+          content: prompt
+        }
       ],
       temperature: 0.1,
-      max_tokens: 150,
+      max_tokens: 300
     });
 
     if (!response.choices?.[0]?.message?.content) {
-      throw new Error("No response content from OpenAI");
+      throw new Error('No response content from OpenAI');
     }
 
     let sqlQuery = response.choices[0].message.content.trim();
-
-    // Validate the generated SQL query
-    const validation = validateSqlQuery(sqlQuery);
-    if (!validation.valid && validation.fixedQuery) {
-      console.log("Fixing SQL query:", validation.error);
-      sqlQuery = validation.fixedQuery;
-    }
-
-    const queryValidation = {
-      hasJoins: sqlQuery.toLowerCase().includes("join"),
-      hasWhere: sqlQuery.toLowerCase().includes("where"),
-      hasIlike: sqlQuery.toLowerCase().includes("ilike"),
-      mentionedTables: Object.keys(schemaAnalysis).filter((table) =>
-        sqlQuery.toLowerCase().includes(`"${table.toLowerCase()}"`)
-      ),
-    };
-
-    if (
-      !queryValidation.hasJoins &&
-      queryValidation.mentionedTables.length > 1
-    ) {
-      const tables = queryValidation.mentionedTables;
-      const relationships = [];
-
-      for (let i = 0; i < tables.length; i++) {
-        for (let j = i + 1; j < tables.length; j++) {
-          const table1 = schemaAnalysis[tables[i]];
-          const table2 = schemaAnalysis[tables[j]];
-
-          const directRelationship =
-            table1.foreignKeys.find((fk) => fk.referencesTable === tables[j]) ||
-            table2.foreignKeys.find((fk) => fk.referencesTable === tables[i]);
-
-          if (directRelationship) {
-            relationships.push({
-              table1: tables[i],
-              table2: tables[j],
-              foreignKey: directRelationship.name,
-            });
-          }
-        }
+    
+    // Clean up the query
+    sqlQuery = sqlQuery.replace(/```sql/gi, '').replace(/```/g, '').trim();
+    
+    // Validate query based on database type
+    if (dbType === 'mysql') {
+      // Ensure MySQL uses backticks
+      if (sqlQuery.includes('"') && !sqlQuery.includes('`')) {
+        // Convert PostgreSQL-style quotes to MySQL backticks
+        sqlQuery = sqlQuery.replace(/"([^"]+)"/g, '`$1`');
       }
-
-      if (relationships.length > 0) {
-        const baseTable = relationships[0].table1;
-        let joinClause = `FROM "${baseTable}"`;
-
-        relationships.forEach((rel) => {
-          const joinTable = rel.table1 === baseTable ? rel.table2 : rel.table1;
-          const fkColumn = rel.foreignKey;
-          joinClause += ` JOIN "${joinTable}" ON "${baseTable}"."${fkColumn}" = "${joinTable}"."id"`;
-        });
-
-        sqlQuery = sqlQuery.replace(/FROM\s+"[^"]+"/i, joinClause);
+    } else if (dbType === 'postgres') {
+      // Ensure PostgreSQL uses double quotes
+      if (sqlQuery.includes('`') && !sqlQuery.includes('"')) {
+        // Convert MySQL-style backticks to PostgreSQL quotes
+        sqlQuery = sqlQuery.replace(/`([^`]+)`/g, '"$1"');
       }
     }
 
+    console.log(`Generated ${dbType.toUpperCase()} SQL query:`, sqlQuery);
     return sqlQuery;
   } catch (error) {
-    console.error("Error generating SQL query:", error);
-    throw new Error("Failed to generate SQL query");
+    console.error('Error generating SQL query:', error);
+    throw new Error('Failed to generate SQL query');
   }
 }
 
@@ -609,7 +578,7 @@ export async function processPipeline2Query(
       } else {
         // Try to generate a simple query based on the schema
         try {
-          fallbackSqlQuery = await generateSQLQuery(reconstructedSchema, query);
+          fallbackSqlQuery = await generateSQLQuery(reconstructedSchema, query, connectionId);
           console.log("Generated fallback SQL query:", fallbackSqlQuery);
         } catch (sqlGenError) {
           console.error("Failed to generate fallback SQL query:", sqlGenError);
@@ -647,7 +616,7 @@ export async function processPipeline2Query(
           console.error("Failed to execute fallback SQL query:", sqlExecError);
           // If the fallback query fails, try a simpler query
           try {
-            const simpleQuery = `SELECT * FROM "${reconstructedSchema[0]?.tableName}" LIMIT 10`;
+            const simpleQuery = `SELECT * FROM \`${reconstructedSchema[0]?.tableName}\` LIMIT 10`;
             console.log("Trying simple fallback query:", simpleQuery);
             const simpleResult = await executeSQLQuery(
               connectionId,
@@ -718,7 +687,8 @@ export async function processPipeline2Query(
         try {
           const generatedSqlQuery = await generateSQLQuery(
             reconstructedSchema,
-            query
+            query,
+            connectionId
           );
           console.log(
             "Generated SQL query after detecting failure:",
@@ -741,7 +711,7 @@ export async function processPipeline2Query(
             analysisResult.queryResult = queryResult;
           } else {
             // If the query failed, try a simpler query
-            const simpleQuery = `SELECT * FROM "${reconstructedSchema[0]?.tableName}" LIMIT 10`;
+            const simpleQuery = `SELECT * FROM \`${reconstructedSchema[0]?.tableName}\` LIMIT 10`;
             console.log("Trying simple query after failure:", simpleQuery);
             const simpleResult = await executeSQLQuery(
               connectionId,
