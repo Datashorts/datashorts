@@ -97,9 +97,20 @@ const ChatMessage: React.FC<ChatMessageProps> = (props) => {
     }
 
     console.log("Rendering bot response:", { response, text });
+    
     return (
       <BotBubble time={time} loading={isLoading}>
-        {response?.agentType === 'researcher' || response?.agentType === 'pipeline2' ? (
+        {/* FIXED: Route pipeline2 to AgentResponse, not ResearcherResponse */}
+        {response?.agentType === 'pipeline2' ? (
+          <AgentResponse
+            agentType={response.agentType}
+            agentOutput={response.agentOutput}
+            onOptionClick={onOptionClick}
+            userQuery={userQuery}
+            onUserQueryChange={onUserQueryChange}
+            onSubmitResponse={onSubmitResponse}
+          />
+        ) : response?.agentType === 'researcher' ? (
           <ResearcherResponse
             content={response.agentOutput?.data?.results || response.agentOutput}
             visualization={response.agentOutput?.data?.results?.visualization || response.agentOutput?.visualization}
