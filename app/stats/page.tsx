@@ -4,8 +4,7 @@ import { useEffect } from 'react'
 import Sidebar from '@/app/_components/chat/Sidebar'
 import { useUser } from '@clerk/nextjs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Database, BarChart3 } from 'lucide-react'
-import Link from 'next/link'
+import { Database } from 'lucide-react'
 import { useFoldersStore } from '@/app/store/useFoldersStore'
 
 export default function StatsPage() {
@@ -48,7 +47,7 @@ export default function StatsPage() {
         <h1 className="text-2xl font-bold mb-8">Database Statistics</h1>
 
         {/* Database Count Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card className="bg-[#1a1a1a] border-gray-800">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">PostgreSQL Connections</CardTitle>
@@ -69,39 +68,6 @@ export default function StatsPage() {
             </CardContent>
           </Card>
         </div>
-
-        {/* Pinned Analytics Section */}
-        <h2 className="text-xl font-semibold mb-4">📌 Pinned Analytics</h2>
-
-        {folders.length === 0 ? (
-          <div className="text-gray-400">No folders or connections found.</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {folders.flatMap((folder) =>
-              folder.connections.map((conn) => (
-                <Link
-                  key={`${folder.id}-${conn.id}`}
-                  href={`/chats/${conn.id}/${encodeURIComponent(conn.name)}/dashboard`}
-                  className="hover:scale-[1.02] transition-transform"
-                >
-                  <Card className="bg-[#1a1a1a] border border-blue-900/20 hover:border-blue-500/30">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">
-                        {folder.name} – {conn.name}
-                      </CardTitle>
-                      <BarChart3 className="h-4 w-4 text-yellow-400" />
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-gray-400 text-sm">
-                        {conn.type === 'postgres' ? 'PostgreSQL' : 'MongoDB'} Connection
-                      </p>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))
-            )}
-          </div>
-        )}
       </div>
     </div>
   )
