@@ -44,8 +44,8 @@ export function getPool(connectionId: string, connectionString: string): Pool {
   const poolConfig: any = {
     connectionString: modifiedConnectionString,
     max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    idleTimeoutMillis: 60000,
+    connectionTimeoutMillis: 10000,
   };
 
   if (isLocalConnection) {
