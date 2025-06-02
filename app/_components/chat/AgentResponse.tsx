@@ -267,39 +267,6 @@ const QueryResultTable: React.FC<{
   );
 };
 
-// Function to detect agent failures from result content
-const detectAgentFailure = (agentOutput: any): boolean => {
-  // Check if agentFailure flag is explicitly set
-  if (agentOutput?.taskResult?.agentFailure === true) {
-    return true;
-  }
-  
-  // Check for error indicators in the analysis result
-  const analysisResult = agentOutput?.analysisResult;
-  if (analysisResult) {
-    // Check for error messages in summary
-    if (analysisResult.summary?.includes("error") || 
-        analysisResult.content?.summary?.includes("error")) {
-      return true;
-    }
-    
-    // Check for error metrics
-    if (analysisResult.metrics?.error || 
-        analysisResult.content?.metrics?.error) {
-      return true;
-    }
-    
-    // Check for error details
-    const details = analysisResult.details || analysisResult.content?.details;
-    if (details && details.some((d: string) => 
-        d.includes("error") || d.includes("try again") || d.includes("failed"))) {
-      return true;
-    }
-  }
-  
-  return false;
-};
-
 const AgentResponse: React.FC<AgentResponseProps> = ({
   agentType,
   agentOutput,
@@ -384,8 +351,6 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
 
     /* ───────────── 5. PIPELINE2 (detailed) ───────────── */
     case "pipeline2": {
-      const isAgentFailure = detectAgentFailure(agentOutput);
-      
       return (
         <div className="space-y-6">
           {/* 5.1 Task analysis */}
@@ -393,16 +358,9 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
             <p className="text-gray-200 leading-relaxed">
               {agentOutput.taskResult?.reason}
             </p>
-            {(agentOutput.taskResult?.agentFailure || isAgentFailure) && (
-              <div className="mt-3 p-2 bg-yellow-900/20 rounded-lg border border-yellow-500/20">
-                <p className="text-yellow-300 text-sm">
-                  Note: The agent encountered context limitations but query results are still available below.
-                </p>
-              </div>
-            )}
           </Card>
 
-          {/* Always show SQL Query separately for better visibility */}
+          {/* SQL Query */}
           {agentOutput.analysisResult?.sqlQuery && (
             <Card title="SQL Query">
               <pre className="whitespace-pre-wrap text-xs bg-[#0d0e10] p-3 rounded-lg border border-blue-500/10 text-gray-300 overflow-x-auto">
@@ -411,7 +369,7 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
             </Card>
           )}
           
-          {/* Always show query results if available */}
+          {/* Query Results */}
           {agentOutput.analysisResult?.queryResult && (
             <Card title="Query Results">
               <QueryResultTable 
@@ -422,7 +380,7 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
           )}
 
           {/* 5.2 Main analysis (summary/details/metrics or visualizer branch) */}
-          {agentOutput.analysisResult && !isAgentFailure && (
+          {agentOutput.analysisResult && (
             <>
               {agentOutput.taskResult?.next === "visualizer" ? (
                 /* ---------- VISUALIZER branch ---------- */
@@ -478,13 +436,6 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                         agentOutput.analysisResult.visualization.config?.title || "Visualization"
                       }
                     >
-                      {agentOutput.analysisResult.visualization.config?.description && (
-                        <p className="text-gray-200 mb-4 leading-relaxed">
-                          {
-                            agentOutput.analysisResult.visualization.config.description
-                          }
-                        </p>
-                      )}
                       <div className="p-4 bg-[#0d0e10]/80 rounded-lg">
                         {agentOutput.analysisResult.visualization.chartType ===
                         "pie" ? (

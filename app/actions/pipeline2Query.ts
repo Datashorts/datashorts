@@ -268,7 +268,8 @@ export async function generateSQLQuery(schema: any[], userQuery: string) {
 7. Consider all relevant table relationships when generating the query
 8. Use table aliases for better readability
 9. Only include necessary columns in the SELECT clause
-10. Make sure all quotes are properly closed in the SQL query
+10. DO NOT use LIMIT in the query unless specifically asked for in the user query
+11. Make sure all quotes are properly closed in the SQL query
 
 Schema Analysis:
 ${Object.entries(schemaAnalysis)
@@ -290,7 +291,7 @@ Query Analysis:
 
 User Query: ${userQuery}
 
-Please generate a SQL query that will answer this question. Only return the SQL query without any explanation. Remember to use double quotes around table and column names, ILIKE for text matching, and ensure all quotes are properly closed.`;
+Please generate a SQL query that will answer this question. Only return the SQL query without any explanation. Remember to use double quotes around table and column names, ILIKE for text matching, and ensure all quotes are properly closed. DO NOT use LIMIT in the query unless specifically requested by the user.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4",
@@ -306,7 +307,8 @@ Consider the following when generating the query:
 5. Only include necessary columns in the SELECT clause
 6. Use the actual table and column names from the schema
 7. Consider both direct and indirect relationships between tables
-8. CRITICAL: Ensure all quotes in the SQL are properly closed and balanced`,
+8. DO NOT add LIMIT clauses unless explicitly requested in the user query
+9. CRITICAL: Ensure all quotes in the SQL are properly closed and balanced`,
         },
         {
           role: "user",
@@ -446,10 +448,6 @@ export async function processPipeline2Query(
       includeMetadata: true,
     });
 
-    console.log(
-      "Raw Pinecone query response:",
-      JSON.stringify(queryResponse, null, 2)
-    );
     console.log("Number of matches found:", queryResponse.matches?.length || 0);
 
     if (!queryResponse.matches || queryResponse.matches.length === 0) {
@@ -547,8 +545,6 @@ export async function processPipeline2Query(
 
     let analysisResult;
     let agentFailure = false;
-    let fallbackQueryResult = null;
-    let fallbackSqlQuery = null;
 
     try {
       if (taskResult.next === "researcher") {
@@ -567,9 +563,8 @@ export async function processPipeline2Query(
           if (rows.length === 0) {
             analysisResult.details.push(
               "Note: The query returned no results. This could mean either:",
-              "1. The user doesn't exist in the database",
-              "2. The user exists but has no posts",
-              "3. The query might need to be adjusted to better match the database schema"
+              "1. The requested data doesn't exist in the database",
+              "2. The search criteria might need to be adjusted"
             );
           }
         }
@@ -596,179 +591,21 @@ export async function processPipeline2Query(
       console.error(`Agent ${taskResult.next} failed:`, agentError);
       agentFailure = true;
 
-      // Extract SQL query from the error or generate a simple one
-      if (
-        agentError &&
-        typeof agentError === "object" &&
-        "sqlQuery" in agentError &&
-        (agentError as any).sqlQuery
-      ) {
-        fallbackSqlQuery = agentError.sqlQuery;
-      } else if (analysisResult && analysisResult.sqlQuery) {
-        fallbackSqlQuery = analysisResult.sqlQuery;
-      } else {
-        // Try to generate a simple query based on the schema
-        try {
-          fallbackSqlQuery = await generateSQLQuery(reconstructedSchema, query);
-          console.log("Generated fallback SQL query:", fallbackSqlQuery);
-        } catch (sqlGenError) {
-          console.error("Failed to generate fallback SQL query:", sqlGenError);
-        }
-      }
-
-      // If we have a SQL query, execute it to get results
-      if (fallbackSqlQuery) {
-        try {
-          fallbackQueryResult = await executeSQLQuery(
-            connectionId,
-            fallbackSqlQuery
-          );
-          console.log(
-            "Executed fallback SQL query with results:",
-            fallbackQueryResult
-          );
-
-          // Create a minimal analysis result with just the query and results
-          analysisResult = {
-            content: {
-              title: "Query Results",
-              summary:
-                "Agent processing failed, but here are the raw query results.",
-              details: [
-                "The agent encountered an error due to context limitations.",
-                "Below are the raw results from the SQL query.",
-              ],
-              metrics: {},
-            },
-            sqlQuery: fallbackSqlQuery,
-            queryResult: fallbackQueryResult,
-          };
-        } catch (sqlExecError) {
-          console.error("Failed to execute fallback SQL query:", sqlExecError);
-          // If the fallback query fails, try a simpler query
-          try {
-            const simpleQuery = `SELECT * FROM "${reconstructedSchema[0]?.tableName}" LIMIT 10`;
-            console.log("Trying simple fallback query:", simpleQuery);
-            const simpleResult = await executeSQLQuery(
-              connectionId,
-              simpleQuery
-            );
-
-            if (simpleResult.success) {
-              fallbackQueryResult = simpleResult;
-              fallbackSqlQuery = simpleQuery;
-
-              analysisResult = {
-                content: {
-                  title: "Query Results",
-                  summary: "Agent processing failed, using simplified query.",
-                  details: [
-                    "The agent encountered an error due to context limitations.",
-                    "A simplified query was used to show some data from the main table.",
-                  ],
-                  metrics: {},
-                },
-                sqlQuery: simpleQuery,
-                queryResult: simpleResult,
-              };
-            }
-          } catch (simpleQueryError) {
-            console.error(
-              "Failed to execute simple fallback query:",
-              simpleQueryError
-            );
-          }
-        }
-      }
-
-      if (!analysisResult) {
-        // Provide minimal fallback if everything else fails
-        analysisResult = {
-          content: {
-            title: "Query Error",
-            summary: "Unable to process your query due to context limitations.",
-            details: [
-              "The agent encountered an error while processing your query.",
-              "This might be due to complexity or context limitations.",
-            ],
-            metrics: {},
-          },
-          sqlQuery: fallbackSqlQuery,
-        };
-      }
+      // No fallback SQL generation or execution
+      analysisResult = {
+        content: {
+          title: "Query Error",
+          summary: "Unable to process your query.",
+          details: [
+            "The system encountered an error while processing your query.",
+            "Please try rephrasing your question or try a different query.",
+          ],
+          metrics: {},
+        },
+      };
     }
 
-    // Add a check after the try-catch block to detect if the agent failed but the error wasn't caught
-    // This handles cases where the agent returns a result but it's actually an error message
-    if (
-      !agentFailure &&
-      analysisResult &&
-      (analysisResult.summary ===
-        "Unable to complete analysis due to an error" ||
-        analysisResult.content?.summary ===
-          "Unable to complete analysis due to an error" ||
-        (analysisResult.metrics &&
-          analysisResult.metrics.error === "Analysis failed"))
-    ) {
-      console.log("Detected agent failure from result content");
-      agentFailure = true;
-
-      // Try to generate a SQL query if one doesn't exist
-      if (!analysisResult.sqlQuery) {
-        try {
-          const generatedSqlQuery = await generateSQLQuery(
-            reconstructedSchema,
-            query
-          );
-          console.log(
-            "Generated SQL query after detecting failure:",
-            generatedSqlQuery
-          );
-
-          // Execute the generated SQL query
-          const queryResult = await executeSQLQuery(
-            connectionId,
-            generatedSqlQuery
-          );
-          console.log(
-            "Executed SQL query after detecting failure:",
-            queryResult
-          );
-
-          if (queryResult.success) {
-            // Update the analysis result with the SQL query and results
-            analysisResult.sqlQuery = generatedSqlQuery;
-            analysisResult.queryResult = queryResult;
-          } else {
-            // If the query failed, try a simpler query
-            const simpleQuery = `SELECT * FROM "${reconstructedSchema[0]?.tableName}" LIMIT 10`;
-            console.log("Trying simple query after failure:", simpleQuery);
-            const simpleResult = await executeSQLQuery(
-              connectionId,
-              simpleQuery
-            );
-
-            if (simpleResult.success) {
-              analysisResult.sqlQuery = simpleQuery;
-              analysisResult.queryResult = simpleResult;
-
-              // Update the content to reflect the simplified query
-              if (analysisResult.content) {
-                analysisResult.content.details = [
-                  ...(analysisResult.content.details || []),
-                  "Using a simplified query to show some data from the main table.",
-                ];
-              }
-            }
-          }
-        } catch (error) {
-          console.error(
-            "Failed to generate or execute SQL query after detecting failure:",
-            error
-          );
-        }
-      }
-    }
+    // No detection block here - removed completely
 
     // Update the taskResult with the agent failure flag
     taskResult = { ...taskResult, agentFailure };
@@ -830,7 +667,7 @@ export async function processPipeline2Query(
       agentFailure,
       debug: {
         message: agentFailure
-          ? "Query processed with fallback"
+          ? "Error occurred during query processing"
           : "Query processed successfully",
         connectionId,
         query,
