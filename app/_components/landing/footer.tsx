@@ -23,7 +23,7 @@ export default function Footer() {
             <div className="flex items-center gap-2">
               <LineChart className="h-6 w-6 text-blue-500" />
               <span className="text-2xl font-bold text-white">
-                <span className="text-blue-500">Data</span>Shorts
+                <span className="bg-gradient-to-r from-blue-500 via-purple-500 to-teal-500 bg-clip-text text-transparent">Data</span>Shorts
               </span>
             </div>
             <p className="text-gray-300 max-w-sm">
