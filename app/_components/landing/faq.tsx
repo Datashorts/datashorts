@@ -8,10 +8,81 @@ export const TabsFAQ: FC = () => {
   const [selected, setSelected] = useState<string>(TABS[0]);
 
   return (
-    <section className="overflow-hidden bg-[#121212] px-4 py-12 text-white">
-      <Heading />
-      <Tabs selected={selected} setSelected={setSelected} />
-      <Questions selected={selected} />
+    <section className="relative overflow-hidden bg-black px-4 py-12 text-white" id="faq">
+      {/* Stars Background */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="stars"></div>
+        <div className="stars2"></div>
+        <div className="stars3"></div>
+      </div>
+
+      {/* Background gradients */}
+      <div className="absolute -top-48 -left-48 h-96 w-96 rounded-full bg-blue-500/10 blur-3xl opacity-70" />
+      <div className="absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-purple-500/10 blur-3xl opacity-70" />
+
+      <div className="relative z-10">
+        <Heading />
+        <Tabs selected={selected} setSelected={setSelected} />
+        <Questions selected={selected} />
+      </div>
+
+      <style jsx>{`
+        .stars, .stars2, .stars3 {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: transparent;
+        }
+
+        .stars {
+          background-image: 
+            radial-gradient(2px 2px at 20px 30px, #eee, transparent),
+            radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.5), transparent),
+            radial-gradient(1px 1px at 90px 40px, #eee, transparent),
+            radial-gradient(1px 1px at 130px 80px, rgba(255,255,255,0.5), transparent),
+            radial-gradient(2px 2px at 160px 30px, #eee, transparent);
+          background-repeat: repeat;
+          background-size: 200px 100px;
+          animation: zoom 20s infinite;
+          opacity: 0.3;
+        }
+
+        .stars2 {
+          background-image: 
+            radial-gradient(1px 1px at 40px 60px, #eee, transparent),
+            radial-gradient(1px 1px at 80px 10px, rgba(255,255,255,0.5), transparent),
+            radial-gradient(1px 1px at 120px 50px, #eee, transparent);
+          background-repeat: repeat;
+          background-size: 250px 120px;
+          animation: zoom 25s infinite;
+          opacity: 0.2;
+        }
+
+        .stars3 {
+          background-image: 
+            radial-gradient(1px 1px at 60px 20px, #eee, transparent),
+            radial-gradient(1px 1px at 100px 80px, rgba(255,255,255,0.5), transparent),
+            radial-gradient(1px 1px at 140px 40px, #eee, transparent);
+          background-repeat: repeat;
+          background-size: 300px 150px;
+          animation: zoom 30s infinite;
+          opacity: 0.1;
+        }
+
+        @keyframes zoom {
+          0% {
+            transform: scale(1);
+          }
+          50% {
+            transform: scale(1.2);
+          }
+          100% {
+            transform: scale(1);
+          }
+        }
+      `}</style>
     </section>
   );
 };
@@ -36,10 +107,10 @@ const Tabs: FC<TabsProps> = ({ selected, setSelected }) => {
       {TABS.map((tab) => (
         <button
           onClick={() => setSelected(tab)}
-          className={`relative overflow-hidden whitespace-nowrap rounded-md border-[1px] px-3 py-1.5 text-sm font-medium transition-colors duration-500 ${
+          className={`relative overflow-hidden whitespace-nowrap rounded-md border-[1px] px-3 py-1.5 text-sm font-medium transition-colors duration-500 backdrop-blur-sm ${
             selected === tab
-              ? "border-blue-500 text-white"
-              : "border-gray-600 bg-transparent text-gray-400"
+              ? "border-blue-500 text-white bg-blue-500/20"
+              : "border-white/30 bg-white/5 text-gray-400 hover:border-white/50"
           }`}
           key={tab}
         >
@@ -54,7 +125,7 @@ const Tabs: FC<TabsProps> = ({ selected, setSelected }) => {
                   duration: 0.5,
                   ease: "backIn",
                 }}
-                className="absolute inset-0 z-0 bg-blue-600"
+                className="absolute inset-0 z-0 bg-gradient-to-r from-blue-600 to-purple-600"
               />
             )}
           </AnimatePresence>
@@ -105,8 +176,8 @@ const Question: FC<QuestionProps> = ({ question, answer }) => {
   return (
     <motion.div
       animate={open ? "open" : "closed"}
-      className={`rounded-xl border-[1px] border-gray-700 px-4 transition-colors ${
-        open ? "bg-[#1f1f1f]" : "bg-[#121212]"
+      className={`rounded-xl border-[1px] border-white/20 backdrop-blur-sm px-4 transition-colors ${
+        open ? "bg-white/10" : "bg-white/5"
       }`}
     >
       <button
@@ -115,7 +186,7 @@ const Question: FC<QuestionProps> = ({ question, answer }) => {
       >
         <span
           className={`text-left text-lg font-medium transition-colors ${
-            open ? "text-white" : "text-gray-400"
+            open ? "text-white" : "text-gray-300"
           }`}
         >
           {question}
@@ -136,7 +207,7 @@ const Question: FC<QuestionProps> = ({ question, answer }) => {
       <motion.div
         initial={false}
         animate={{ height: open ? height : "0px", marginBottom: open ? "24px" : "0px" }}
-        className="overflow-hidden text-gray-400"
+        className="overflow-hidden text-gray-300"
       >
         <p ref={ref}>{answer}</p>
       </motion.div>
@@ -192,7 +263,7 @@ const QUESTIONS: Record<string, QuestionProps[]> = {
     },
     {
       question: "What happens after the trial ends?",
-      answer: "You’ll be asked to upgrade to a paid plan to continue accessing premium features."
+      answer: "You'll be asked to upgrade to a paid plan to continue accessing premium features."
     },
     {
       question: "Do you offer student or team discounts?",
