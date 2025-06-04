@@ -282,6 +282,7 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
   connectionId,
 }) => {
   const [isExpanded, setIsExpanded] = useState(expand);
+  const [isVisualizationExpanded, setIsVisualizationExpanded] = useState(false);
   const [custom, setCustom] = useState<string>("");
 
   const submitEnabled = selected !== "" || custom.trim() !== "";
@@ -431,38 +432,98 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
 
                   {/* chart */}
                   {agentOutput.analysisResult.visualization && (
-                    <Card
-                      title={
-                        agentOutput.analysisResult.visualization.config?.title || "Visualization"
-                      }
-                    >
-                      <div className="p-4 bg-[#0d0e10]/80 rounded-lg">
-                        {agentOutput.analysisResult.visualization.chartType ===
-                        "pie" ? (
-                          <PieChart
-                            data={agentOutput.analysisResult.visualization.data}
-                            config={{
-                              donut: false,
-                              showPercentages: true,
-                              ...(agentOutput.analysisResult.visualization.config?.pieConfig || {})
-                            }}
-                          />
-                        ) : (
-                          <BarChart
-                            data={agentOutput.analysisResult.visualization.data}
-                            config={{
-                              barThickness: 40,
-                              horizontal: false,
-                              showGridLines: true,
-                              xAxisLabel:
-                                agentOutput.analysisResult.visualization.config?.xAxis,
-                              yAxisLabel:
-                                agentOutput.analysisResult.visualization.config?.yAxis,
-                            }}
-                          />
-                        )}
-                      </div>
-                    </Card>
+                    <>
+                      <Card
+                        title={
+                          agentOutput.analysisResult.visualization.config?.title || "Visualization"
+                        }
+                      >
+                        <div className="p-4 bg-[#0d0e10]/80 rounded-lg">
+                          <div className="relative">
+                            {agentOutput.analysisResult.visualization.chartType ===
+                            "pie" ? (
+                              <PieChart
+                                data={agentOutput.analysisResult.visualization.data}
+                                config={{
+                                  donut: false,
+                                  showPercentages: true,
+                                  ...(agentOutput.analysisResult.visualization.config?.pieConfig || {})
+                                }}
+                              />
+                            ) : (
+                              <BarChart
+                                data={agentOutput.analysisResult.visualization.data}
+                                config={{
+                                  barThickness: 40,
+                                  horizontal: false,
+                                  showGridLines: true,
+                                  xAxisLabel:
+                                    agentOutput.analysisResult.visualization.config?.xAxis,
+                                  yAxisLabel:
+                                    agentOutput.analysisResult.visualization.config?.yAxis,
+                                }}
+                              />
+                            )}
+                            <button
+                              onClick={() => setIsVisualizationExpanded(!isVisualizationExpanded)}
+                              className="absolute top-2 right-2 p-2 rounded-full bg-gray-800/50 hover:bg-gray-700/50 transition-colors"
+                              title={isVisualizationExpanded ? "Collapse" : "Expand"}
+                            >
+                              {isVisualizationExpanded ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+                                </svg>
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                                </svg>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </Card>
+
+                      {/* Expanded View */}
+                      {isVisualizationExpanded && (
+                        <div className="fixed inset-0 z-50 bg-[#0d0e10] flex items-center justify-center">
+                          <div className="w-[90vw] h-[90vh] flex items-center justify-center">
+                            {agentOutput.analysisResult.visualization.chartType ===
+                            "pie" ? (
+                              <PieChart
+                                data={agentOutput.analysisResult.visualization.data}
+                                config={{
+                                  donut: false,
+                                  showPercentages: true,
+                                  ...(agentOutput.analysisResult.visualization.config?.pieConfig || {})
+                                }}
+                              />
+                            ) : (
+                              <BarChart
+                                data={agentOutput.analysisResult.visualization.data}
+                                config={{
+                                  barThickness: 40,
+                                  horizontal: false,
+                                  showGridLines: true,
+                                  xAxisLabel:
+                                    agentOutput.analysisResult.visualization.config?.xAxis,
+                                  yAxisLabel:
+                                    agentOutput.analysisResult.visualization.config?.yAxis,
+                                }}
+                              />
+                            )}
+                            <button
+                              onClick={() => setIsVisualizationExpanded(false)}
+                              className="absolute top-4 right-4 p-2 rounded-full bg-gray-800/50 hover:bg-gray-700/50 transition-colors"
+                              title="Collapse"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </>
               ) : agentOutput.taskResult?.next === "predictive" ? (
