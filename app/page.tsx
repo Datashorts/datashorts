@@ -7,27 +7,20 @@ import Pricing from "./_components/landing/pricing";
 import ContactForm from "./_components/landing/contact";
 import Footer from "./_components/landing/footer";
 
-
 export default function Home() {
   return (
     <main className="flex min-h-screen flex-col">
       <CustomCursor />
       <Header />
-      
-      
+
       <HeroSection />
-      
-    
+
       <VerticalSlideFeatures />
 
-      
-      
-     
       <Pricing />
-      
-     
+
       <ContactForm />
-      
+
       <Footer />
     </main>
   );

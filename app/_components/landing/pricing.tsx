@@ -122,7 +122,7 @@ export default function Pricing() {
             </div>
             <div className="text-left">
               <h4 className="font-medium text-white mb-2">What databases do you support?</h4>
-              <p className="text-gray-300 text-sm">We support PostgreSQL, MongoDB, and more databases are coming soon.</p>
+              <p className="text-gray-300 text-sm">We support PostgreSQL,more databases are coming soon.</p>
             </div>
             <div className="text-left">
               <h4 className="font-medium text-white mb-2">Is my data secure?</h4>
