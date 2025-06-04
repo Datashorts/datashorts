@@ -71,7 +71,7 @@ export default function Pricing() {
           
           <PriceCard
             tier="Pro"
-            price="$29/mo"
+            price="$10/mo"
             bestFor="Best for small teams"
             CTA={
               <button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-0 px-4 py-2 rounded-lg transition-colors">
