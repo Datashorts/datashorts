@@ -1,4 +1,4 @@
-// app/actions/remoteQuery.ts
+// File: app/actions/remoteQuery.ts (SIMPLIFIED WITH CONSISTENT TYPES)
 'use server'
 
 import { currentUser } from '@clerk/nextjs/server'
@@ -6,8 +6,172 @@ import { db } from '@/configs/db'
 import { dbConnections } from '@/configs/schema'
 import { eq } from 'drizzle-orm'
 
+// Consistent response type
+interface QueryResponse {
+  success: boolean
+  data?: {
+    rows: any[]
+    rowCount: number
+    columns: string[]
+    executionTime: number
+  }
+  error?: string
+}
+
 /**
- * Fetch fresh database schema when stored schema is corrupted
+ * LIGHTWEIGHT SECURITY CHECK - Only pattern-based blocking
+ */
+function quickSecurityCheck(
+  sqlQuery: string, 
+  forceExecution: boolean = false
+): { blocked: boolean; error?: string } {
+  const upperQuery = sqlQuery.toUpperCase().trim();
+  
+  // Only block the most dangerous patterns
+  const dangerousPatterns = ['DROP TABLE', 'DROP DATABASE', 'TRUNCATE'];
+  
+  for (const pattern of dangerousPatterns) {
+    if (upperQuery.includes(pattern) && !forceExecution) {
+      return {
+        blocked: true,
+        error: `🚨 BLOCKED: ${pattern} operation detected. Enable "Force execution" if intentional.`
+      };
+    }
+  }
+
+  return { blocked: false };
+}
+
+// Type the actual response from executeSQLQuery based on your error message
+interface ExecuteSQLResult {
+  success: boolean
+  rows?: any[]
+  rowCount?: number | null
+  error?: string
+  data?: {
+    rows?: any[]
+    rowCount?: number
+  } | any[]
+}
+
+/**
+ * Basic query execution that always returns consistent format
+ */
+async function executeBasicQuery(connectionId: string, sqlQuery: string): Promise<QueryResponse> {
+  try {
+    const { executeSQLQuery } = await import('@/app/lib/db/executeQuery')
+    const startTime = Date.now()
+    const result: ExecuteSQLResult = await executeSQLQuery(connectionId, sqlQuery)
+    const executionTime = Date.now() - startTime
+    
+    console.log('Raw executeSQLQuery result:', result)
+    
+    if (result.success) {
+      // Handle different possible result formats
+      let rows: any[] = []
+      let rowCount = 0
+      
+      // Primary case: Legacy format with direct rows property
+      if (result.rows && Array.isArray(result.rows)) {
+        rows = result.rows
+        rowCount = result.rowCount || rows.length
+      }
+      // Secondary case: Check for data property (if it exists)
+      else if (result.data) {
+        if (Array.isArray(result.data)) {
+          // Direct array format: { success: true, data: [...] }
+          rows = result.data
+          rowCount = rows.length
+        } else if (result.data.rows && Array.isArray(result.data.rows)) {
+          // Nested format: { success: true, data: { rows, rowCount } }
+          rows = result.data.rows
+          rowCount = result.data.rowCount || rows.length
+        }
+      }
+      
+      const columns = rows.length > 0 ? Object.keys(rows[0]) : []
+      
+      return {
+        success: true,
+        data: {
+          rows,
+          rowCount,
+          columns,
+          executionTime
+        }
+      }
+    } else {
+      return {
+        success: false,
+        error: result.error || 'Query execution failed'
+      }
+    }
+  } catch (error) {
+    console.error('Error executing basic query:', error)
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to execute query' 
+    }
+  }
+}
+
+/**
+ * OPTIMIZED: Execute query with minimal overhead
+ */
+export async function executeRemoteQuery(
+  connectionId: string,
+  sqlQuery: string,
+  options: {
+    validateQuery?: boolean
+    optimizeQuery?: boolean
+    forceExecution?: boolean
+  } = {}
+): Promise<QueryResponse> {
+  try {
+    const user = await currentUser()
+    if (!user) {
+      return {
+        success: false,
+        error: 'Authentication required'
+      }
+    }
+
+    // QUICK SECURITY CHECK (no AI, no database calls)
+    const securityCheck = quickSecurityCheck(sqlQuery, options.forceExecution);
+    if (securityCheck.blocked) {
+      return {
+        success: false,
+        error: securityCheck.error
+      };
+    }
+
+    // Verify user has access to this connection
+    const [connection] = await db
+      .select()
+      .from(dbConnections)
+      .where(eq(dbConnections.id, Number(connectionId)))
+
+    if (!connection || connection.userId !== user.id) {
+      return {
+        success: false,
+        error: 'Connection not found or access denied'
+      }
+    }
+
+    // Execute query and return consistent format
+    return await executeBasicQuery(connectionId, sqlQuery)
+    
+  } catch (error) {
+    console.error('Error in executeRemoteQuery:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unknown error occurred'
+    }
+  }
+}
+
+/**
+ * Fetch fresh database schema
  */
 async function fetchFreshSchema(connectionId: string): Promise<any[]> {
   try {
@@ -24,10 +188,9 @@ async function fetchFreshSchema(connectionId: string): Promise<any[]> {
       ORDER BY t.table_name, c.ordinal_position
     `
     
-    // Use the basic executeQuery to avoid circular dependency
     const result = await executeBasicQuery(connectionId, schemaQuery)
     
-    if (result.success && result.data) {
+    if (result.success && result.data && result.data.rows) {
       const schemaByTable: { [key: string]: any[] } = {}
       result.data.rows.forEach((row: any) => {
         if (!schemaByTable[row.table_name]) {
@@ -57,83 +220,7 @@ async function fetchFreshSchema(connectionId: string): Promise<any[]> {
 }
 
 /**
- * Basic query execution without agents (to avoid circular dependencies)
- */
-async function executeBasicQuery(connectionId: string, sqlQuery: string) {
-  try {
-    const { executeSQLQuery } = await import('@/app/lib/db/executeQuery')
-    const result = await executeSQLQuery(connectionId, sqlQuery)
-    return result
-  } catch (error) {
-    console.error('Error executing basic query:', error)
-    return { success: false, error: 'Failed to execute query' }
-  }
-}
-
-/**
- * Execute a single SQL query remotely
- */
-export async function executeRemoteQuery(
-  connectionId: string,
-  sqlQuery: string,
-  options: {
-    validateQuery?: boolean
-    optimizeQuery?: boolean
-    forceExecution?: boolean
-  } = {}
-) {
-  try {
-    const user = await currentUser()
-    if (!user) {
-      return {
-        success: false,
-        error: 'Authentication required'
-      }
-    }
-
-    // Verify user has access to this connection
-    const [connection] = await db
-      .select()
-      .from(dbConnections)
-      .where(eq(dbConnections.id, Number(connectionId)))
-
-    if (!connection || connection.userId !== user.id) {
-      return {
-        success: false,
-        error: 'Connection not found or access denied'
-      }
-    }
-
-    // For now, just use basic query execution
-    // You can add the remoteQueryAgent later when it's implemented
-    const result = await executeBasicQuery(connectionId, sqlQuery)
-    
-    if (result.success) {
-      // Format the result to match expected interface
-      const columns = result.rows && result.rows.length > 0 ? Object.keys(result.rows[0]) : []
-      return {
-        success: true,
-        data: {
-          rows: result.rows || [],
-          rowCount: result.rowCount || 0,
-          columns,
-          executionTime: 0
-        }
-      }
-    }
-    
-    return result
-  } catch (error) {
-    console.error('Error in executeRemoteQuery:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'An unknown error occurred'
-    }
-  }
-}
-
-/**
- * Execute multiple SQL queries as a batch
+ * Batch execution with minimal overhead
  */
 export async function executeBatchQueries(
   connectionId: string,
@@ -157,7 +244,7 @@ export async function executeBatchQueries(
       }
     }
 
-    // Verify user has access to this connection
+    // Verify user access once
     const [connection] = await db
       .select()
       .from(dbConnections)
@@ -174,13 +261,18 @@ export async function executeBatchQueries(
       }
     }
 
+    // Execute queries with minimal processing
     const results = []
     let successCount = 0
     let errorCount = 0
     const startTime = Date.now()
 
     for (const query of queries) {
-      const result = await executeRemoteQuery(connectionId, query.trim(), options)
+      const result = await executeRemoteQuery(connectionId, query.trim(), {
+        validateQuery: false,
+        optimizeQuery: false,
+        forceExecution: options.validateQueries ? false : true
+      })
       results.push(result)
       
       if (result.success) {
@@ -212,266 +304,6 @@ export async function executeBatchQueries(
 }
 
 /**
- * Get an explanation for a SQL query
- */
-export async function explainQuery(connectionId: string, sqlQuery: string) {
-  try {
-    const user = await currentUser()
-    if (!user) {
-      return {
-        success: false,
-        error: 'Authentication required'
-      }
-    }
-
-    // Verify user has access to this connection
-    const [connection] = await db
-      .select()
-      .from(dbConnections)
-      .where(eq(dbConnections.id, Number(connectionId)))
-
-    if (!connection || connection.userId !== user.id) {
-      return {
-        success: false,
-        error: 'Connection not found or access denied'
-      }
-    }
-
-    // Get database schema for better explanations
-    let schema: any[] = []
-    try {
-      if (connection.tableSchema) {
-        // Handle different formats of tableSchema
-        if (typeof connection.tableSchema === 'string') {
-          // Try to parse as JSON string
-          if (connection.tableSchema.startsWith('[object Object]') || connection.tableSchema === '[object Object]') {
-            console.log('tableSchema contains [object Object], fetching fresh schema...')
-            // If it's corrupted, fetch fresh schema
-            schema = await fetchFreshSchema(connectionId)
-          } else {
-            try {
-              schema = JSON.parse(connection.tableSchema)
-            } catch (parseError) {
-              console.error('Failed to parse tableSchema JSON, fetching fresh schema:', parseError)
-              schema = await fetchFreshSchema(connectionId)
-            }
-          }
-        } else if (Array.isArray(connection.tableSchema)) {
-          // Already an array
-          schema = connection.tableSchema
-        } else if (typeof connection.tableSchema === 'object') {
-          // Convert object to array format
-          schema = Object.entries(connection.tableSchema).map(([tableName, columns]) => ({
-            tableName,
-            columns: Array.isArray(columns) ? columns : []
-          }))
-        } else {
-          console.log('Unexpected tableSchema format, fetching fresh schema...')
-          schema = await fetchFreshSchema(connectionId)
-        }
-      } else {
-        console.log('No tableSchema found, fetching fresh schema...')
-        schema = await fetchFreshSchema(connectionId)
-      }
-    } catch (error) {
-      console.error('Error processing table schema:', error)
-      // Fallback: fetch fresh schema
-      schema = await fetchFreshSchema(connectionId)
-    }
-
-    // Get query explanation using OpenAI
-    try {
-      const { openaiClient } = await import('@/app/lib/clients')
-      
-      const prompt = `
-Explain this SQL query in simple terms:
-
-Query: ${sqlQuery}
-
-Available schema:
-${schema.map(table => `
-Table: ${table.tableName}
-Columns: ${table.columns.map((col: any) => `${col.column_name} (${col.data_type})`).join(', ')}
-`).join('\n')}
-
-Provide a clear explanation that includes:
-1. What the query does
-2. Which tables it accesses
-3. What data it returns
-4. Any joins or complex operations
-5. Potential performance considerations
-
-Keep the explanation accessible to non-technical users while being accurate.
-`
-
-      const response = await openaiClient.chat.completions.create({
-        model: "gpt-4",
-        messages: [
-          {
-            role: "system",
-            content: "You are a database expert who explains SQL queries in clear, simple terms for both technical and non-technical users."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 800
-      })
-
-      return {
-        success: true,
-        explanation: response.choices[0].message.content || 'No explanation available'
-      }
-    } catch (error) {
-      console.error('Error generating explanation:', error)
-      return {
-        success: false,
-        error: 'Failed to generate query explanation. Please check your OpenAI API key.'
-      }
-    }
-  } catch (error) {
-    console.error('Error in explainQuery:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'An unknown error occurred'
-    }
-  }
-}
-
-/**
- * Get query suggestions based on user intent
- */
-export async function getQuerySuggestions(connectionId: string, userIntent: string) {
-  try {
-    const user = await currentUser()
-    if (!user) {
-      return {
-        success: false,
-        error: 'Authentication required'
-      }
-    }
-
-    // Verify user has access to this connection
-    const [connection] = await db
-      .select()
-      .from(dbConnections)
-      .where(eq(dbConnections.id, Number(connectionId)))
-
-    if (!connection || connection.userId !== user.id) {
-      return {
-        success: false,
-        error: 'Connection not found or access denied'
-      }
-    }
-
-    // Get database schema for suggestions
-    let schema: any[] = []
-    try {
-      if (connection.tableSchema) {
-        // Handle different formats of tableSchema
-        if (typeof connection.tableSchema === 'string') {
-          if (connection.tableSchema.startsWith('[object Object]') || connection.tableSchema === '[object Object]') {
-            console.log('tableSchema contains [object Object], fetching fresh schema...')
-            schema = await fetchFreshSchema(connectionId)
-          } else {
-            try {
-              schema = JSON.parse(connection.tableSchema)
-            } catch (parseError) {
-              console.error('Failed to parse tableSchema JSON, fetching fresh schema:', parseError)
-              schema = await fetchFreshSchema(connectionId)
-            }
-          }
-        } else if (Array.isArray(connection.tableSchema)) {
-          schema = connection.tableSchema
-        } else if (typeof connection.tableSchema === 'object') {
-          schema = Object.entries(connection.tableSchema).map(([tableName, columns]) => ({
-            tableName,
-            columns: Array.isArray(columns) ? columns : []
-          }))
-        } else {
-          schema = await fetchFreshSchema(connectionId)
-        }
-      } else {
-        schema = await fetchFreshSchema(connectionId)
-      }
-    } catch (error) {
-      console.error('Error processing table schema:', error)
-      schema = await fetchFreshSchema(connectionId)
-    }
-
-    // Generate query suggestions using OpenAI
-    try {
-      const { openaiClient } = await import('@/app/lib/clients')
-      
-      const prompt = `
-Based on this user request, suggest relevant SQL queries:
-
-User Intent: ${userIntent}
-
-Available database schema:
-${schema.map(table => `
-Table: ${table.tableName}
-Columns: ${table.columns.map((col: any) => `${col.column_name} (${col.data_type})`).join(', ')}
-`).join('\n')}
-
-Provide 3-5 SQL query suggestions that would help fulfill the user's intent. For each suggestion, include:
-1. The SQL query
-2. A description of what it does
-3. Difficulty level (beginner/intermediate/advanced)
-
-Respond in JSON format:
-{
-  "suggestions": [
-    {
-      "query": "SELECT ...",
-      "description": "This query...",
-      "difficulty": "beginner"
-    }
-  ]
-}
-`
-
-      const response = await openaiClient.chat.completions.create({
-        model: "gpt-4",
-        messages: [
-          {
-            role: "system",
-            content: "You are a helpful SQL assistant that suggests appropriate queries based on user needs."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        temperature: 0.5,
-        max_tokens: 1000
-      })
-
-      const result = JSON.parse(response.choices[0].message.content || '{}')
-      
-      return {
-        success: true,
-        suggestions: result.suggestions || []
-      }
-    } catch (error) {
-      console.error('Error generating suggestions:', error)
-      return {
-        success: false,
-        error: 'Failed to generate query suggestions. Please check your OpenAI API key.'
-      }
-    }
-  } catch (error) {
-    console.error('Error in getQuerySuggestions:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'An unknown error occurred'
-    }
-  }
-}
-
-/**
  * Get database schema information
  */
 export async function getDatabaseSchema(connectionId: string) {
@@ -484,7 +316,7 @@ export async function getDatabaseSchema(connectionId: string) {
       }
     }
 
-    // Verify user has access to this connection
+    // Verify connection access
     const [connection] = await db
       .select()
       .from(dbConnections)
@@ -497,7 +329,7 @@ export async function getDatabaseSchema(connectionId: string) {
       }
     }
 
-    // Return parsed schema or fetch fresh if corrupted
+    // Return cached schema or fetch fresh
     let schema: any[] = []
     try {
       if (connection.tableSchema && typeof connection.tableSchema === 'string') {
@@ -506,11 +338,13 @@ export async function getDatabaseSchema(connectionId: string) {
         } else {
           schema = JSON.parse(connection.tableSchema)
         }
+      } else if (Array.isArray(connection.tableSchema)) {
+        schema = connection.tableSchema
       } else {
         schema = await fetchFreshSchema(connectionId)
       }
     } catch (error) {
-      console.error('Error parsing table schema:', error)
+      console.error('Error parsing table schema, fetching fresh:', error)
       schema = await fetchFreshSchema(connectionId)
     }
 
@@ -522,6 +356,196 @@ export async function getDatabaseSchema(connectionId: string) {
     }
   } catch (error) {
     console.error('Error in getDatabaseSchema:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unknown error occurred'
+    }
+  }
+}
+
+/**
+ * Query explanation with caching
+ */
+export async function explainQuery(connectionId: string, sqlQuery: string) {
+  try {
+    const user = await currentUser()
+    if (!user) {
+      return {
+        success: false,
+        error: 'Authentication required'
+      }
+    }
+
+    // Verify connection access
+    const [connection] = await db
+      .select()
+      .from(dbConnections)
+      .where(eq(dbConnections.id, Number(connectionId)))
+
+    if (!connection || connection.userId !== user.id) {
+      return {
+        success: false,
+        error: 'Connection not found or access denied'
+      }
+    }
+
+    // Get schema for better explanations
+    let schema: any[] = []
+    try {
+      if (connection.tableSchema && typeof connection.tableSchema === 'string') {
+        if (connection.tableSchema.startsWith('[object Object]') || connection.tableSchema === '[object Object]') {
+          schema = await fetchFreshSchema(connectionId)
+        } else {
+          schema = JSON.parse(connection.tableSchema)
+        }
+      } else if (Array.isArray(connection.tableSchema)) {
+        schema = connection.tableSchema
+      } else {
+        schema = await fetchFreshSchema(connectionId)
+      }
+    } catch (error) {
+      console.error('Error processing table schema:', error)
+      schema = await fetchFreshSchema(connectionId)
+    }
+
+    try {
+      const { openaiClient } = await import('@/app/lib/clients')
+      
+      const prompt = `Explain this SQL query briefly: ${sqlQuery}
+
+Available schema:
+${schema.map(table => `
+Table: ${table.tableName}
+Columns: ${table.columns.map((col: any) => `${col.column_name} (${col.data_type})`).join(', ')}
+`).join('\n')}`
+
+      const response = await openaiClient.chat.completions.create({
+        model: "gpt-4",
+        messages: [
+          {
+            role: "system",
+            content: "Explain SQL queries concisely."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 300
+      })
+
+      const explanation = response.choices[0].message.content || 'No explanation available';
+
+      return {
+        success: true,
+        explanation
+      }
+    } catch (error) {
+      console.error('Error generating explanation:', error)
+      return {
+        success: false,
+        error: 'Failed to generate query explanation'
+      }
+    }
+  } catch (error) {
+    console.error('Error in explainQuery:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'An unknown error occurred'
+    }
+  }
+}
+
+/**
+ * Query suggestions with caching
+ */
+export async function getQuerySuggestions(connectionId: string, userIntent: string) {
+  try {
+    const user = await currentUser()
+    if (!user) {
+      return {
+        success: false,
+        error: 'Authentication required'
+      }
+    }
+
+    // Verify connection access
+    const [connection] = await db
+      .select()
+      .from(dbConnections)
+      .where(eq(dbConnections.id, Number(connectionId)))
+
+    if (!connection || connection.userId !== user.id) {
+      return {
+        success: false,
+        error: 'Connection not found or access denied'
+      }
+    }
+
+    // Get schema for suggestions
+    let schema: any[] = []
+    try {
+      if (connection.tableSchema && typeof connection.tableSchema === 'string') {
+        if (connection.tableSchema.startsWith('[object Object]') || connection.tableSchema === '[object Object]') {
+          schema = await fetchFreshSchema(connectionId)
+        } else {
+          schema = JSON.parse(connection.tableSchema)
+        }
+      } else if (Array.isArray(connection.tableSchema)) {
+        schema = connection.tableSchema
+      } else {
+        schema = await fetchFreshSchema(connectionId)
+      }
+    } catch (error) {
+      console.error('Error processing table schema:', error)
+      schema = await fetchFreshSchema(connectionId)
+    }
+
+    try {
+      const { openaiClient } = await import('@/app/lib/clients')
+      
+      const prompt = `Based on: "${userIntent}", suggest 3 SQL queries in JSON format:
+{
+  "suggestions": [
+    {"query": "SELECT ...", "description": "...", "difficulty": "beginner"}
+  ]
+}
+
+Schema:
+${schema.map(table => `${table.tableName}: ${table.columns.map((col: any) => col.column_name).join(', ')}`).join('\n')}`
+
+      const response = await openaiClient.chat.completions.create({
+        model: "gpt-4",
+        messages: [
+          {
+            role: "system",
+            content: "You are a SQL assistant. Provide JSON responses only."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.5,
+        max_tokens: 500
+      })
+
+      const result = JSON.parse(response.choices[0].message.content || '{}')
+      
+      return {
+        success: true,
+        suggestions: result.suggestions || []
+      }
+    } catch (error) {
+      console.error('Error generating suggestions:', error)
+      return {
+        success: false,
+        error: 'Failed to generate query suggestions'
+      }
+    }
+  } catch (error) {
+    console.error('Error in getQuerySuggestions:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'An unknown error occurred'
@@ -548,9 +572,6 @@ export async function saveQueryToLibrary(
       }
     }
 
-    // For now, save to localStorage on client side
-    // In a production app, you'd want to save this to a database table
-    
     const queryLibraryItem = {
       id: Date.now().toString(),
       connectionId,

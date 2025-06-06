@@ -1,4 +1,4 @@
-// File: app/chats/[id]/[dbname]/query/page.tsx
+// File: app/chats/[id]/[dbname]/query/page.tsx (FIXED WITH PROPER TYPES)
 'use client'
 
 import { useEffect, useState, useRef, KeyboardEvent } from 'react'
@@ -15,14 +15,19 @@ import { Label } from '@/components/ui/label'
 import QueryAssistant from '@/app/_components/query/QueryAssistant'
 import Link from 'next/link'
 
+// Define proper types for query results
+interface QueryData {
+  rows: any[]
+  rowCount: number
+  columns: string[]
+  executionTime: number
+}
+
 interface QueryResult {
   success: boolean
-  data?: {
-    rows: any[]
-    rowCount: number
-    columns: string[]
-    executionTime: number
-  }
+  data?: QueryData
+  rows?: any[] // Legacy format support
+  rowCount?: number | null // Legacy format support
   error?: string
   validation?: {
     isValid: boolean
@@ -51,6 +56,30 @@ interface QueryHistory {
   timestamp: Date
 }
 
+// Type guard functions
+function hasData(result: QueryResult): result is QueryResult & { data: QueryData } {
+  return result.success && 'data' in result && result.data !== undefined
+}
+
+function hasLegacyRows(result: QueryResult): result is QueryResult & { rows: any[], rowCount: number } {
+  return result.success && 'rows' in result && result.rows !== undefined
+}
+
+function getQueryData(result: QueryResult): QueryData | null {
+  if (hasData(result)) {
+    return result.data
+  }
+  if (hasLegacyRows(result)) {
+    return {
+      rows: result.rows,
+      rowCount: result.rowCount || 0,
+      columns: result.rows.length > 0 ? Object.keys(result.rows[0]) : [],
+      executionTime: 0
+    }
+  }
+  return null
+}
+
 export default function RemoteQueryPage() {
   const params = useParams()
   const { user } = useUser()
@@ -66,6 +95,8 @@ export default function RemoteQueryPage() {
   const [queryHistory, setQueryHistory] = useState<QueryHistory[]>([])
   const [selectedTable, setSelectedTable] = useState('')
   const [dbSchema, setDbSchema] = useState<any[]>([])
+  const [schemaLoading, setSchemaLoading] = useState(true)
+  const [schemaError, setSchemaError] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [showAssistant, setShowAssistant] = useState(false)
   const [queryOptions, setQueryOptions] = useState({
@@ -124,7 +155,12 @@ export default function RemoteQueryPage() {
   }, [connectionId])
 
   const fetchDatabaseSchema = async () => {
+    setSchemaLoading(true)
+    setSchemaError(null)
+    
     try {
+      console.log('Fetching database schema for connection:', connectionId);
+      
       const schemaQuery = `
         SELECT 
           t.table_name,
@@ -136,14 +172,24 @@ export default function RemoteQueryPage() {
         LEFT JOIN information_schema.columns c ON t.table_name = c.table_name AND t.table_schema = c.table_schema
         WHERE t.table_schema = 'public'
         ORDER BY t.table_name, c.ordinal_position
-      `
+      `;
       
-      const result = await executeRemoteQuery(connectionId, schemaQuery, { validateQuery: false })
-      if (result.success && 'rows' in result) {
-        const schemaByTable: { [key: string]: any[] } = {}
-        result.rows.forEach((row: any) => {
+      const result = await executeRemoteQuery(connectionId, schemaQuery, { 
+        validateQuery: false,
+        optimizeQuery: false,
+        forceExecution: true 
+      });
+      
+      console.log('Schema query result:', result);
+      
+      const queryData = getQueryData(result);
+      
+      if (result.success && queryData && queryData.rows) {
+        const schemaByTable: { [key: string]: any[] } = {};
+        
+        queryData.rows.forEach((row: any) => {
           if (!schemaByTable[row.table_name]) {
-            schemaByTable[row.table_name] = []
+            schemaByTable[row.table_name] = [];
           }
           if (row.column_name) {
             schemaByTable[row.table_name].push({
@@ -151,16 +197,46 @@ export default function RemoteQueryPage() {
               data_type: row.data_type,
               is_nullable: row.is_nullable,
               column_default: row.column_default,
-            })
+            });
           }
-        })
-        setDbSchema(Object.entries(schemaByTable).map(([tableName, columns]) => ({
+        });
+        
+        const schemaArray = Object.entries(schemaByTable).map(([tableName, columns]) => ({
           tableName,
           columns
-        })))
+        }));
+        
+        console.log('Processed schema:', schemaArray);
+        setDbSchema(schemaArray);
+      } else {
+        console.error('Schema query failed or returned no data:', result);
+        
+        // Fallback: Try a simpler query to just get table names
+        const fallbackQuery = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'";
+        const fallbackResult = await executeRemoteQuery(connectionId, fallbackQuery, { 
+          validateQuery: false,
+          optimizeQuery: false,
+          forceExecution: true 
+        });
+        
+        const fallbackData = getQueryData(fallbackResult);
+        
+        if (fallbackResult.success && fallbackData && fallbackData.rows) {
+          const simplifiedSchema = fallbackData.rows.map((row: any) => ({
+            tableName: row.table_name,
+            columns: [] // Empty columns array for now
+          }));
+          setDbSchema(simplifiedSchema);
+          console.log('Using fallback schema:', simplifiedSchema);
+        } else {
+          throw new Error(result.error || 'Failed to fetch schema');
+        }
       }
     } catch (error) {
-      console.error('Error fetching database schema:', error)
+      console.error('Error fetching database schema:', error);
+      setSchemaError(error instanceof Error ? error.message : 'Failed to load schema');
+    } finally {
+      setSchemaLoading(false);
     }
   }
 
@@ -173,14 +249,11 @@ export default function RemoteQueryPage() {
     try {
       const result = await executeRemoteQuery(connectionId, sqlQuery.trim(), queryOptions)
       
+      const queryData = getQueryData(result);
+      
       const queryResult: QueryResult = {
         ...result,
-        data: 'rows' in result ? {
-          rows: result.rows,
-          rowCount: result.rowCount || 0,
-          columns: Object.keys(result.rows?.[0] || {}),
-          executionTime: Date.now() - startTime
-        } : undefined
+        data: queryData || undefined
       }
 
       setCurrentResult(queryResult)
@@ -229,12 +302,13 @@ export default function RemoteQueryPage() {
   }
 
   const exportResults = () => {
-    if (!currentResult?.data?.rows) return
+    const queryData = currentResult ? getQueryData(currentResult) : null;
+    if (!queryData?.rows) return
 
     const csvContent = [
-      currentResult.data.columns.join(','),
-      ...currentResult.data.rows.map(row => 
-        currentResult.data!.columns.map(column => {
+      queryData.columns.join(','),
+      ...queryData.rows.map(row => 
+        queryData.columns.map(column => {
           const value = row[column]
           return typeof value === 'string' ? `"${value.replace(/"/g, '""')}"` : value
         }).join(',')
@@ -251,10 +325,15 @@ export default function RemoteQueryPage() {
   }
 
   const copyResults = () => {
-    if (!currentResult?.data?.rows) return
+    const queryData = currentResult ? getQueryData(currentResult) : null;
+    if (!queryData?.rows) return
     
-    const text = JSON.stringify(currentResult.data.rows, null, 2)
+    const text = JSON.stringify(queryData.rows, null, 2)
     navigator.clipboard.writeText(text)
+  }
+
+  const retrySchemaFetch = () => {
+    fetchDatabaseSchema()
   }
 
   if (!user) {
@@ -475,12 +554,15 @@ export default function RemoteQueryPage() {
                             <p className="font-medium">
                               {currentResult.success ? 'Query Successful' : 'Query Failed'}
                             </p>
-                            {currentResult.success && currentResult.data && (
-                              <p className="text-sm text-gray-400">
-                                {currentResult.data.rowCount} rows returned
-                                {currentResult.data.executionTime && ` in ${currentResult.data.executionTime}ms`}
-                              </p>
-                            )}
+                            {(() => {
+                              const queryData = getQueryData(currentResult);
+                              return queryData && (
+                                <p className="text-sm text-gray-400">
+                                  {queryData.rowCount} rows returned
+                                  {queryData.executionTime && ` in ${queryData.executionTime}ms`}
+                                </p>
+                              );
+                            })()}
                             {currentResult.metadata && (
                               <p className="text-xs text-gray-500">
                                 Type: {currentResult.metadata.queryType} | 
@@ -491,18 +573,21 @@ export default function RemoteQueryPage() {
                           </div>
                         </div>
 
-                        {currentResult.success && currentResult.data && (
-                          <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={copyResults}>
-                              <Copy className="h-4 w-4 mr-1" />
-                              Copy
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={exportResults}>
-                              <Download className="h-4 w-4 mr-1" />
-                              Export CSV
-                            </Button>
-                          </div>
-                        )}
+                        {(() => {
+                          const queryData = getQueryData(currentResult);
+                          return queryData && (
+                            <div className="flex gap-2">
+                              <Button variant="outline" size="sm" onClick={copyResults}>
+                                <Copy className="h-4 w-4 mr-1" />
+                                Copy
+                              </Button>
+                              <Button variant="outline" size="sm" onClick={exportResults}>
+                                <Download className="h-4 w-4 mr-1" />
+                                Export CSV
+                              </Button>
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {/* Results Content */}
@@ -562,47 +647,53 @@ export default function RemoteQueryPage() {
                           </div>
                         )}
 
-                        {currentResult.success && currentResult.data ? (
-                          currentResult.data.rows.length > 0 ? (
-                            <div className="overflow-x-auto">
-                              <table className="min-w-full border border-blue-500/20 rounded-lg">
-                                <thead className="bg-blue-900/20">
-                                  <tr>
-                                    {currentResult.data.columns.map((header) => (
-                                      <th key={header} className="px-4 py-3 text-left font-medium text-gray-100 border-b border-blue-500/20">
-                                        {header}
-                                      </th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {currentResult.data.rows.map((row, i) => (
-                                    <tr key={i} className="hover:bg-blue-500/5">
-                                      {currentResult.data!.columns.map((column, j) => (
-                                        <td key={j} className="px-4 py-3 text-gray-300 border-b border-blue-500/10">
-                                          {row[column] === null ? (
-                                            <span className="text-gray-500 italic">NULL</span>
-                                          ) : (
-                                            String(row[column])
-                                          )}
-                                        </td>
+                        {(() => {
+                          const queryData = getQueryData(currentResult);
+                          
+                          if (currentResult.success && queryData) {
+                            return queryData.rows.length > 0 ? (
+                              <div className="overflow-x-auto">
+                                <table className="min-w-full border border-blue-500/20 rounded-lg">
+                                  <thead className="bg-blue-900/20">
+                                    <tr>
+                                      {queryData.columns.map((header) => (
+                                        <th key={header} className="px-4 py-3 text-left font-medium text-gray-100 border-b border-blue-500/20">
+                                          {header}
+                                        </th>
                                       ))}
                                     </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          ) : (
-                            <div className="text-center py-8 text-gray-400">
-                              Query executed successfully but returned no rows.
-                            </div>
-                          )
-                        ) : (
-                          <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4">
-                            <p className="text-red-400 font-medium mb-2">Error executing query:</p>
-                            <p className="text-gray-300 font-mono text-sm">{currentResult.error}</p>
-                          </div>
-                        )}
+                                  </thead>
+                                  <tbody>
+                                    {queryData.rows.map((row, i) => (
+                                      <tr key={i} className="hover:bg-blue-500/5">
+                                        {queryData.columns.map((column, j) => (
+                                          <td key={j} className="px-4 py-3 text-gray-300 border-b border-blue-500/10">
+                                            {row[column] === null ? (
+                                              <span className="text-gray-500 italic">NULL</span>
+                                            ) : (
+                                              String(row[column])
+                                            )}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <div className="text-center py-8 text-gray-400">
+                                Query executed successfully but returned no rows.
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4">
+                                <p className="text-red-400 font-medium mb-2">Error executing query:</p>
+                                <p className="text-gray-300 font-mono text-sm">{currentResult.error}</p>
+                              </div>
+                            );
+                          }
+                        })()}
                       </div>
                     </>
                   ) : (
@@ -619,11 +710,36 @@ export default function RemoteQueryPage() {
               {activeTab === 'schema' && (
                 <div className="flex flex-col h-full">
                   <div className="p-4 border-b border-blue-500/20">
-                    <h3 className="font-medium text-gray-200">Database Schema</h3>
-                    <p className="text-sm text-gray-400">Click on a table to select it for templates</p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-medium text-gray-200">Database Schema</h3>
+                        <p className="text-sm text-gray-400">Click on a table to select it for templates</p>
+                      </div>
+                      {schemaError && (
+                        <Button variant="outline" size="sm" onClick={retrySchemaFetch}>
+                          <RotateCcw className="h-4 w-4 mr-1" />
+                          Retry
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   <div className="flex-1 overflow-auto p-4">
-                    {dbSchema.length > 0 ? (
+                    {schemaLoading ? (
+                      <div className="text-center text-gray-400 py-8">
+                        <RotateCcw className="h-12 w-12 mx-auto mb-4 opacity-50 animate-spin" />
+                        <p>Loading database schema...</p>
+                      </div>
+                    ) : schemaError ? (
+                      <div className="text-center text-gray-400 py-8">
+                        <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50 text-red-400" />
+                        <p className="text-red-400 mb-2">Failed to load schema</p>
+                        <p className="text-sm text-gray-500 mb-4">{schemaError}</p>
+                        <Button variant="outline" onClick={retrySchemaFetch}>
+                          <RotateCcw className="h-4 w-4 mr-1" />
+                          Try Again
+                        </Button>
+                      </div>
+                    ) : dbSchema.length > 0 ? (
                       <div className="space-y-4">
                         {dbSchema.map((table) => (
                           <div 
@@ -637,12 +753,18 @@ export default function RemoteQueryPage() {
                           >
                             <h4 className="font-medium text-blue-400 mb-2">{table.tableName}</h4>
                             <div className="space-y-1">
-                              {table.columns.map((column: any, idx: number) => (
-                                <div key={idx} className="text-sm text-gray-300 flex justify-between">
-                                  <span>{column.column_name}</span>
-                                  <span className="text-gray-500">{column.data_type}</span>
+                              {table.columns.length > 0 ? (
+                                table.columns.map((column: any, idx: number) => (
+                                  <div key={idx} className="text-sm text-gray-300 flex justify-between">
+                                    <span>{column.column_name}</span>
+                                    <span className="text-gray-500">{column.data_type}</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="text-sm text-gray-500 italic">
+                                  No column information available
                                 </div>
-                              ))}
+                              )}
                             </div>
                           </div>
                         ))}
@@ -650,7 +772,7 @@ export default function RemoteQueryPage() {
                     ) : (
                       <div className="text-center text-gray-400 py-8">
                         <Database className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p>Loading database schema...</p>
+                        <p>No tables found in this database</p>
                       </div>
                     )}
                   </div>
@@ -705,11 +827,14 @@ export default function RemoteQueryPage() {
                         <p className="text-sm text-gray-300 font-mono truncate">
                           {item.query}
                         </p>
-                        {item.result.success && item.result.data && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            {item.result.data.rowCount} rows
-                          </p>
-                        )}
+                        {(() => {
+                          const queryData = getQueryData(item.result);
+                          return queryData && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {queryData.rowCount} rows
+                            </p>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
