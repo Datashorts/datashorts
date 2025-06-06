@@ -2,24 +2,14 @@
 
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { UserButton, SignedIn, SignedOut, useUser } from "@clerk/nextjs"
+import { UserButton, SignedIn, SignedOut } from "@clerk/nextjs"
 import { useState, useEffect } from "react"
-import BetaTestForm from "./beta-test-form"
 import { LineChart, Menu, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export default function Header() {
-  const { user } = useUser();
-  const [showBetaForm, setShowBetaForm] = useState(false);
-  const [showBetaButton, setShowBetaButton] = useState(true);
-  const [loading, setLoading] = useState(true);
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const adminUsers = [
-    'user_2vGWjztVmYNM9zTMg9qHghGuSbI',
-    'user_2vp5iU5LkPu3SIhsxNYLjkXaN86'
-  ];
 
   useEffect(() => {
     const handleScroll = () => {
@@ -34,36 +24,6 @@ export default function Header() {
       window.removeEventListener("scroll", handleScroll)
     }
   }, [scrolled])
-
-  useEffect(() => {
-    const checkBetaStatus = async () => {
-      if (!user) {
-        setShowBetaButton(true);
-        setLoading(false);
-        return;
-      }
-
-      if (adminUsers.includes(user.id)) {
-        setShowBetaButton(false);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const response = await fetch('/api/beta-test/status');
-        if (response.ok) {
-          const data = await response.json();
-          setShowBetaButton(!data.hasApplied);
-        }
-      } catch (error) {
-        console.error('Error checking beta status:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkBetaStatus();
-  }, [user]);
 
   return (
     <>
@@ -103,14 +63,6 @@ export default function Header() {
 
           <div className="hidden md:flex items-center gap-4">
             <SignedIn>
-              {!loading && showBetaButton && (
-                <Button 
-                  onClick={() => setShowBetaForm(true)}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-0"
-                >
-                  Join Beta
-                </Button>
-              )}
               <UserButton 
                 afterSignOutUrl="/"
                 appearance={{
@@ -195,17 +147,18 @@ export default function Header() {
 
               <div className="mt-4 space-y-4">
                 <SignedIn>
-                  {!loading && showBetaButton && (
-                    <Button 
-                      onClick={() => {
-                        setShowBetaForm(true);
-                        setMobileMenuOpen(false);
-                      }}
-                      className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-0"
-                    >
-                      Join Beta
-                    </Button>
-                  )}
+                  <UserButton 
+                    afterSignOutUrl="/"
+                    appearance={{
+                      elements: {
+                        avatarBox: "w-8 h-8",
+                        userButtonPopoverCard: "bg-black/90 border border-white/20 backdrop-blur-sm",
+                        userButtonPopoverActionButton: "text-white/80 hover:bg-white/10",
+                        userButtonPopoverActionButtonText: "text-white/80",
+                        userButtonPopoverFooter: "border-t border-white/20"
+                      }
+                    }}
+                  />
                 </SignedIn>
                 <SignedOut>
                   <Button 
@@ -220,7 +173,6 @@ export default function Header() {
           </div>
         )}
       </header>
-      {showBetaForm && <BetaTestForm onClose={() => setShowBetaForm(false)} />}
     </>
   )
 }

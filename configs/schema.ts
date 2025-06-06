@@ -64,41 +64,6 @@ export const tableSyncStatus = pgTable('table_sync_status', {
   connectionTableIdx: index('connection_table_idx').on(table.connectionId, table.tableName)
 }));
 
-export const betaTesters = pgTable('beta_testers', {
-  id: serial('id').primaryKey(),
-  userId: text('user_id').references(() => users.clerk_id).notNull(),
-  name: text('name').notNull(),
-  email: text('email').notNull(),
-  company: text('company'),
-  role: text('role'),
-  accepted: boolean('accepted').default(false),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-}, (table) => ({
-  userIdIdx: index('beta_tester_user_id_idx').on(table.userId),
-  emailIdx: index('beta_tester_email_idx').on(table.email)
-}));
-
-export const userActivity = pgTable('user_activity', {
-  id: serial('id').primaryKey(),
-  userId: text('user_id').references(() => users.clerk_id).notNull(),
-  ipAddress: text('ip_address'),
-  userAgent: text('user_agent'),
-  sessionStart: timestamp('session_start').defaultNow(),
-  sessionEnd: timestamp('session_end'),
-  lastActive: timestamp('last_active').defaultNow(),
-  pageVisits: json('page_visits').$type<{
-    path: string;
-    timestamp: string;
-    duration: number;
-  }[]>().default([]),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-}, (table) => ({
-  userIdIdx: index('user_activity_user_id_idx').on(table.userId),
-  sessionStartIdx: index('user_activity_session_start_idx').on(table.sessionStart)
-}));
-
 export const chatsRelations = relations(chats, ({ one }) => ({
   user: one(users, {
     fields: [chats.userId],
@@ -122,12 +87,5 @@ export const connectionsRelations = relations(dbConnections, ({ one }) => ({
   folder: one(folders, {
     fields: [dbConnections.folderId],
     references: [folders.id],
-  }),
-}));
-
-export const betaTestersRelations = relations(betaTesters, ({ one }) => ({
-  user: one(users, {
-    fields: [betaTesters.userId],
-    references: [users.clerk_id],
   }),
 }));
