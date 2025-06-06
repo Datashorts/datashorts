@@ -276,7 +276,7 @@ export async function remoteQueryAgent(
     let optimization: QueryOptimizationSuggestion | undefined;
     if (options.optimizeQuery && schema.length > 0) {
       console.log('Optimizing query...');
-      optimization = await optimizeQuery(sqlQuery, schema);
+      optimization = (await optimizeQuery(sqlQuery, schema)) ?? undefined;
       console.log('Optimization result:', optimization);
     }
 
