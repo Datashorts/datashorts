@@ -1,5 +1,4 @@
-// Path: app/chats/[id]/[dbname]/query/page.tsx
-
+// File: app/chats/[id]/[dbname]/query/page.tsx
 'use client'
 
 import { useEffect, useState, useRef, KeyboardEvent } from 'react'

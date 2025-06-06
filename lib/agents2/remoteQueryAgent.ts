@@ -1,4 +1,4 @@
-// lib/agents2/remoteQueryAgent.ts
+// File: lib/agents2/remoteQueryAgent.ts
 import { executeSQLQuery } from '@/app/lib/db/executeQuery';
 import { openaiClient } from '@/app/lib/clients';
 
@@ -107,41 +107,66 @@ Respond in JSON format:
  */
 async function optimizeQuery(sqlQuery: string, schema: any[]): Promise<QueryOptimizationSuggestion | null> {
   try {
+    // Basic query analysis first
+    const upperQuery = sqlQuery.toUpperCase().trim()
+    
+    // Skip optimization for very simple queries
+    if (upperQuery.length < 20 || 
+        (!upperQuery.includes('JOIN') && !upperQuery.includes('WHERE') && 
+         !upperQuery.includes('ORDER BY') && !upperQuery.includes('GROUP BY') &&
+         !upperQuery.includes('CROSS') && !upperQuery.includes('SUBQUERY') &&
+         !upperQuery.includes('SELECT') || upperQuery.includes('LIMIT'))) {
+      return null
+    }
+
     const prompt = `
-Optimize this SQL query for better performance:
+Analyze and optimize this SQL query for better performance:
 
-Query: ${sqlQuery}
+Original Query:
+${sqlQuery}
 
-Database schema:
+Database Schema:
 ${schema.map(table => `
 Table: ${table.tableName}
 Columns: ${table.columns.map((col: any) => `${col.column_name} (${col.data_type})`).join(', ')}
 `).join('\n')}
 
-Provide optimization suggestions focusing on:
-1. Index usage
-2. Query structure
-3. JOIN optimizations
-4. WHERE clause improvements
-5. LIMIT usage for large result sets
+Look for these optimization opportunities:
+1. Unnecessary CROSS JOINs that can be eliminated or converted to proper JOINs
+2. Redundant subqueries that can be converted to JOINs or window functions
+3. Missing LIMIT clauses for potentially large result sets
+4. Inefficient WHERE conditions that can be optimized
+5. Redundant DISTINCT operations
+6. Function calls on columns that prevent index usage (like DATE(), UPPER(), etc.)
+7. Complex nested queries that can be simplified
+8. Redundant EXISTS or IN clauses
+9. Inefficient ORDER BY operations
+10. Subqueries in SELECT that can be converted to JOINs
 
-If the query can be optimized, respond in JSON format:
+If meaningful optimizations are possible, provide:
+- The optimized query with concrete improvements
+- Clear explanation of each change made
+- Expected performance improvement
+
+Respond in JSON format:
 {
-  "originalQuery": "original query",
-  "optimizedQuery": "optimized version",
-  "explanation": "explanation of changes",
-  "expectedImprovement": "expected performance improvement"
+  "canOptimize": true/false,
+  "optimizedQuery": "complete optimized SQL here",
+  "explanation": "detailed explanation of what was changed and why",
+  "expectedImprovement": "specific performance improvement description",
+  "changes": ["specific change 1", "specific change 2"]
 }
 
-If no optimization needed, respond with: {"noOptimization": true}
-`;
+If no meaningful optimizations are possible, respond with:
+{"canOptimize": false, "reason": "explanation why no optimization is needed"}
+`
 
     const response = await openaiClient.chat.completions.create({
       model: "gpt-4",
       messages: [
         {
           role: "system",
-          content: "You are a database performance optimization expert. Suggest improvements for SQL queries."
+          content: "You are an expert SQL query optimizer. Analyze queries and suggest concrete improvements for better performance. Focus on practical optimizations that will have measurable impact. Be specific about what changes you're making."
         },
         {
           role: "user",
@@ -149,24 +174,24 @@ If no optimization needed, respond with: {"noOptimization": true}
         }
       ],
       temperature: 0.1,
-      max_tokens: 600
-    });
+      max_tokens: 1200
+    })
 
-    const result = JSON.parse(response.choices[0].message.content || '{}');
+    const result = JSON.parse(response.choices[0].message.content || '{}')
     
-    if (result.noOptimization) {
-      return null;
+    if (!result.canOptimize) {
+      return null
     }
 
     return {
-      originalQuery: result.originalQuery || sqlQuery,
+      originalQuery: sqlQuery,
       optimizedQuery: result.optimizedQuery || sqlQuery,
-      explanation: result.explanation || 'No specific optimizations suggested',
-      expectedImprovement: result.expectedImprovement || 'Minimal impact expected'
-    };
+      explanation: result.explanation || 'Query optimized for better performance',
+      expectedImprovement: result.expectedImprovement || 'Performance improvement expected'
+    }
   } catch (error) {
-    console.error('Error optimizing query:', error);
-    return null;
+    console.error('Error optimizing query:', error)
+    return null
   }
 }
 
