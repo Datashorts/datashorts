@@ -139,9 +139,9 @@ export default function RemoteQueryPage() {
       `
       
       const result = await executeRemoteQuery(connectionId, schemaQuery, { validateQuery: false })
-      if (result.success && result.data) {
+      if (result.success && 'rows' in result) {
         const schemaByTable: { [key: string]: any[] } = {}
-        result.data.rows.forEach((row: any) => {
+        result.rows.forEach((row: any) => {
           if (!schemaByTable[row.table_name]) {
             schemaByTable[row.table_name] = []
           }
@@ -175,8 +175,10 @@ export default function RemoteQueryPage() {
       
       const queryResult: QueryResult = {
         ...result,
-        data: result.data ? {
-          ...result.data,
+        data: 'rows' in result ? {
+          rows: result.rows,
+          rowCount: result.rowCount || 0,
+          columns: Object.keys(result.rows?.[0] || {}),
           executionTime: Date.now() - startTime
         } : undefined
       }
