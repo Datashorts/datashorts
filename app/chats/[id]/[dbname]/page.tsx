@@ -1,3 +1,6 @@
+// Path: app/chats/[id]/[dbname]/page.tsx
+// Updated version with Query Executor button
+
 'use client'
 
 import { useEffect, useState, useRef, KeyboardEvent } from 'react'
@@ -8,36 +11,22 @@ import { useUser } from '@clerk/nextjs'
 import { submitChat, getChatHistory, toggleBookmark } from '@/app/actions/chat'
 import ChatMessage from '@/app/_components/chat/ChatMessage'
 import { Button } from '@/components/ui/button'
-import { Copy, RefreshCw, Bookmark } from 'lucide-react'
+import { Copy, RefreshCw, Bookmark, Database, Terminal } from 'lucide-react'
 import Link from 'next/link'
 
 interface ChatMessageProps {
   message: string | {
     role?: string
-    content?: string | {
-      summary?: string
-      details?: string[]
-      metrics?: Record<string, number | string>
-      visualization?: {
-        chartType: string
-        data: { label: string; value: number }[]
-        config: {
-          xAxis: { label: string; type: string }
-          yAxis: { label: string; type: string }
-          legend: boolean
-          stacked: boolean
-        }
-      }
-    }
+    content?: any
     timestamp?: string
   }
   response?: any
   isUser?: boolean
   isLoading?: boolean
-  onOptionClick?: (option: string) => void
+  onOptionClick?: (opt: string) => void
   userQuery?: string
-  onUserQueryChange?: (value: string) => void
-  onSubmitResponse?: (response: string) => void
+  onUserQueryChange?: (v: string) => void
+  onSubmitResponse?: (v: string) => void
 }
 
 export default function ChatWithDbPage() {
@@ -263,6 +252,15 @@ export default function ChatWithDbPage() {
                 Bookmarks
               </Link>
 
+              {/* NEW: Query Executor Button */}
+              <Link 
+                href={`/chats/${connectionId}/${dbName}/query`}
+                className="px-3 py-1.5 rounded-lg border border-green-400/30 hover:bg-green-500/10 text-sm flex items-center gap-1 text-green-400 hover:text-green-300 transition-colors"
+              >
+                <Terminal className="h-4 w-4" />
+                Query Executor
+              </Link>
+
               <Button variant="outline" size="sm" onClick={copyUrl}
                 className="border-blue-400/30 hover:bg-blue-500/10">
                 <Copy className="h-4 w-4 mr-1" />
@@ -287,25 +285,58 @@ export default function ChatWithDbPage() {
             {chatHistory.length === 0 && (
               <div className="text-center py-10 px-6 rounded-xl bg-gradient-to-b from-blue-900/10 to-blue-900/5 border border-blue-500/20">
                 <h3 className="text-lg font-medium text-blue-400 mb-2">Welcome to DataShorts</h3>
-                <p className="text-gray-400 mb-3">No conversations yet. Ask anything about your database!</p>
+                <p className="text-gray-400 mb-4">No conversations yet. Ask anything about your database!</p>
+                
+                {/* Enhanced Welcome Section with Query Executor */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+                    <Database className="h-8 w-8 text-blue-400 mx-auto mb-2" />
+                    <h4 className="font-medium text-blue-300 mb-2">AI Chat Interface</h4>
+                    <p className="text-sm text-gray-400 mb-3">Ask questions in natural language and get intelligent responses</p>
+                    <div className="flex flex-wrap gap-2 justify-center text-sm">
+                      <button 
+                        className="px-3 py-1.5 rounded-lg bg-blue-900/20 hover:bg-blue-900/30 border border-blue-500/30 text-blue-300"
+                        onClick={() => setUserQuery("What tables are in this database?")}
+                      >
+                        Show tables
+                      </button>
+                      <button 
+                        className="px-3 py-1.5 rounded-lg bg-blue-900/20 hover:bg-blue-900/30 border border-blue-500/30 text-blue-300"
+                        onClick={() => setUserQuery("How many users are in the database?")}
+                      >
+                        Count users
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4">
+                    <Terminal className="h-8 w-8 text-green-400 mx-auto mb-2" />
+                    <h4 className="font-medium text-green-300 mb-2">Direct SQL Execution</h4>
+                    <p className="text-sm text-gray-400 mb-3">Write and execute SQL queries directly with advanced features</p>
+                    <Link 
+                      href={`/chats/${connectionId}/${dbName}/query`}
+                      className="inline-block w-full"
+                    >
+                      <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
+                        <Terminal className="h-4 w-4 mr-2" />
+                        Open Query Executor
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+
                 <div className="flex flex-wrap gap-2 justify-center text-sm">
-                  <button 
-                    className="px-3 py-1.5 rounded-lg bg-blue-900/20 hover:bg-blue-900/30 border border-blue-500/30 text-blue-300"
-                    onClick={() => setUserQuery("What tables are in this database?")}
-                  >
-                    Show tables
-                  </button>
-                  <button 
-                    className="px-3 py-1.5 rounded-lg bg-blue-900/20 hover:bg-blue-900/30 border border-blue-500/30 text-blue-300"
-                    onClick={() => setUserQuery("How many users are in the database?")}
-                  >
-                    Count users
-                  </button>
                   <button 
                     className="px-3 py-1.5 rounded-lg bg-blue-900/20 hover:bg-blue-900/30 border border-blue-500/30 text-blue-300"
                     onClick={() => setUserQuery("Show me a visualization of top data")}
                   >
                     Visualize data
+                  </button>
+                  <button 
+                    className="px-3 py-1.5 rounded-lg bg-blue-900/20 hover:bg-blue-900/30 border border-blue-500/30 text-blue-300"
+                    onClick={() => setUserQuery("Analyze user engagement trends")}
+                  >
+                    Analyze trends
                   </button>
                 </div>
               </div>
