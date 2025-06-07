@@ -1,4 +1,4 @@
-// File: app/actions/remoteQuery.ts (SIMPLIFIED WITH CONSISTENT TYPES)
+// File: app/actions/remoteQuery.ts (UPDATED WITH HISTORY SAVING)
 'use server'
 
 import { currentUser } from '@clerk/nextjs/server'
@@ -116,7 +116,65 @@ async function executeBasicQuery(connectionId: string, sqlQuery: string): Promis
 }
 
 /**
- * OPTIMIZED: Execute query with minimal overhead
+ * Save query execution to history
+ */
+async function saveToHistory(
+  connectionId: string,
+  sqlQuery: string,
+  result: QueryResponse,
+  executionTime: number,
+  options: {
+    validateQuery?: boolean
+    optimizeQuery?: boolean
+    forceExecution?: boolean
+  } = {}
+) {
+  try {
+    console.log('💾 Attempting to save query to history...')
+    console.log('📝 Query:', sqlQuery.slice(0, 100) + (sqlQuery.length > 100 ? '...' : ''))
+    console.log('🔗 Connection ID:', connectionId)
+    console.log('📊 Result:', { success: result.success, rowCount: result.data?.rowCount })
+    
+    const { saveQueryToHistory } = await import('@/app/actions/queryHistory')
+    
+    const historyEntry = {
+      connectionId: Number(connectionId),
+      sqlQuery: sqlQuery.trim(),
+      success: result.success,
+      executionTime,
+      rowCount: result.data?.rowCount || 0,
+      errorMessage: result.error,
+      resultData: result.data?.rows?.slice(0, 50), // Store first 50 rows
+      resultColumns: result.data?.columns,
+      generatedBy: 'manual' as const,
+      validationEnabled: options.validateQuery !== false,
+      optimizationEnabled: options.optimizeQuery || false,
+      forceExecution: options.forceExecution || false,
+    }
+    
+    console.log('📋 History entry to save:', {
+      ...historyEntry,
+      resultData: historyEntry.resultData ? `${historyEntry.resultData.length} rows` : 'null'
+    })
+    
+    const saveResult = await saveQueryToHistory(historyEntry)
+    console.log('💾 Save result:', saveResult)
+    
+    if (!saveResult.success) {
+      console.error('❌ Failed to save to history:', saveResult.error)
+    } else {
+      console.log('✅ Successfully saved to history with ID:', saveResult.data?.id)
+    }
+    
+    return saveResult
+  } catch (error) {
+    console.error('💥 Error saving to history:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to save history' }
+  }
+}
+
+/**
+ * UPDATED: Execute query with history saving
  */
 export async function executeRemoteQuery(
   connectionId: string,
@@ -125,9 +183,14 @@ export async function executeRemoteQuery(
     validateQuery?: boolean
     optimizeQuery?: boolean
     forceExecution?: boolean
+    saveToHistory?: boolean // NEW: Add saveToHistory option
   } = {}
 ): Promise<QueryResponse> {
+  const startTime = Date.now()
+  
   try {
+    console.log('🎯 executeRemoteQuery called with options:', options)
+    
     const user = await currentUser()
     if (!user) {
       return {
@@ -152,21 +215,48 @@ export async function executeRemoteQuery(
       .where(eq(dbConnections.id, Number(connectionId)))
 
     if (!connection || connection.userId !== user.id) {
-      return {
+      const errorResult = {
         success: false,
         error: 'Connection not found or access denied'
       }
+      
+      // Save failed query to history if enabled
+      if (options.saveToHistory !== false) {
+        await saveToHistory(connectionId, sqlQuery, errorResult, Date.now() - startTime, options)
+      }
+      
+      return errorResult
     }
 
     // Execute query and return consistent format
-    return await executeBasicQuery(connectionId, sqlQuery)
+    const result = await executeBasicQuery(connectionId, sqlQuery)
+    const executionTime = Date.now() - startTime
+    
+    console.log('Query executed successfully')
+    
+    // Save to history if enabled (default: true)
+    if (options.saveToHistory !== false) {
+      console.log('🔄 Saving to history...')
+      await saveToHistory(connectionId, sqlQuery, result, executionTime, options)
+    } else {
+      console.log('⏭️ Skipping history save (saveToHistory = false)')
+    }
+    
+    return result
     
   } catch (error) {
     console.error('Error in executeRemoteQuery:', error)
-    return {
+    const errorResult = {
       success: false,
       error: error instanceof Error ? error.message : 'An unknown error occurred'
     }
+    
+    // Save failed query to history if enabled
+    if (options.saveToHistory !== false) {
+      await saveToHistory(connectionId, sqlQuery, errorResult, Date.now() - startTime, options)
+    }
+    
+    return errorResult
   }
 }
 
@@ -229,6 +319,7 @@ export async function executeBatchQueries(
     validateQueries?: boolean
     stopOnError?: boolean
     transactional?: boolean
+    saveToHistory?: boolean // NEW: Add saveToHistory option
   } = {}
 ) {
   try {
@@ -271,7 +362,8 @@ export async function executeBatchQueries(
       const result = await executeRemoteQuery(connectionId, query.trim(), {
         validateQuery: false,
         optimizeQuery: false,
-        forceExecution: options.validateQueries ? false : true
+        forceExecution: options.validateQueries ? false : true,
+        saveToHistory: options.saveToHistory !== false // Pass through saveToHistory option
       })
       results.push(result)
       

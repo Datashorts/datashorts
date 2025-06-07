@@ -1,4 +1,4 @@
-// File: lib/agents2/remoteQueryAgent.ts
+// lib/agents2/remoteQueryAgent.ts (Enhanced with debugging)
 import { executeSQLQuery } from '@/app/lib/db/executeQuery';
 import { openaiClient } from '@/app/lib/clients';
 
@@ -232,7 +232,7 @@ function analyzeQueryMetadata(sqlQuery: string): {
 }
 
 /**
- * Remote Query Execution Agent
+ * Remote Query Execution Agent - Enhanced with comprehensive debugging
  */
 export async function remoteQueryAgent(
   sqlQuery: string,
@@ -242,24 +242,27 @@ export async function remoteQueryAgent(
     validateQuery?: boolean;
     optimizeQuery?: boolean;
     forceExecution?: boolean;
+    saveToHistory?: boolean | undefined; // New option
   } = {}
 ): Promise<RemoteQueryResult> {
   const startTime = Date.now();
   
   try {
-    console.log('Remote Query Agent: Executing query on connection', connectionId);
-    console.log('Query:', sqlQuery);
+    console.log('🎯 Remote Query Agent: Starting execution...');
+    console.log('📝 Query:', sqlQuery);
+    console.log('🔗 Connection ID:', connectionId);
+    console.log('⚙️ Options:', options);
 
     // Analyze query metadata
     const metadata = analyzeQueryMetadata(sqlQuery);
-    console.log('Query metadata:', metadata);
+    console.log('📊 Query metadata:', metadata);
 
     // Validate query if requested
     let validation: QueryValidationResult | undefined;
     if (options.validateQuery !== false && schema.length > 0) {
-      console.log('Validating query...');
+      console.log('🔍 Validating query...');
       validation = await validateQuery(sqlQuery, schema);
-      console.log('Validation result:', validation);
+      console.log('✅ Validation result:', validation);
       
       // Block high-risk queries unless forced
       if (validation.riskLevel === 'high' && !options.forceExecution) {
@@ -275,17 +278,64 @@ export async function remoteQueryAgent(
     // Get optimization suggestions if requested
     let optimization: QueryOptimizationSuggestion | undefined;
     if (options.optimizeQuery && schema.length > 0) {
-      console.log('Optimizing query...');
+      console.log('⚡ Optimizing query...');
       optimization = (await optimizeQuery(sqlQuery, schema)) ?? undefined;
-      console.log('Optimization result:', optimization);
+      console.log('🔧 Optimization result:', optimization);
     }
 
     // Execute the query
-    console.log('Executing SQL query...');
+    console.log('🚀 Executing SQL query...');
     const result = await executeSQLQuery(connectionId, sqlQuery);
     const executionTime = Date.now() - startTime;
+    console.log('📈 Query executed in', executionTime, 'ms');
+    console.log('📊 Raw executeSQLQuery result:', {
+      success: result.success,
+      rows: result.rows ? `${result.rows.length} rows` : 'null',
+      rowCount: result.rowCount,
+      error: result.error
+    });
 
     if (!result.success) {
+      console.log('❌ Query failed, attempting to save failed query to history...');
+      
+      // Save failed query to history if enabled
+      if (options.saveToHistory !== false) {
+        console.log('💾 saveToHistory option is enabled, proceeding with failed query save...');
+        try {
+          console.log('🔄 Importing saveQueryToHistory...');
+          const { saveQueryToHistory } = await import('@/app/actions/queryHistory');
+          console.log('✅ Successfully imported saveQueryToHistory');
+          
+          const historyEntry = {
+            connectionId: Number(connectionId),
+            sqlQuery: sqlQuery.trim(),
+            success: false,
+            executionTime,
+            errorMessage: result.error,
+            generatedBy: 'manual' as const,
+            validationEnabled: options.validateQuery !== false,
+            optimizationEnabled: options.optimizeQuery || false,
+            forceExecution: options.forceExecution || false,
+            validationResult: validation,
+            optimizationSuggestion: optimization,
+          };
+
+          console.log('📋 Failed query history entry:', historyEntry);
+          const saveResult = await saveQueryToHistory(historyEntry);
+          console.log('💾 Failed query save result:', saveResult);
+          
+          if (!saveResult.success) {
+            console.error('❌ Failed to save failed query to history:', saveResult.error);
+          } else {
+            console.log('✅ Successfully saved failed query to history with ID:', saveResult.data?.id);
+          }
+        } catch (historyError) {
+          console.error('💥 Error in failed query history saving process:', historyError);
+        }
+      } else {
+        console.log('⏭️ Skipping failed query history save (saveToHistory = false)');
+      }
+
       return {
         success: false,
         error: result.error,
@@ -297,8 +347,9 @@ export async function remoteQueryAgent(
 
     // Extract column names from the first row
     const columns = result.rows && result.rows.length > 0 ? Object.keys(result.rows[0]) : [];
+    console.log('📋 Extracted columns:', columns);
 
-    return {
+    const queryResult: RemoteQueryResult = {
       success: true,
       data: {
         rows: result.rows || [],
@@ -311,8 +362,101 @@ export async function remoteQueryAgent(
       metadata
     };
 
+    console.log('✅ Query executed successfully, now attempting to save to history...');
+
+    // Save successful query to history if enabled (default: true)
+    if (options.saveToHistory !== false) {
+      console.log('💾 saveToHistory option check:', {
+        saveToHistory: options.saveToHistory,
+        condition: 'options.saveToHistory !== false',
+        result: Boolean(options.saveToHistory ?? true)
+      });
+      
+      try {
+        console.log('🔄 Importing saveQueryToHistory function...');
+        const { saveQueryToHistory } = await import('@/app/actions/queryHistory');
+        console.log('✅ Successfully imported saveQueryToHistory');
+        
+        const historyEntry = {
+          connectionId: Number(connectionId),
+          sqlQuery: sqlQuery.trim(),
+          success: true,
+          executionTime,
+          rowCount: result.rowCount || 0,
+          resultData: result.rows?.slice(0, 50), // Store first 50 rows
+          resultColumns: columns,
+          generatedBy: 'manual' as const,
+          validationEnabled: options.validateQuery !== false,
+          optimizationEnabled: options.optimizeQuery || false,
+          forceExecution: options.forceExecution || false,
+          validationResult: validation,
+          optimizationSuggestion: optimization,
+        };
+
+        console.log('📋 Successful query history entry to save:', {
+          ...historyEntry,
+          resultData: historyEntry.resultData ? `${historyEntry.resultData.length} rows` : 'null'
+        });
+
+        console.log('🔄 Calling saveQueryToHistory...');
+        const saveResult = await saveQueryToHistory(historyEntry);
+        console.log('💾 Successful query save result:', saveResult);
+        
+        if (!saveResult.success) {
+          console.error('❌ Failed to save successful query to history:', saveResult.error);
+        } else {
+          console.log('🎉 Successfully saved successful query to history with ID:', saveResult.data?.id);
+        }
+      } catch (historyError) {
+        console.error('💥 Error in successful query history saving process:', historyError);
+        console.error('📊 History error details:', {
+          name: historyError instanceof Error ? historyError.name : 'Unknown',
+          message: historyError instanceof Error ? historyError.message : 'Unknown error',
+          stack: historyError instanceof Error ? historyError.stack : 'No stack trace'
+        });
+        // Don't fail the main query if history save fails
+      }
+    } else {
+      console.log('⏭️ Skipping successful query history save (saveToHistory = false)');
+    }
+
+    console.log('🏁 Returning successful query result');
+    return queryResult;
+
   } catch (error) {
-    console.error('Error in remote query agent:', error);
+    console.error('💥 Error in remote query agent:', error);
+    console.error('📊 Agent error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : 'No stack trace'
+    });
+    
+    // Save failed query to history if enabled
+    if (options.saveToHistory !== false) {
+      console.log('💾 Attempting to save exception query to history...');
+      try {
+        const { saveQueryToHistory } = await import('@/app/actions/queryHistory');
+        
+        const historyEntry = {
+          connectionId: Number(connectionId),
+          sqlQuery: sqlQuery.trim(),
+          success: false,
+          executionTime: Date.now() - startTime,
+          errorMessage: error instanceof Error ? error.message : 'Unknown error occurred',
+          generatedBy: 'manual' as const,
+          validationEnabled: options.validateQuery !== false,
+          optimizationEnabled: options.optimizeQuery || false,
+          forceExecution: options.forceExecution || false,
+        };
+
+        console.log('📋 Exception query history entry:', historyEntry);
+        const saveResult = await saveQueryToHistory(historyEntry);
+        console.log('💾 Exception query save result:', saveResult);
+      } catch (historyError) {
+        console.error('💥 Error saving exception query to history:', historyError);
+      }
+    }
+
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
@@ -321,9 +465,7 @@ export async function remoteQueryAgent(
   }
 }
 
-/**
- * Batch query execution for multiple queries
- */
+// Rest of the functions remain the same...
 export async function batchQueryAgent(
   queries: string[],
   connectionId: string,
@@ -332,6 +474,7 @@ export async function batchQueryAgent(
     validateQueries?: boolean;
     stopOnError?: boolean;
     transactional?: boolean;
+    saveToHistory?: boolean;
   } = {}
 ): Promise<{
   success: boolean;
@@ -361,7 +504,8 @@ export async function batchQueryAgent(
 
       const result = await remoteQueryAgent(query, connectionId, schema, {
         validateQuery: options.validateQueries,
-        optimizeQuery: false // Skip optimization for batch to improve performance
+        optimizeQuery: false, // Skip optimization for batch to improve performance
+        saveToHistory: options.saveToHistory !== false
       });
 
       results.push(result);
@@ -420,9 +564,6 @@ export async function batchQueryAgent(
   }
 }
 
-/**
- * Query explanation agent - explains what a query does
- */
 export async function explainQueryAgent(
   sqlQuery: string,
   schema: any[] = []
@@ -484,9 +625,6 @@ Keep the explanation accessible to non-technical users while being accurate.
   }
 }
 
-/**
- * Query suggestion agent - suggests queries based on user intent
- */
 export async function suggestQueriesAgent(
   userIntent: string,
   schema: any[]

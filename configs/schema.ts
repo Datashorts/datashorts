@@ -1,4 +1,5 @@
-import { pgTable, text, integer, serial, timestamp, json,varchar,index, boolean } from 'drizzle-orm/pg-core';
+// File: configs/schema.ts
+import { pgTable, text, integer, serial, timestamp, json, varchar, index, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const chats = pgTable('chats', {
@@ -64,11 +65,70 @@ export const tableSyncStatus = pgTable('table_sync_status', {
   connectionTableIdx: index('connection_table_idx').on(table.connectionId, table.tableName)
 }));
 
-export const chatsRelations = relations(chats, ({ one }) => ({
+
+
+// Query History table for storing remote query execution history
+export const queryHistory = pgTable('query_history', {
+  id: serial('id').primaryKey(),
+  userId: text('user_id').references(() => users.clerk_id).notNull(),
+  connectionId: integer('connection_id').references(() => dbConnections.id).notNull(),
+  chatId: integer('chat_id').references(() => chats.id), // Optional: link to chat conversation
+  
+  // Query details
+  sqlQuery: text('sql_query').notNull(),
+  queryType: varchar('query_type', { length: 50 }), // SELECT, INSERT, UPDATE, DELETE, etc.
+  
+  // Execution results
+  success: boolean('success').notNull(),
+  executionTime: integer('execution_time'), // in milliseconds
+  rowCount: integer('row_count'),
+  errorMessage: text('error_message'),
+  
+  // Result data (for successful queries)
+  resultData: json('result_data'), // Store actual query results (limited to first 50-100 rows)
+  resultColumns: json('result_columns').$type<string[]>(), // Column names
+  
+  // Query context
+  userIntent: text('user_intent'), // Original user question/intent
+  generatedBy: varchar('generated_by', { length: 50 }).default('manual'), // 'manual', 'ai_generated', 'template'
+  
+  // Metadata
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+  
+  // Query options used
+  validationEnabled: boolean('validation_enabled').default(true),
+  optimizationEnabled: boolean('optimization_enabled').default(true),
+  forceExecution: boolean('force_execution').default(false),
+  
+  // Tags and categorization
+  tags: json('tags').$type<string[]>(), // Array of strings for categorizing queries
+  isFavorite: boolean('is_favorite').default(false),
+  isBookmarked: boolean('is_bookmarked').default(false),
+  
+  // Performance metrics
+  validationResult: json('validation_result'), // Store validation warnings/suggestions
+  optimizationSuggestion: json('optimization_suggestion'), // Store optimization suggestions
+}, (table) => ({
+  userConnectionIdx: index('query_history_user_connection_idx').on(table.userId, table.connectionId),
+  createdAtIdx: index('query_history_created_at_idx').on(table.createdAt),
+  successIdx: index('query_history_success_idx').on(table.success),
+  queryTypeIdx: index('query_history_query_type_idx').on(table.queryType),
+  bookmarkedIdx: index('query_history_bookmarked_idx').on(table.isBookmarked),
+  favoriteIdx: index('query_history_favorite_idx').on(table.isFavorite),
+}));
+
+// Relations
+export const chatsRelations = relations(chats, ({ one, many }) => ({
   user: one(users, {
     fields: [chats.userId],
     references: [users.clerk_id],
   }),
+  connection: one(dbConnections, {
+    fields: [chats.connectionId],
+    references: [dbConnections.id],
+  }),
+  queryHistory: many(queryHistory),
 }));
 
 export const foldersRelations = relations(folders, ({ one, many }) => ({
@@ -79,7 +139,7 @@ export const foldersRelations = relations(folders, ({ one, many }) => ({
   connections: many(dbConnections),
 }));
 
-export const connectionsRelations = relations(dbConnections, ({ one }) => ({
+export const connectionsRelations = relations(dbConnections, ({ one, many }) => ({
   user: one(users, {
     fields: [dbConnections.userId],
     references: [users.clerk_id],
@@ -87,5 +147,25 @@ export const connectionsRelations = relations(dbConnections, ({ one }) => ({
   folder: one(folders, {
     fields: [dbConnections.folderId],
     references: [folders.id],
+  }),
+  chats: many(chats),
+  queryHistory: many(queryHistory),
+}));
+
+
+
+// Query History relations
+export const queryHistoryRelations = relations(queryHistory, ({ one }) => ({
+  user: one(users, {
+    fields: [queryHistory.userId],
+    references: [users.clerk_id],
+  }),
+  connection: one(dbConnections, {
+    fields: [queryHistory.connectionId],
+    references: [dbConnections.id],
+  }),
+  chat: one(chats, {
+    fields: [queryHistory.chatId],
+    references: [chats.id],
   }),
 }));

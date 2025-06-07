@@ -1,83 +1,72 @@
-// File: app/chats/[id]/[dbname]/query/page.tsx (FIXED WITH PROPER TYPES)
+// app/chats/[id]/[dbname]/query/page.tsx (Complete)
 'use client'
 
-import { useEffect, useState, useRef, KeyboardEvent } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useFoldersStore } from '@/app/store/useFoldersStore'
 import Sidebar from '@/app/_components/chat/Sidebar'
 import { useUser } from '@clerk/nextjs'
 import { executeRemoteQuery } from '@/app/actions/remoteQuery'
+import { 
+  saveQueryToHistory, 
+  getQueryHistory, 
+  getQueryDetails,
+  toggleQueryBookmark,
+  deleteQueryFromHistory,
+  getQueryStatistics 
+} from '@/app/actions/queryHistory'
 import { Button } from '@/components/ui/button'
-import { Play, Download, Copy, Database, AlertCircle, CheckCircle, Clock, RotateCcw, Wand2, Shield, Zap, AlertTriangle } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Play, Download, Copy, Database, AlertCircle, CheckCircle, Clock, RotateCcw, Wand2, Shield, Zap, AlertTriangle, Bookmark, Trash2, Star, Search, Filter } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import QueryAssistant from '@/app/_components/query/QueryAssistant'
 import Link from 'next/link'
 
-// Define proper types for query results
+interface QueryHistoryEntry {
+  id: number
+  sqlQuery: string
+  queryType: string | null; 
+  success: boolean
+  executionTime: number | null    // Changed from ?: number | null
+  rowCount: number | null         // Changed from ?: number 
+  errorMessage: string | null     // Changed from ?: string
+  userIntent: string | null       // Changed from ?: string
+  generatedBy?: 'manual' | 'ai_generated' | 'template'
+  tags?: string[]
+  isFavorite: boolean
+  isBookmarked: boolean
+  createdAt: string
+  hasResultData?: any
+}
 interface QueryData {
   rows: any[]
   rowCount: number
   columns: string[]
-  executionTime: number
+  executionTime: number | null  // Allow null
 }
-
 interface QueryResult {
   success: boolean
   data?: QueryData
-  rows?: any[] // Legacy format support
-  rowCount?: number | null // Legacy format support
   error?: string
-  validation?: {
-    isValid: boolean
-    riskLevel: 'low' | 'medium' | 'high'
-    warnings: string[]
-    suggestions?: string[]
-    estimatedImpact?: string
-  }
-  optimization?: {
-    originalQuery: string
-    optimizedQuery: string
-    explanation: string
-    expectedImprovement: string
-  }
-  metadata?: {
-    queryType: string
-    affectedTables: string[]
-    readOnly: boolean
-  }
+  validation?: any
+  optimization?: any
+  metadata?: any
 }
 
-interface QueryHistory {
-  id: string
-  query: string
-  result: QueryResult
-  timestamp: Date
-}
-
-// Type guard functions
-function hasData(result: QueryResult): result is QueryResult & { data: QueryData } {
-  return result.success && 'data' in result && result.data !== undefined
-}
-
-function hasLegacyRows(result: QueryResult): result is QueryResult & { rows: any[], rowCount: number } {
-  return result.success && 'rows' in result && result.rows !== undefined
-}
-
-function getQueryData(result: QueryResult): QueryData | null {
-  if (hasData(result)) {
-    return result.data
-  }
-  if (hasLegacyRows(result)) {
-    return {
-      rows: result.rows,
-      rowCount: result.rowCount || 0,
-      columns: result.rows.length > 0 ? Object.keys(result.rows[0]) : [],
-      executionTime: 0
-    }
-  }
-  return null
+interface QueryStatistics {
+  totalQueries: number
+  successfulQueries: number
+  failedQueries: number
+  successRate: number
+  averageExecutionTime: number
+  bookmarkedQueries: number
+  favoriteQueries: number
+  queryTypeBreakdown: Record<string, number>
+  queriesLast30Days: number
+  totalRowsProcessed: number
 }
 
 export default function RemoteQueryPage() {
@@ -92,19 +81,34 @@ export default function RemoteQueryPage() {
   const [sqlQuery, setSqlQuery] = useState('')
   const [isExecuting, setIsExecuting] = useState(false)
   const [currentResult, setCurrentResult] = useState<QueryResult | null>(null)
-  const [queryHistory, setQueryHistory] = useState<QueryHistory[]>([])
+  const [queryHistory, setQueryHistory] = useState<QueryHistoryEntry[]>([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [selectedTable, setSelectedTable] = useState('')
   const [dbSchema, setDbSchema] = useState<any[]>([])
   const [schemaLoading, setSchemaLoading] = useState(true)
   const [schemaError, setSchemaError] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const [showAssistant, setShowAssistant] = useState(false)
+  const [statistics, setStatistics] = useState<QueryStatistics | null>(null)
   const [queryOptions, setQueryOptions] = useState({
     validateQuery: true,
     optimizeQuery: true,
     forceExecution: false
   })
   const [activeTab, setActiveTab] = useState<'query' | 'results' | 'schema'>('query')
+
+  // History filtering and search
+  const [historyFilter, setHistoryFilter] = useState<{
+    onlyBookmarked: boolean
+    onlyFavorites: boolean
+    queryType?: string
+    sortBy: 'recent' | 'oldest' | 'execution_time'
+  }>({
+    onlyBookmarked: false,
+    onlyFavorites: false,
+    sortBy: 'recent'
+  })
+  const [searchQuery, setSearchQuery] = useState('')
 
   const queryEditorRef = useRef<HTMLTextAreaElement>(null)
 
@@ -135,32 +139,70 @@ export default function RemoteQueryPage() {
     if (connectionId) {
       setActiveConnection(connectionId)
       fetchDatabaseSchema()
+      loadQueryHistory()
+      loadStatistics()
     }
   }, [connectionId, setActiveConnection])
 
-  // Load query history from localStorage
-  useEffect(() => {
-    const savedHistory = localStorage.getItem(`query-history-${connectionId}`)
-    if (savedHistory) {
-      try {
-        const parsed = JSON.parse(savedHistory)
-        setQueryHistory(parsed.map((item: any) => ({
-          ...item,
-          timestamp: new Date(item.timestamp)
-        })))
-      } catch (error) {
-        console.error('Error loading query history:', error)
+  // Load query history from database
+  const loadQueryHistory = async () => {
+    setIsLoadingHistory(true)
+    try {
+      console.log('🔄 Loading query history...')
+      const result = await getQueryHistory(Number(connectionId), {
+        limit: 100,
+        searchQuery: searchQuery || undefined,
+        ...historyFilter
+      })
+      
+      console.log('📖 Query history result:', result)
+      
+      if (result.success) {
+        setQueryHistory(result.data?.map((entry: any) => ({
+          ...entry,
+          generatedBy: entry.generatedBy ?? undefined
+        })) || [])
+        console.log('✅ Loaded', result.data?.length || 0, 'history entries')
+      } else {
+        console.error('❌ Failed to load query history:', result.error)
       }
+    } catch (error) {
+      console.error('💥 Error loading query history:', error)
+    } finally {
+      setIsLoadingHistory(false)
     }
-  }, [connectionId])
+  }
+
+  // Load statistics
+  const loadStatistics = async () => {
+  try {
+    console.log('📊 Loading statistics...')
+    const result = await getQueryStatistics(Number(connectionId))
+    if (result.success && result.data) {
+      setStatistics(result.data)
+      console.log('✅ Statistics loaded:', result.data)
+    } else {
+      console.error('❌ Failed to load statistics:', result.error)
+      setStatistics(null) // Set to null if loading fails
+    }
+  } catch (error) {
+    console.error('💥 Error loading statistics:', error)
+    setStatistics(null) // Set to null on error
+  }
+}
+
+  // Reload history when filter changes
+  useEffect(() => {
+    if (connectionId) {
+      loadQueryHistory()
+    }
+  }, [historyFilter, searchQuery, connectionId])
 
   const fetchDatabaseSchema = async () => {
     setSchemaLoading(true)
     setSchemaError(null)
     
     try {
-      console.log('Fetching database schema for connection:', connectionId);
-      
       const schemaQuery = `
         SELECT 
           t.table_name,
@@ -172,24 +214,20 @@ export default function RemoteQueryPage() {
         LEFT JOIN information_schema.columns c ON t.table_name = c.table_name AND t.table_schema = c.table_schema
         WHERE t.table_schema = 'public'
         ORDER BY t.table_name, c.ordinal_position
-      `;
+      `
       
       const result = await executeRemoteQuery(connectionId, schemaQuery, { 
         validateQuery: false,
         optimizeQuery: false,
         forceExecution: true 
-      });
+      })
       
-      console.log('Schema query result:', result);
-      
-      const queryData = getQueryData(result);
-      
-      if (result.success && queryData && queryData.rows) {
-        const schemaByTable: { [key: string]: any[] } = {};
+      if (result.success && result.data && result.data.rows) {
+        const schemaByTable: { [key: string]: any[] } = {}
         
-        queryData.rows.forEach((row: any) => {
+        result.data.rows.forEach((row: any) => {
           if (!schemaByTable[row.table_name]) {
-            schemaByTable[row.table_name] = [];
+            schemaByTable[row.table_name] = []
           }
           if (row.column_name) {
             schemaByTable[row.table_name].push({
@@ -197,46 +235,24 @@ export default function RemoteQueryPage() {
               data_type: row.data_type,
               is_nullable: row.is_nullable,
               column_default: row.column_default,
-            });
+            })
           }
-        });
+        })
         
         const schemaArray = Object.entries(schemaByTable).map(([tableName, columns]) => ({
           tableName,
           columns
-        }));
+        }))
         
-        console.log('Processed schema:', schemaArray);
-        setDbSchema(schemaArray);
+        setDbSchema(schemaArray)
       } else {
-        console.error('Schema query failed or returned no data:', result);
-        
-        // Fallback: Try a simpler query to just get table names
-        const fallbackQuery = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'";
-        const fallbackResult = await executeRemoteQuery(connectionId, fallbackQuery, { 
-          validateQuery: false,
-          optimizeQuery: false,
-          forceExecution: true 
-        });
-        
-        const fallbackData = getQueryData(fallbackResult);
-        
-        if (fallbackResult.success && fallbackData && fallbackData.rows) {
-          const simplifiedSchema = fallbackData.rows.map((row: any) => ({
-            tableName: row.table_name,
-            columns: [] // Empty columns array for now
-          }));
-          setDbSchema(simplifiedSchema);
-          console.log('Using fallback schema:', simplifiedSchema);
-        } else {
-          throw new Error(result.error || 'Failed to fetch schema');
-        }
+        throw new Error(result.error || 'Failed to fetch schema')
       }
     } catch (error) {
-      console.error('Error fetching database schema:', error);
-      setSchemaError(error instanceof Error ? error.message : 'Failed to load schema');
+      console.error('Error fetching database schema:', error)
+      setSchemaError(error instanceof Error ? error.message : 'Failed to load schema')
     } finally {
-      setSchemaLoading(false);
+      setSchemaLoading(false)
     }
   }
 
@@ -247,39 +263,42 @@ export default function RemoteQueryPage() {
     const startTime = Date.now()
 
     try {
-      const result = await executeRemoteQuery(connectionId, sqlQuery.trim(), queryOptions)
+      console.log('🚀 Executing query:', sqlQuery.trim())
       
-      const queryData = getQueryData(result);
+      // Execute query using the remote query agent (which now automatically saves to history)
+      const result = await executeRemoteQuery(connectionId, sqlQuery.trim(), {
+        ...queryOptions,
+        saveToHistory: true // Enable history saving
+      })
       
-      const queryResult: QueryResult = {
-        ...result,
-        data: queryData || undefined
-      }
+      console.log('📊 Query result:', { 
+        success: result.success, 
+        rowCount: result.data?.rowCount,
+        hasError: !!result.error 
+      })
+      
+      const executionTime = Date.now() - startTime
+      setCurrentResult(result)
 
-      setCurrentResult(queryResult)
-
-      // Add to history
-      const historyEntry: QueryHistory = {
-        id: Date.now().toString(),
-        query: sqlQuery.trim(),
-        result: queryResult,
-        timestamp: new Date()
-      }
-
-      const newHistory = [historyEntry, ...queryHistory].slice(0, 50) // Keep last 50 queries
-      setQueryHistory(newHistory)
-
-      // Save to localStorage
-      localStorage.setItem(`query-history-${connectionId}`, JSON.stringify(newHistory))
+      // The remoteQueryAgent now handles saving to history automatically
+      // But we still need to reload the history display
+      console.log('🔄 Reloading history and statistics...')
+      await Promise.all([
+        loadQueryHistory(),
+        loadStatistics()
+      ])
 
       // Switch to results tab
       setActiveTab('results')
     } catch (error) {
-      console.error('Error executing query:', error)
+      console.error('💥 Error executing query:', error)
       setCurrentResult({
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
       })
+      
+      // Still try to reload history in case the error was saved
+      loadQueryHistory()
     } finally {
       setIsExecuting(false)
     }
@@ -294,21 +313,82 @@ export default function RemoteQueryPage() {
     queryEditorRef.current?.focus()
   }
 
-  const loadFromHistory = (historyItem: QueryHistory) => {
-    setSqlQuery(historyItem.query)
-    setCurrentResult(historyItem.result)
+  const loadFromHistory = async (historyItem: QueryHistoryEntry) => {
+    setSqlQuery(historyItem.sqlQuery)
+    
+    // Load full query details if available
+    if (historyItem.hasResultData) {
+      try {
+        const detailsResult = await getQueryDetails(historyItem.id)
+        if (detailsResult.success && detailsResult.data) {
+          const data = detailsResult.data
+          setCurrentResult({
+            success: data.success,
+            data: data.resultData ? {
+              rows: Array.isArray(data.resultData) ? data.resultData : [],
+              rowCount: data.rowCount ?? 0,
+              columns: data.resultColumns || [],
+              executionTime: data.executionTime ?? 0
+            } : undefined,
+            error: data.errorMessage || undefined,
+            validation: data.validationResult,
+            optimization: data.optimizationSuggestion,
+            metadata: {
+              queryType: data.queryType,
+              affectedTables: [],
+              readOnly: data.queryType === 'SELECT'
+            }
+          })
+          setActiveTab('results')
+        }
+      } catch (error) {
+        console.error('Error loading query details:', error)
+      }
+    }
+    
     setShowHistory(false)
     setActiveTab('query')
   }
 
+  const handleToggleBookmark = async (queryId: number) => {
+    try {
+      const result = await toggleQueryBookmark(queryId)
+      if (result.success) {
+        // Update local state
+        setQueryHistory(prev => prev.map(item => 
+          item.id === queryId 
+            ? { ...item, isBookmarked: result.data?.isBookmarked || false }
+            : item
+        ))
+        loadStatistics() // Refresh stats
+      }
+    } catch (error) {
+      console.error('Error toggling bookmark:', error)
+    }
+  }
+
+  const handleDeleteQuery = async (queryId: number) => {
+    if (!confirm('Are you sure you want to delete this query from history?')) return
+    
+    try {
+      const result = await deleteQueryFromHistory(queryId)
+      if (result.success) {
+        // Remove from local state
+        setQueryHistory(prev => prev.filter(item => item.id !== queryId))
+        loadStatistics() // Refresh stats
+      }
+    } catch (error) {
+      console.error('Error deleting query:', error)
+    }
+  }
+
   const exportResults = () => {
-    const queryData = currentResult ? getQueryData(currentResult) : null;
-    if (!queryData?.rows) return
+    if (!currentResult?.data?.rows) return
 
     const csvContent = [
-      queryData.columns.join(','),
-      ...queryData.rows.map(row => 
-        queryData.columns.map(column => {
+      currentResult.data.columns.join(','),
+      ...currentResult.data.rows.map(row => 
+        currentResult.data!.columns.map(column => {
           const value = row[column]
           return typeof value === 'string' ? `"${value.replace(/"/g, '""')}"` : value
         }).join(',')
@@ -325,15 +405,10 @@ export default function RemoteQueryPage() {
   }
 
   const copyResults = () => {
-    const queryData = currentResult ? getQueryData(currentResult) : null;
-    if (!queryData?.rows) return
+    if (!currentResult?.data?.rows) return
     
-    const text = JSON.stringify(queryData.rows, null, 2)
+    const text = JSON.stringify(currentResult.data.rows, null, 2)
     navigator.clipboard.writeText(text)
-  }
-
-  const retrySchemaFetch = () => {
-    fetchDatabaseSchema()
   }
 
   if (!user) {
@@ -383,7 +458,7 @@ export default function RemoteQueryPage() {
                 className="border-blue-400/30 hover:bg-blue-500/10"
               >
                 <Clock className="h-4 w-4 mr-1" />
-                History
+                History ({statistics?.totalQueries || 0})
               </Button>
             </div>
           </div>
@@ -554,40 +629,27 @@ export default function RemoteQueryPage() {
                             <p className="font-medium">
                               {currentResult.success ? 'Query Successful' : 'Query Failed'}
                             </p>
-                            {(() => {
-                              const queryData = getQueryData(currentResult);
-                              return queryData && (
-                                <p className="text-sm text-gray-400">
-                                  {queryData.rowCount} rows returned
-                                  {queryData.executionTime && ` in ${queryData.executionTime}ms`}
-                                </p>
-                              );
-                            })()}
-                            {currentResult.metadata && (
-                              <p className="text-xs text-gray-500">
-                                Type: {currentResult.metadata.queryType} | 
-                                Tables: {currentResult.metadata.affectedTables.join(', ') || 'None'} | 
-                                {currentResult.metadata.readOnly ? 'Read-only' : 'Modifies data'}
+                            {currentResult.data && (
+                              <p className="text-sm text-gray-400">
+                                {currentResult.data.rowCount} rows returned
+                                {currentResult.data.executionTime && ` in ${currentResult.data.executionTime}ms`}
                               </p>
                             )}
                           </div>
                         </div>
 
-                        {(() => {
-                          const queryData = getQueryData(currentResult);
-                          return queryData && (
-                            <div className="flex gap-2">
-                              <Button variant="outline" size="sm" onClick={copyResults}>
-                                <Copy className="h-4 w-4 mr-1" />
-                                Copy
-                              </Button>
-                              <Button variant="outline" size="sm" onClick={exportResults}>
-                                <Download className="h-4 w-4 mr-1" />
-                                Export CSV
-                              </Button>
-                            </div>
-                          );
-                        })()}
+                        {currentResult.data && (
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={copyResults}>
+                              <Copy className="h-4 w-4 mr-1" />
+                              Copy
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={exportResults}>
+                              <Download className="h-4 w-4 mr-1" />
+                              Export CSV
+                            </Button>
+                          </div>
+                        )}
                       </div>
 
                       {/* Results Content */}
@@ -614,9 +676,9 @@ export default function RemoteQueryPage() {
                                 {currentResult.validation.riskLevel.toUpperCase()} RISK
                               </span>
                             </div>
-                            {currentResult.validation.warnings.length > 0 && (
+                            {currentResult.validation.warnings?.length > 0 && (
                               <div className="text-sm space-y-1">
-                                {currentResult.validation.warnings.map((warning, i) => (
+                                {currentResult.validation.warnings.map((warning: string, i: number) => (
                                   <div key={i} className="flex items-start gap-2">
                                     <AlertTriangle className="h-3 w-3 mt-0.5 flex-shrink-0" />
                                     <span>{warning}</span>
@@ -647,53 +709,47 @@ export default function RemoteQueryPage() {
                           </div>
                         )}
 
-                        {(() => {
-                          const queryData = getQueryData(currentResult);
-                          
-                          if (currentResult.success && queryData) {
-                            return queryData.rows.length > 0 ? (
-                              <div className="overflow-x-auto">
-                                <table className="min-w-full border border-blue-500/20 rounded-lg">
-                                  <thead className="bg-blue-900/20">
-                                    <tr>
-                                      {queryData.columns.map((header) => (
-                                        <th key={header} className="px-4 py-3 text-left font-medium text-gray-100 border-b border-blue-500/20">
-                                          {header}
-                                        </th>
+                        {currentResult.success && currentResult.data ? (
+                          currentResult.data.rows.length > 0 ? (
+                            <div className="overflow-x-auto">
+                              <table className="min-w-full border border-blue-500/20 rounded-lg">
+                                <thead className="bg-blue-900/20">
+                                  <tr>
+                                    {currentResult.data.columns.map((header) => (
+                                      <th key={header} className="px-4 py-3 text-left font-medium text-gray-100 border-b border-blue-500/20">
+                                        {header}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {currentResult.data.rows.map((row, i) => (
+                                    <tr key={i} className="hover:bg-blue-500/5">
+                                      {currentResult.data!.columns.map((column, j) => (
+                                        <td key={j} className="px-4 py-3 text-gray-300 border-b border-blue-500/10">
+                                          {row[column] === null ? (
+                                            <span className="text-gray-500 italic">NULL</span>
+                                          ) : (
+                                            String(row[column])
+                                          )}
+                                        </td>
                                       ))}
                                     </tr>
-                                  </thead>
-                                  <tbody>
-                                    {queryData.rows.map((row, i) => (
-                                      <tr key={i} className="hover:bg-blue-500/5">
-                                        {queryData.columns.map((column, j) => (
-                                          <td key={j} className="px-4 py-3 text-gray-300 border-b border-blue-500/10">
-                                            {row[column] === null ? (
-                                              <span className="text-gray-500 italic">NULL</span>
-                                            ) : (
-                                              String(row[column])
-                                            )}
-                                          </td>
-                                        ))}
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            ) : (
-                              <div className="text-center py-8 text-gray-400">
-                                Query executed successfully but returned no rows.
-                              </div>
-                            );
-                          } else {
-                            return (
-                              <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4">
-                                <p className="text-red-400 font-medium mb-2">Error executing query:</p>
-                                <p className="text-gray-300 font-mono text-sm">{currentResult.error}</p>
-                              </div>
-                            );
-                          }
-                        })()}
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-gray-400">
+                              Query executed successfully but returned no rows.
+                            </div>
+                          )
+                        ) : (
+                          <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4">
+                            <p className="text-red-400 font-medium mb-2">Error executing query:</p>
+                            <p className="text-gray-300 font-mono text-sm">{currentResult.error}</p>
+                          </div>
+                        )}
                       </div>
                     </>
                   ) : (
@@ -716,7 +772,7 @@ export default function RemoteQueryPage() {
                         <p className="text-sm text-gray-400">Click on a table to select it for templates</p>
                       </div>
                       {schemaError && (
-                        <Button variant="outline" size="sm" onClick={retrySchemaFetch}>
+                        <Button variant="outline" size="sm" onClick={fetchDatabaseSchema}>
                           <RotateCcw className="h-4 w-4 mr-1" />
                           Retry
                         </Button>
@@ -734,7 +790,7 @@ export default function RemoteQueryPage() {
                         <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50 text-red-400" />
                         <p className="text-red-400 mb-2">Failed to load schema</p>
                         <p className="text-sm text-gray-500 mb-4">{schemaError}</p>
-                        <Button variant="outline" onClick={retrySchemaFetch}>
+                        <Button variant="outline" onClick={fetchDatabaseSchema}>
                           <RotateCcw className="h-4 w-4 mr-1" />
                           Try Again
                         </Button>
@@ -802,39 +858,225 @@ export default function RemoteQueryPage() {
           {showHistory && (
             <div className="w-80 border-l border-blue-500/20 flex flex-col">
               <div className="p-4 border-b border-blue-500/20">
-                <h3 className="font-medium text-gray-200">Query History</h3>
-                <p className="text-sm text-gray-400">Click to rerun a query</p>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-medium text-gray-200">Query History</h3>
+                  <Button variant="ghost" size="sm" onClick={loadQueryHistory} disabled={isLoadingHistory}>
+                    <RotateCcw className={`h-4 w-4 ${isLoadingHistory ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
+
+                {/* Statistics */}
+                {statistics && (
+                  <div className="mb-4 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                    <h4 className="text-sm font-medium text-blue-400 mb-2">Statistics</h4>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-gray-400">Total:</span> {statistics.totalQueries}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Success:</span> {statistics.successRate}%
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Bookmarked:</span> {statistics.bookmarkedQueries}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Avg Time:</span> {statistics.averageExecutionTime}ms
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Search */}
+                <div className="mb-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search queries..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 bg-[#0f1013] border-blue-500/20 text-gray-200 placeholder-gray-500"
+                    />
+                  </div>
+                </div>
+
+                {/* History Filters */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs text-gray-400">Filters</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setHistoryFilter({
+                          onlyBookmarked: false,
+                          onlyFavorites: false,
+                          sortBy: 'recent'
+                        })
+                        setSearchQuery('')
+                      }}
+                      className="h-6 text-xs text-gray-500 hover:text-gray-300"
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="bookmarked"
+                      checked={historyFilter.onlyBookmarked}
+                      onCheckedChange={(checked) => 
+                        setHistoryFilter(prev => ({ ...prev, onlyBookmarked: checked }))
+                      }
+                    />
+                    <Label htmlFor="bookmarked" className="text-xs">Bookmarked</Label>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="favorites"
+                      checked={historyFilter.onlyFavorites}
+                      onCheckedChange={(checked) => 
+                        setHistoryFilter(prev => ({ ...prev, onlyFavorites: checked }))
+                      }
+                    />
+                    <Label htmlFor="favorites" className="text-xs">Favorites</Label>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-400">Sort by</Label>
+                    <Select
+                      value={historyFilter.sortBy}
+                      onValueChange={(value: any) => 
+                        setHistoryFilter(prev => ({ ...prev, sortBy: value }))
+                      }
+                    >
+                      <SelectTrigger className="h-8 bg-[#0f1013] border-blue-500/20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="recent">Most Recent</SelectItem>
+                        <SelectItem value="oldest">Oldest First</SelectItem>
+                        <SelectItem value="execution_time">Execution Time</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-400">Query Type</Label>
+                    <Select
+                      value={historyFilter.queryType || "all"}
+                      onValueChange={(value) => 
+                        setHistoryFilter(prev => ({ 
+                          ...prev, 
+                          queryType: value === "all" ? undefined : value 
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="h-8 bg-[#0f1013] border-blue-500/20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        <SelectItem value="SELECT">SELECT</SelectItem>
+                        <SelectItem value="INSERT">INSERT</SelectItem>
+                        <SelectItem value="UPDATE">UPDATE</SelectItem>
+                        <SelectItem value="DELETE">DELETE</SelectItem>
+                        <SelectItem value="CREATE">CREATE</SelectItem>
+                        <SelectItem value="DROP">DROP</SelectItem>
+                        <SelectItem value="ALTER">ALTER</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
+              
               <div className="flex-1 overflow-auto">
-                {queryHistory.length > 0 ? (
+                {isLoadingHistory ? (
+                  <div className="p-4 text-center text-gray-400">
+                    <Clock className="h-8 w-8 mx-auto mb-2 opacity-50 animate-spin" />
+                    <p>Loading history...</p>
+                  </div>
+                ) : queryHistory.length > 0 ? (
                   <div className="space-y-2 p-4">
                     {queryHistory.map((item) => (
                       <div
                         key={item.id}
-                        onClick={() => loadFromHistory(item)}
-                        className="p-3 rounded-lg border border-blue-500/20 hover:border-blue-500/40 cursor-pointer transition-colors"
+                        className="p-3 rounded-lg border border-blue-500/20 hover:border-blue-500/40 transition-colors"
                       >
                         <div className="flex items-center gap-2 mb-2">
-                          {item.result.success ? (
+                          {item.success ? (
                             <CheckCircle className="h-4 w-4 text-green-400" />
                           ) : (
                             <AlertCircle className="h-4 w-4 text-red-400" />
                           )}
+                          
+                          {item.queryType && (
+                            <span className="text-xs px-2 py-1 bg-blue-900/20 text-blue-400 rounded">
+                              {item.queryType}
+                            </span>
+                          )}
+                          
                           <span className="text-xs text-gray-400">
-                            {item.timestamp.toLocaleTimeString()}
+                            {new Date(item.createdAt).toLocaleString()}
                           </span>
+                          
+                          <div className="ml-auto flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleToggleBookmark(item.id)
+                              }}
+                              className={`h-6 w-6 p-0 ${item.isBookmarked ? 'text-blue-400' : 'text-gray-500'}`}
+                            >
+                              <Bookmark className="h-3 w-3" fill={item.isBookmarked ? 'currentColor' : 'none'} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteQuery(item.id)
+                              }}
+                              className="h-6 w-6 p-0 text-gray-500 hover:text-red-400"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
-                        <p className="text-sm text-gray-300 font-mono truncate">
-                          {item.query}
-                        </p>
-                        {(() => {
-                          const queryData = getQueryData(item.result);
-                          return queryData && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              {queryData.rowCount} rows
+                        
+                        <div
+                          onClick={() => loadFromHistory(item)}
+                          className="cursor-pointer"
+                        >
+                          <p className="text-sm text-gray-300 font-mono truncate mb-1">
+                            {item.sqlQuery}
+                          </p>
+                        {item.success && (
+  <p className="text-xs text-gray-500">
+    {item.rowCount || 0} rows
+    {item.executionTime !== null && ` • ${item.executionTime}ms`}
+  </p>
+)}
+                          {!item.success && item.errorMessage && (
+                            <p className="text-xs text-red-400 truncate">
+                              {item.errorMessage}
                             </p>
-                          );
-                        })()}
+                          )}
+                          {item.tags && item.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {item.tags.slice(0, 3).map((tag, idx) => (
+                                <span key={idx} className="text-xs px-1 py-0.5 bg-gray-700 text-gray-300 rounded">
+                                  {tag}
+                                </span>
+                              ))}
+                              {item.tags.length > 3 && (
+                                <span className="text-xs text-gray-500">+{item.tags.length - 3}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -842,6 +1084,7 @@ export default function RemoteQueryPage() {
                   <div className="p-4 text-center text-gray-400">
                     <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
                     <p>No query history</p>
+                    <p className="text-xs mt-1">Execute queries to see them here</p>
                   </div>
                 )}
               </div>
