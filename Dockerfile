@@ -20,6 +20,13 @@ ARG PINECONE_INDEX_NAME
 ARG CLERK_SECRET_KEY
 ARG NODE_TLS_REJECT_UNAUTHORIZED
 ARG XAI_API_KEY
+ARG DODO_WEBHOOK_SECRET
+ARG CLAUDE_AUTH_TOKEN
+ARG NODE_ENV
+ARG DODO_PAYMENTS_API_KEY
+ARG NEXT_PUBLIC_DODO_TEST_API
+ARG NEXT_PUBLIC_RETURN_URL
+ARG NEXT_PUBLIC_APP_URL
 
 # 4) Expose them as ENV so `next build` can see them
 ENV NEXT_PUBLIC_DRIZZLE_DATABASE_URL=$NEXT_PUBLIC_DRIZZLE_DATABASE_URL
@@ -34,12 +41,19 @@ ENV PINECONE_INDEX_NAME=$PINECONE_INDEX_NAME
 ENV CLERK_SECRET_KEY=$CLERK_SECRET_KEY
 ENV NODE_TLS_REJECT_UNAUTHORIZED=$NODE_TLS_REJECT_UNAUTHORIZED
 ENV XAI_API_KEY=$XAI_API_KEY
+ENV DODO_WEBHOOK_SECRET=$DODO_WEBHOOK_SECRET
+ENV CLAUDE_AUTH_TOKEN=$CLAUDE_AUTH_TOKEN
+ENV NODE_ENV=$NODE_ENV
+ENV DODO_PAYMENTS_API_KEY=$DODO_PAYMENTS_API_KEY
+ENV NEXT_PUBLIC_DODO_TEST_API=$NEXT_PUBLIC_DODO_TEST_API
+ENV NEXT_PUBLIC_RETURN_URL=$NEXT_PUBLIC_RETURN_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
 # 5) Install your declared dependencies
 COPY package.json package-lock.json ./
 RUN npm install
 
-# 6) Immediately override Clerk to the latest v6 (supports Next.js 15) :contentReference[oaicite:0]{index=0}
+# 6) Immediately override Clerk to the latest v6 (supports Next.js 15)
 RUN npm install @clerk/nextjs@latest
 
 # 7) Copy the rest of your source (app/, components/, public/, etc.) and build
@@ -51,7 +65,7 @@ RUN npm run build
 FROM node:18-alpine AS runner
 WORKDIR /app
 
-# 8) Let Next.js bind to Railway’s $PORT (default 3000)
+# 8) Let Next.js bind to Railway's $PORT (default 3000)
 ARG PORT=3000
 ENV PORT=${PORT}
 
