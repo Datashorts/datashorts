@@ -3,6 +3,8 @@
 import React, { useRef } from "react"
 import { Check, X } from "lucide-react"
 import { motion, useMotionTemplate, useMotionValue, useSpring } from "framer-motion"
+import { useUser } from "@clerk/nextjs"
+import { toast } from "react-hot-toast"
 
 interface Benefit {
   text: string
@@ -22,6 +24,48 @@ const ROTATION_RANGE = 20
 const HALF_ROTATION_RANGE = ROTATION_RANGE / 2
 
 export default function Pricing() {
+  const { user } = useUser();
+
+  const handleProSubscription = async () => {
+    if (!user) {
+      toast.error("Please sign in to subscribe");
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/create-subscription', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          metadata: {
+            userId: user.id
+          },
+          email: user.emailAddresses[0]?.emailAddress,
+          name: `${user.firstName} ${user.lastName}`
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create subscription');
+      }
+
+      const data = await response.json();
+      
+      // Redirect to the payment link
+      if (data.payment_link) {
+        window.location.href = data.payment_link;
+      } else {
+        throw new Error('No payment link received');
+      }
+    } catch (error) {
+      console.error('Error creating subscription:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create subscription');
+    }
+  };
+
   return (
     <section className="relative py-20 bg-black overflow-hidden" id="pricing">
       {/* Natural Stars Background */}
@@ -71,11 +115,14 @@ export default function Pricing() {
           
           <PriceCard
             tier="Pro"
-            price="$10/mo"
+            price="$20/mo"
             bestFor="Best for small teams"
             CTA={
-              <button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-0 px-4 py-2 rounded-lg transition-colors">
-                Start 14-Day Free Trial
+              <button 
+                onClick={handleProSubscription}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-0 px-4 py-2 rounded-lg transition-colors"
+              >
+                Start 7-Day Free Trial
               </button>
             }
             benefits={[
