@@ -56,7 +56,12 @@ RUN npm install
 # 6) Immediately override Clerk to the latest v6 (supports Next.js 15)
 RUN npm install @clerk/nextjs@latest
 
-# 7) Copy the rest of your source (app/, components/, public/, etc.) and build
+# 7) Install missing dependencies for Tailwind and UI components
+RUN npm install @tailwindcss/postcss autoprefixer postcss --save-dev
+RUN npm install class-variance-authority clsx tailwind-merge lucide-react @radix-ui/react-slot --save
+RUN npm install @radix-ui/react-dialog @radix-ui/react-switch @radix-ui/react-label @radix-ui/react-select --save
+
+# 8) Copy the rest of your source (app/, components/, public/, etc.) and build
 COPY . .
 RUN npm run build
 
@@ -65,19 +70,19 @@ RUN npm run build
 FROM node:18-alpine AS runner
 WORKDIR /app
 
-# 8) Let Next.js bind to Railway's $PORT (default 3000)
+# 9) Let Next.js bind to Railway's $PORT (default 3000)
 ARG PORT=3000
 ENV PORT=${PORT}
 
-# 9) Copy production artifacts from build stage
+# 10) Copy production artifacts from build stage
 COPY --from=build /app/.next      ./.next
 COPY --from=build /app/public     ./public
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json  ./package.json
 
-# 10) Expose the listening port
+# 11) Expose the listening port
 EXPOSE 3000
 
-# 11) Start the optimized Next.js server (ensure your package.json has
+# 12) Start the optimized Next.js server (ensure your package.json has
 #     "start": "next start -p ${PORT:-3000}")
 CMD ["npm", "start"]
