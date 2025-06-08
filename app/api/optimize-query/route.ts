@@ -1,4 +1,4 @@
-// File: app/api/optimize-query/route.ts
+// File: app/api/optimize-query/route.ts (UPDATED WITH CHAT ID SUPPORT)
 import { NextRequest, NextResponse } from 'next/server'
 import { currentUser } from '@clerk/nextjs/server'
 import { db } from '@/configs/db'
@@ -12,11 +12,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 })
     }
 
-    const { connectionId, query } = await request.json()
+    const { connectionId, query, chatId } = await request.json() // NEW: Include chatId
 
     if (!connectionId || !query) {
       return NextResponse.json({ success: false, error: 'Missing connectionId or query' }, { status: 400 })
     }
+
+    console.log('🎯 Optimize Query API: Received request with chatId:', chatId) // NEW: Log chatId
 
     // Verify user has access to this connection
     const [connection] = await db
@@ -57,8 +59,12 @@ export async function POST(request: NextRequest) {
       const result = await remoteQueryAgent(query, connectionId, schema, {
         validateQuery: false,
         optimizeQuery: true,
-        forceExecution: false
+        forceExecution: false,
+        saveToHistory: false, // Don't save optimization analysis to history
+        chatId: chatId // NEW: Pass chatId to remoteQueryAgent
       })
+
+      console.log('⚡ Optimization result with chatId:', chatId, 'Result:', result.optimization) // NEW: Log with chatId
 
       return NextResponse.json({
         success: true,

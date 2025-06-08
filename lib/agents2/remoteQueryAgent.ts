@@ -1,4 +1,4 @@
-// lib/agents2/remoteQueryAgent.ts (Enhanced with debugging)
+// lib/agents2/remoteQueryAgent.ts (Enhanced with chatId support)
 import { executeSQLQuery } from '@/app/lib/db/executeQuery';
 import { openaiClient } from '@/app/lib/clients';
 
@@ -232,7 +232,7 @@ function analyzeQueryMetadata(sqlQuery: string): {
 }
 
 /**
- * Remote Query Execution Agent - Enhanced with comprehensive debugging
+ * Remote Query Execution Agent - Enhanced with chatId support
  */
 export async function remoteQueryAgent(
   sqlQuery: string,
@@ -242,7 +242,8 @@ export async function remoteQueryAgent(
     validateQuery?: boolean;
     optimizeQuery?: boolean;
     forceExecution?: boolean;
-    saveToHistory?: boolean | undefined; // New option
+    saveToHistory?: boolean | undefined;
+    chatId?: number; // NEW: Add chatId support
   } = {}
 ): Promise<RemoteQueryResult> {
   const startTime = Date.now();
@@ -251,6 +252,7 @@ export async function remoteQueryAgent(
     console.log('🎯 Remote Query Agent: Starting execution...');
     console.log('📝 Query:', sqlQuery);
     console.log('🔗 Connection ID:', connectionId);
+    console.log('💬 Chat ID:', options.chatId); // NEW: Log chatId
     console.log('⚙️ Options:', options);
 
     // Analyze query metadata
@@ -308,6 +310,7 @@ export async function remoteQueryAgent(
           
           const historyEntry = {
             connectionId: Number(connectionId),
+            chatId: options.chatId, // NEW: Include chatId
             sqlQuery: sqlQuery.trim(),
             success: false,
             executionTime,
@@ -368,6 +371,7 @@ export async function remoteQueryAgent(
     if (options.saveToHistory !== false) {
       console.log('💾 saveToHistory option check:', {
         saveToHistory: options.saveToHistory,
+        chatId: options.chatId, // NEW: Log chatId in save check
         condition: 'options.saveToHistory !== false',
         result: Boolean(options.saveToHistory ?? true)
       });
@@ -379,6 +383,7 @@ export async function remoteQueryAgent(
         
         const historyEntry = {
           connectionId: Number(connectionId),
+          chatId: options.chatId, // NEW: Include chatId
           sqlQuery: sqlQuery.trim(),
           success: true,
           executionTime,
@@ -439,6 +444,7 @@ export async function remoteQueryAgent(
         
         const historyEntry = {
           connectionId: Number(connectionId),
+          chatId: options.chatId, // NEW: Include chatId
           sqlQuery: sqlQuery.trim(),
           success: false,
           executionTime: Date.now() - startTime,
@@ -465,7 +471,7 @@ export async function remoteQueryAgent(
   }
 }
 
-// Rest of the functions remain the same...
+// Enhanced batch query agent with chatId support
 export async function batchQueryAgent(
   queries: string[],
   connectionId: string,
@@ -475,6 +481,7 @@ export async function batchQueryAgent(
     stopOnError?: boolean;
     transactional?: boolean;
     saveToHistory?: boolean;
+    chatId?: number; // NEW: Add chatId support
   } = {}
 ): Promise<{
   success: boolean;
@@ -488,7 +495,7 @@ export async function batchQueryAgent(
   let successCount = 0;
   let errorCount = 0;
 
-  console.log(`Batch Query Agent: Executing ${queries.length} queries`);
+  console.log(`Batch Query Agent: Executing ${queries.length} queries with chatId: ${options.chatId}`);
 
   try {
     // If transactional, wrap in BEGIN/COMMIT
@@ -505,7 +512,8 @@ export async function batchQueryAgent(
       const result = await remoteQueryAgent(query, connectionId, schema, {
         validateQuery: options.validateQueries,
         optimizeQuery: false, // Skip optimization for batch to improve performance
-        saveToHistory: options.saveToHistory !== false
+        saveToHistory: options.saveToHistory !== false,
+        chatId: options.chatId // NEW: Pass chatId to individual queries
       });
 
       results.push(result);

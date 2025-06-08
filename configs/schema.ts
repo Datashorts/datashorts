@@ -1,4 +1,4 @@
-// File: configs/schema.ts
+// File: configs/schema.ts (Updated - Removed only chatId foreign key constraint)
 import { pgTable, text, integer, serial, timestamp, json, varchar, index, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -65,7 +65,6 @@ export const tableSyncStatus = pgTable('table_sync_status', {
   connectionTableIdx: index('connection_table_idx').on(table.connectionId, table.tableName)
 }));
 
-
 export const subscriptions = pgTable('subscriptions', {
   id: serial('id').primaryKey(),
   userId: text('user_id').references(() => users.clerk_id).notNull(),
@@ -91,6 +90,34 @@ export const subscriptions = pgTable('subscriptions', {
   updatedAt: timestamp('updated_at').defaultNow()
 });
 
+<<<<<<< Updated upstream
+export const subscriptions = pgTable('subscriptions', {
+  id: serial('id').primaryKey(),
+  userId: text('user_id').references(() => users.clerk_id).notNull(),
+  planType: varchar('plan_type', { length: 50 }).notNull().default('free'),
+  customerId: text('customer_id').notNull(),
+  subscriptionId: text('subscription_id').unique().notNull(),
+  status: varchar('status', { length: 50 }).notNull().default('active'),
+  recurringAmount: integer('recurring_amount'),
+  currency: varchar('currency', { length: 10 }).default('USD'),
+  productId: text('product_id'),
+  quantity: integer('quantity').default(1),
+  trialPeriodDays: integer('trial_period_days'),
+  subscriptionPeriodInterval: varchar('subscription_period_interval', { length: 50 }),
+  paymentFrequencyInterval: varchar('payment_frequency_interval', { length: 50 }),
+  subscriptionPeriodCount: integer('subscription_period_count'),
+  paymentFrequencyCount: integer('payment_frequency_count'),
+  nextBillingDate: timestamp('next_billing_date'),
+  previousBillingDate: timestamp('previous_billing_date'),
+  currentPeriodStart: timestamp('current_period_start'),
+  currentPeriodEnd: timestamp('current_period_end'),
+  cancelledAt: timestamp('cancelled_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow()
+});
+
+=======
+>>>>>>> Stashed changes
 export const usageLimits = pgTable('usage_limits', {
   id: serial('id').primaryKey(),
   userId: text('user_id').references(() => users.clerk_id).notNull(),
@@ -100,15 +127,18 @@ export const usageLimits = pgTable('usage_limits', {
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow()
 });
+<<<<<<< Updated upstream
 
 
+=======
+>>>>>>> Stashed changes
 
 // Query History table for storing remote query execution history
 export const queryHistory = pgTable('query_history', {
   id: serial('id').primaryKey(),
   userId: text('user_id').references(() => users.clerk_id).notNull(),
   connectionId: integer('connection_id').references(() => dbConnections.id).notNull(),
-  chatId: integer('chat_id').references(() => chats.id), // Optional: link to chat conversation
+  chatId: integer('chat_id'), // UPDATED: Removed .references(() => chats.id) - No foreign key constraint
   
   // Query details
   sqlQuery: text('sql_query').notNull(),
@@ -152,6 +182,7 @@ export const queryHistory = pgTable('query_history', {
   queryTypeIdx: index('query_history_query_type_idx').on(table.queryType),
   bookmarkedIdx: index('query_history_bookmarked_idx').on(table.isBookmarked),
   favoriteIdx: index('query_history_favorite_idx').on(table.isFavorite),
+  chatIdIdx: index('query_history_chat_id_idx').on(table.chatId), // Added index for chatId queries
 }));
 
 // Relations
@@ -164,7 +195,7 @@ export const chatsRelations = relations(chats, ({ one, many }) => ({
     fields: [chats.connectionId],
     references: [dbConnections.id],
   }),
-  queryHistory: many(queryHistory),
+  // UPDATED: Removed queryHistory relation since there's no foreign key constraint
 }));
 
 export const foldersRelations = relations(folders, ({ one, many }) => ({
@@ -188,8 +219,6 @@ export const connectionsRelations = relations(dbConnections, ({ one, many }) => 
   queryHistory: many(queryHistory),
 }));
 
-
-
 // Query History relations
 export const queryHistoryRelations = relations(queryHistory, ({ one }) => ({
   user: one(users, {
@@ -204,8 +233,11 @@ export const queryHistoryRelations = relations(queryHistory, ({ one }) => ({
   // This allows chatId to be any integer (like connection ID) without requiring a chat record
 }));
 
+<<<<<<< Updated upstream
 
 
+=======
+>>>>>>> Stashed changes
 export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
   user: one(users, {
     fields: [subscriptions.userId],
@@ -219,6 +251,7 @@ export const usageLimitsRelations = relations(usageLimits, ({ one, many }) => ({
     references: [users.clerk_id],
   }),
   connections: many(dbConnections),
+<<<<<<< Updated upstream
 }));
 
 
@@ -226,3 +259,6 @@ export const usageLimitsRelations = relations(usageLimits, ({ one, many }) => ({
 
 
 
+=======
+}));
+>>>>>>> Stashed changes

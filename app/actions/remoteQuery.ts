@@ -1,4 +1,4 @@
-// File: app/actions/remoteQuery.ts (UPDATED WITH HISTORY SAVING)
+// File: app/actions/remoteQuery.ts (FIXED WITH PROPER CHAT ID SUPPORT)
 'use server'
 
 import { currentUser } from '@clerk/nextjs/server'
@@ -116,7 +116,7 @@ async function executeBasicQuery(connectionId: string, sqlQuery: string): Promis
 }
 
 /**
- * Save query execution to history
+ * Save query execution to history with chatId support
  */
 async function saveToHistory(
   connectionId: string,
@@ -127,18 +127,22 @@ async function saveToHistory(
     validateQuery?: boolean
     optimizeQuery?: boolean
     forceExecution?: boolean
+    chatId?: number // NEW: Add chatId support
   } = {}
 ) {
   try {
-    console.log('💾 Attempting to save query to history...')
-    console.log('📝 Query:', sqlQuery.slice(0, 100) + (sqlQuery.length > 100 ? '...' : ''))
-    console.log('🔗 Connection ID:', connectionId)
-    console.log('📊 Result:', { success: result.success, rowCount: result.data?.rowCount })
+    console.log('💾 saveToHistory: Starting...')
+    console.log('💾 saveToHistory: Received options:', JSON.stringify(options, null, 2))
+    console.log('💾 saveToHistory: chatId type:', typeof options.chatId)
+    console.log('💾 saveToHistory: chatId value:', options.chatId)
+    console.log('🔗 saveToHistory: Connection ID:', connectionId)
+    console.log('📊 saveToHistory: Result success:', result.success)
     
     const { saveQueryToHistory } = await import('@/app/actions/queryHistory')
     
     const historyEntry = {
       connectionId: Number(connectionId),
+      chatId: options.chatId, // FIXED: This should now properly get the chatId
       sqlQuery: sqlQuery.trim(),
       success: result.success,
       executionTime,
@@ -152,29 +156,30 @@ async function saveToHistory(
       forceExecution: options.forceExecution || false,
     }
     
-    console.log('📋 History entry to save:', {
+    console.log('📋 saveToHistory: History entry chatId:', historyEntry.chatId)
+    console.log('📋 saveToHistory: Full history entry:', {
       ...historyEntry,
       resultData: historyEntry.resultData ? `${historyEntry.resultData.length} rows` : 'null'
     })
     
     const saveResult = await saveQueryToHistory(historyEntry)
-    console.log('💾 Save result:', saveResult)
+    console.log('💾 saveToHistory: Save result:', saveResult)
     
     if (!saveResult.success) {
-      console.error('❌ Failed to save to history:', saveResult.error)
+      console.error('❌ saveToHistory: Failed to save:', saveResult.error)
     } else {
-      console.log('✅ Successfully saved to history with ID:', saveResult.data?.id)
+      console.log('✅ saveToHistory: Successfully saved with ID:', saveResult.data?.id)
     }
     
     return saveResult
   } catch (error) {
-    console.error('💥 Error saving to history:', error)
+    console.error('💥 saveToHistory: Error:', error)
     return { success: false, error: error instanceof Error ? error.message : 'Failed to save history' }
   }
 }
 
 /**
- * UPDATED: Execute query with history saving
+ * FIXED: Execute query with history saving and chatId support
  */
 export async function executeRemoteQuery(
   connectionId: string,
@@ -183,13 +188,17 @@ export async function executeRemoteQuery(
     validateQuery?: boolean
     optimizeQuery?: boolean
     forceExecution?: boolean
-    saveToHistory?: boolean // NEW: Add saveToHistory option
+    saveToHistory?: boolean
+    chatId?: number // NEW: Add chatId option
   } = {}
 ): Promise<QueryResponse> {
   const startTime = Date.now()
   
   try {
-    console.log('🎯 executeRemoteQuery called with options:', options)
+    console.log('🎯 executeRemoteQuery: Starting...')
+    console.log('🎯 executeRemoteQuery: Received options:', JSON.stringify(options, null, 2))
+    console.log('🎯 executeRemoteQuery: chatId type:', typeof options.chatId)
+    console.log('🎯 executeRemoteQuery: chatId value:', options.chatId)
     
     const user = await currentUser()
     if (!user) {
@@ -222,7 +231,13 @@ export async function executeRemoteQuery(
       
       // Save failed query to history if enabled
       if (options.saveToHistory !== false) {
-        await saveToHistory(connectionId, sqlQuery, errorResult, Date.now() - startTime, options)
+        console.log('🔄 executeRemoteQuery: Saving failed query with chatId:', options.chatId)
+        await saveToHistory(connectionId, sqlQuery, errorResult, Date.now() - startTime, {
+          validateQuery: options.validateQuery,
+          optimizeQuery: options.optimizeQuery,
+          forceExecution: options.forceExecution,
+          chatId: options.chatId // FIXED: Explicitly pass chatId
+        })
       }
       
       return errorResult
@@ -232,20 +247,32 @@ export async function executeRemoteQuery(
     const result = await executeBasicQuery(connectionId, sqlQuery)
     const executionTime = Date.now() - startTime
     
-    console.log('Query executed successfully')
+    console.log('🚀 executeRemoteQuery: Query executed successfully')
     
     // Save to history if enabled (default: true)
     if (options.saveToHistory !== false) {
-      console.log('🔄 Saving to history...')
-      await saveToHistory(connectionId, sqlQuery, result, executionTime, options)
+      console.log('🔄 executeRemoteQuery: About to save to history with chatId:', options.chatId)
+      console.log('🔄 executeRemoteQuery: Calling saveToHistory with explicit options...')
+      
+      // FIXED: Explicitly create the options object to ensure chatId is passed
+      const saveOptions = {
+        validateQuery: options.validateQuery,
+        optimizeQuery: options.optimizeQuery,
+        forceExecution: options.forceExecution,
+        chatId: options.chatId // FIXED: Explicitly include chatId
+      }
+      
+      console.log('🔄 executeRemoteQuery: Save options being passed:', JSON.stringify(saveOptions, null, 2))
+      
+      await saveToHistory(connectionId, sqlQuery, result, executionTime, saveOptions)
     } else {
-      console.log('⏭️ Skipping history save (saveToHistory = false)')
+      console.log('⏭️ executeRemoteQuery: Skipping history save (saveToHistory = false)')
     }
     
     return result
     
   } catch (error) {
-    console.error('Error in executeRemoteQuery:', error)
+    console.error('💥 executeRemoteQuery: Error:', error)
     const errorResult = {
       success: false,
       error: error instanceof Error ? error.message : 'An unknown error occurred'
@@ -253,7 +280,13 @@ export async function executeRemoteQuery(
     
     // Save failed query to history if enabled
     if (options.saveToHistory !== false) {
-      await saveToHistory(connectionId, sqlQuery, errorResult, Date.now() - startTime, options)
+      console.log('🔄 executeRemoteQuery: Saving error query with chatId:', options.chatId)
+      await saveToHistory(connectionId, sqlQuery, errorResult, Date.now() - startTime, {
+        validateQuery: options.validateQuery,
+        optimizeQuery: options.optimizeQuery,
+        forceExecution: options.forceExecution,
+        chatId: options.chatId // FIXED: Explicitly pass chatId
+      })
     }
     
     return errorResult
@@ -310,7 +343,7 @@ async function fetchFreshSchema(connectionId: string): Promise<any[]> {
 }
 
 /**
- * Batch execution with minimal overhead
+ * Batch execution with minimal overhead and chatId support
  */
 export async function executeBatchQueries(
   connectionId: string,
@@ -319,7 +352,8 @@ export async function executeBatchQueries(
     validateQueries?: boolean
     stopOnError?: boolean
     transactional?: boolean
-    saveToHistory?: boolean // NEW: Add saveToHistory option
+    saveToHistory?: boolean
+    chatId?: number // NEW: Add chatId support
   } = {}
 ) {
   try {
@@ -363,7 +397,8 @@ export async function executeBatchQueries(
         validateQuery: false,
         optimizeQuery: false,
         forceExecution: options.validateQueries ? false : true,
-        saveToHistory: options.saveToHistory !== false // Pass through saveToHistory option
+        saveToHistory: options.saveToHistory !== false,
+        chatId: options.chatId // NEW: Pass chatId to individual queries
       })
       results.push(result)
       

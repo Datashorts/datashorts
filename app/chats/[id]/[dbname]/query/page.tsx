@@ -1,4 +1,4 @@
-// app/chats/[id]/[dbname]/query/page.tsx (Complete)
+// app/chats/[id]/[dbname]/query/page.tsx (Complete with chatId support)
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
@@ -75,8 +75,12 @@ export default function RemoteQueryPage() {
   const { setActiveConnection, loadFolders, folders } = useFoldersStore()
   const router = useRouter()
 
-  const connectionId = params.id as string
+  // FIXED: Extract connection ID and use it as chat ID (simplest solution)
+  const connectionId = params.id as string  
   const dbName = params.dbname as string
+  const chatId = parseInt(connectionId) // Use connection ID as chat ID
+
+  console.log('🎯 RemoteQueryPage: connectionId:', connectionId, 'chatId:', chatId)
 
   const [sqlQuery, setSqlQuery] = useState('')
   const [isExecuting, setIsExecuting] = useState(false)
@@ -148,7 +152,7 @@ export default function RemoteQueryPage() {
   const loadQueryHistory = async () => {
     setIsLoadingHistory(true)
     try {
-      console.log('🔄 Loading query history...')
+      console.log('🔄 Loading query history for chatId:', chatId)
       const result = await getQueryHistory(Number(connectionId), {
         limit: 100,
         searchQuery: searchQuery || undefined,
@@ -176,7 +180,7 @@ export default function RemoteQueryPage() {
   // Load statistics
   const loadStatistics = async () => {
   try {
-    console.log('📊 Loading statistics...')
+    console.log('📊 Loading statistics for chatId:', chatId)
     const result = await getQueryStatistics(Number(connectionId))
     if (result.success && result.data) {
       setStatistics(result.data)
@@ -203,6 +207,7 @@ export default function RemoteQueryPage() {
     setSchemaError(null)
     
     try {
+      console.log('🔍 Fetching database schema with chatId:', chatId)
       const schemaQuery = `
         SELECT 
           t.table_name,
@@ -216,10 +221,12 @@ export default function RemoteQueryPage() {
         ORDER BY t.table_name, c.ordinal_position
       `
       
+      // UPDATED: Add chatId to schema query
       const result = await executeRemoteQuery(connectionId, schemaQuery, { 
         validateQuery: false,
         optimizeQuery: false,
-        forceExecution: true 
+        forceExecution: true,
+        chatId: chatId // NEW: Pass chatId
       })
       
       if (result.success && result.data && result.data.rows) {
@@ -245,6 +252,7 @@ export default function RemoteQueryPage() {
         }))
         
         setDbSchema(schemaArray)
+        console.log('✅ Schema loaded with chatId:', chatId)
       } else {
         throw new Error(result.error || 'Failed to fetch schema')
       }
@@ -263,15 +271,16 @@ export default function RemoteQueryPage() {
     const startTime = Date.now()
 
     try {
-      console.log('🚀 Executing query:', sqlQuery.trim())
+      console.log('🚀 Executing query with chatId:', chatId, 'Query:', sqlQuery.trim())
       
-      // Execute query using the remote query agent (which now automatically saves to history)
+      // UPDATED: Execute query using the remote query agent with chatId
       const result = await executeRemoteQuery(connectionId, sqlQuery.trim(), {
         ...queryOptions,
-        saveToHistory: true // Enable history saving
+        saveToHistory: true, // Enable history saving
+        chatId: chatId // NEW: Pass chatId for history association
       })
       
-      console.log('📊 Query result:', { 
+      console.log('📊 Query result with chatId:', chatId, 'Result:', { 
         success: result.success, 
         rowCount: result.data?.rowCount,
         hasError: !!result.error 
@@ -280,9 +289,9 @@ export default function RemoteQueryPage() {
       const executionTime = Date.now() - startTime
       setCurrentResult(result)
 
-      // The remoteQueryAgent now handles saving to history automatically
+      // The remoteQueryAgent now handles saving to history automatically with chatId
       // But we still need to reload the history display
-      console.log('🔄 Reloading history and statistics...')
+      console.log('🔄 Reloading history and statistics for chatId:', chatId)
       await Promise.all([
         loadQueryHistory(),
         loadStatistics()
@@ -291,7 +300,7 @@ export default function RemoteQueryPage() {
       // Switch to results tab
       setActiveTab('results')
     } catch (error) {
-      console.error('💥 Error executing query:', error)
+      console.error('💥 Error executing query for chatId:', chatId, error)
       setCurrentResult({
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -431,7 +440,13 @@ export default function RemoteQueryPage() {
               <Database className="h-6 w-6 text-blue-400" />
               <div>
                 <h1 className="text-lg sm:text-xl font-semibold">Remote Query Executor</h1>
-                <p className="text-sm text-gray-400">{dbName}</p>
+                <p className="text-sm text-gray-400">
+                  {dbName} 
+                  {/* NEW: Show chat ID in header */}
+                  <span className="ml-2 px-2 py-1 bg-blue-900/20 text-blue-400 rounded text-xs">
+                    Chat #{chatId}
+                  </span>
+                </p>
               </div>
             </div>
 
@@ -496,7 +511,13 @@ export default function RemoteQueryPage() {
                   {/* Query Options */}
                   <div className="p-4 border-b border-blue-500/20">
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-medium">Query Options</h3>
+                      <h3 className="text-sm font-medium">
+                        Query Options 
+                        {/* NEW: Show chat ID in query options */}
+                        <span className="ml-2 text-xs text-blue-400">
+                          (Chat #{chatId})
+                        </span>
+                      </h3>
                       <Dialog>
                         <DialogTrigger asChild>
                           <Button variant="ghost" size="sm">
@@ -584,7 +605,7 @@ export default function RemoteQueryPage() {
                       ref={queryEditorRef}
                       value={sqlQuery}
                       onChange={(e) => setSqlQuery(e.target.value)}
-                      placeholder="Enter your SQL query here..."
+                      placeholder={`Enter your SQL query here... (Chat #${chatId})`}
                       className="w-full h-full resize-none bg-[#0f1013] border border-blue-500/20 rounded-lg p-4 focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 focus:outline-none placeholder-gray-500 text-gray-200 font-mono"
                       disabled={isExecuting}
                     />
@@ -600,12 +621,12 @@ export default function RemoteQueryPage() {
                       {isExecuting ? (
                         <>
                           <RotateCcw className="h-4 w-4 mr-2 animate-spin" />
-                          Executing...
+                          Executing... (Chat #{chatId})
                         </>
                       ) : (
                         <>
                           <Play className="h-4 w-4 mr-2" />
-                          Execute Query
+                          Execute Query (Chat #{chatId})
                         </>
                       )}
                     </Button>
@@ -628,6 +649,10 @@ export default function RemoteQueryPage() {
                           <div>
                             <p className="font-medium">
                               {currentResult.success ? 'Query Successful' : 'Query Failed'}
+                              {/* NEW: Show chat ID in results */}
+                              <span className="ml-2 text-xs text-blue-400">
+                                (Chat #{chatId})
+                              </span>
                             </p>
                             {currentResult.data && (
                               <p className="text-sm text-gray-400">
@@ -742,12 +767,14 @@ export default function RemoteQueryPage() {
                           ) : (
                             <div className="text-center py-8 text-gray-400">
                               Query executed successfully but returned no rows.
+                              <p className="text-xs mt-1 text-blue-400">Chat #{chatId}</p>
                             </div>
                           )
                         ) : (
                           <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-4">
                             <p className="text-red-400 font-medium mb-2">Error executing query:</p>
                             <p className="text-gray-300 font-mono text-sm">{currentResult.error}</p>
+                            <p className="text-xs mt-2 text-blue-400">Chat #{chatId}</p>
                           </div>
                         )}
                       </div>
@@ -757,6 +784,7 @@ export default function RemoteQueryPage() {
                       <div className="text-center">
                         <Database className="h-12 w-12 mx-auto mb-4 opacity-50" />
                         <p>Execute a query to see results here</p>
+                        <p className="text-xs mt-1 text-blue-400">Chat #{chatId}</p>
                       </div>
                     </div>
                   )}
@@ -768,7 +796,13 @@ export default function RemoteQueryPage() {
                   <div className="p-4 border-b border-blue-500/20">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="font-medium text-gray-200">Database Schema</h3>
+                        <h3 className="font-medium text-gray-200">
+                          Database Schema
+                          {/* NEW: Show chat ID in schema tab */}
+                          <span className="ml-2 text-xs text-blue-400">
+                            (Chat #{chatId})
+                          </span>
+                        </h3>
                         <p className="text-sm text-gray-400">Click on a table to select it for templates</p>
                       </div>
                       {schemaError && (
@@ -784,12 +818,14 @@ export default function RemoteQueryPage() {
                       <div className="text-center text-gray-400 py-8">
                         <RotateCcw className="h-12 w-12 mx-auto mb-4 opacity-50 animate-spin" />
                         <p>Loading database schema...</p>
+                        <p className="text-xs mt-1 text-blue-400">Chat #{chatId}</p>
                       </div>
                     ) : schemaError ? (
                       <div className="text-center text-gray-400 py-8">
                         <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50 text-red-400" />
                         <p className="text-red-400 mb-2">Failed to load schema</p>
                         <p className="text-sm text-gray-500 mb-4">{schemaError}</p>
+                        <p className="text-xs mb-4 text-blue-400">Chat #{chatId}</p>
                         <Button variant="outline" onClick={fetchDatabaseSchema}>
                           <RotateCcw className="h-4 w-4 mr-1" />
                           Try Again
@@ -829,6 +865,7 @@ export default function RemoteQueryPage() {
                       <div className="text-center text-gray-400 py-8">
                         <Database className="h-12 w-12 mx-auto mb-4 opacity-50" />
                         <p>No tables found in this database</p>
+                        <p className="text-xs mt-1 text-blue-400">Chat #{chatId}</p>
                       </div>
                     )}
                   </div>
@@ -841,6 +878,7 @@ export default function RemoteQueryPage() {
           {showAssistant && (
             <div className="w-96 border-l border-blue-500/20 flex flex-col">
               <div className="p-4">
+                {/* UPDATED: Pass chatId to QueryAssistant */}
                 <QueryAssistant
                   connectionId={connectionId}
                   currentQuery={sqlQuery}
@@ -849,6 +887,7 @@ export default function RemoteQueryPage() {
                     setActiveTab('query')
                     queryEditorRef.current?.focus()
                   }}
+                  chatId={chatId} // NEW: Pass chatId to QueryAssistant
                 />
               </div>
             </div>
@@ -859,7 +898,13 @@ export default function RemoteQueryPage() {
             <div className="w-80 border-l border-blue-500/20 flex flex-col">
               <div className="p-4 border-b border-blue-500/20">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-medium text-gray-200">Query History</h3>
+                  <h3 className="font-medium text-gray-200">
+                    Query History
+                    {/* NEW: Show chat ID in history panel */}
+                    <span className="ml-2 text-xs text-blue-400">
+                      (Chat #{chatId})
+                    </span>
+                  </h3>
                   <Button variant="ghost" size="sm" onClick={loadQueryHistory} disabled={isLoadingHistory}>
                     <RotateCcw className={`h-4 w-4 ${isLoadingHistory ? 'animate-spin' : ''}`} />
                   </Button>
@@ -868,7 +913,9 @@ export default function RemoteQueryPage() {
                 {/* Statistics */}
                 {statistics && (
                   <div className="mb-4 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
-                    <h4 className="text-sm font-medium text-blue-400 mb-2">Statistics</h4>
+                    <h4 className="text-sm font-medium text-blue-400 mb-2">
+                      Statistics (Chat #{chatId})
+                    </h4>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
                         <span className="text-gray-400">Total:</span> {statistics.totalQueries}
@@ -891,7 +938,7 @@ export default function RemoteQueryPage() {
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
-                      placeholder="Search queries..."
+                      placeholder={`Search queries in Chat #${chatId}...`}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10 bg-[#0f1013] border-blue-500/20 text-gray-200 placeholder-gray-500"
@@ -995,6 +1042,7 @@ export default function RemoteQueryPage() {
                   <div className="p-4 text-center text-gray-400">
                     <Clock className="h-8 w-8 mx-auto mb-2 opacity-50 animate-spin" />
                     <p>Loading history...</p>
+                    <p className="text-xs mt-1 text-blue-400">Chat #{chatId}</p>
                   </div>
                 ) : queryHistory.length > 0 ? (
                   <div className="space-y-2 p-4">
@@ -1053,12 +1101,12 @@ export default function RemoteQueryPage() {
                           <p className="text-sm text-gray-300 font-mono truncate mb-1">
                             {item.sqlQuery}
                           </p>
-                        {item.success && (
-  <p className="text-xs text-gray-500">
-    {item.rowCount || 0} rows
-    {item.executionTime !== null && ` • ${item.executionTime}ms`}
-  </p>
-)}
+                          {item.success && (
+                            <p className="text-xs text-gray-500">
+                              {item.rowCount || 0} rows
+                              {item.executionTime !== null && ` • ${item.executionTime}ms`}
+                            </p>
+                          )}
                           {!item.success && item.errorMessage && (
                             <p className="text-xs text-red-400 truncate">
                               {item.errorMessage}
@@ -1085,6 +1133,7 @@ export default function RemoteQueryPage() {
                     <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
                     <p>No query history</p>
                     <p className="text-xs mt-1">Execute queries to see them here</p>
+                    <p className="text-xs mt-1 text-blue-400">Chat #{chatId}</p>
                   </div>
                 )}
               </div>

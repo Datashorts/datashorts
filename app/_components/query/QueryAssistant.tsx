@@ -1,4 +1,4 @@
-// File: app/_components/query/QueryAssistant.tsx (FIXED VERSION)
+// File: app/_components/query/QueryAssistant.tsx (UPDATED WITH CHAT ID SUPPORT)
 'use client'
 
 import { useState } from 'react'
@@ -24,6 +24,7 @@ interface QueryAssistantProps {
   connectionId: string
   currentQuery: string
   onQuerySelect: (query: string) => void
+  chatId?: number // NEW: Add chatId prop
 }
 
 interface QuerySuggestion {
@@ -44,7 +45,7 @@ const difficultyIcons = {
   advanced: AlertTriangle
 }
 
-export default function QueryAssistant({ connectionId, currentQuery, onQuerySelect }: QueryAssistantProps) {
+export default function QueryAssistant({ connectionId, currentQuery, onQuerySelect, chatId }: QueryAssistantProps) {
   const [isExplaining, setIsExplaining] = useState(false)
   const [explanation, setExplanation] = useState<string | null>(null)
   const [isGettingSuggestions, setIsGettingSuggestions] = useState(false)
@@ -101,6 +102,8 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
     setOptimizationResult(null)
 
     try {
+      console.log('🎯 QueryAssistant: Sending optimization request with chatId:', chatId) // NEW: Log chatId
+
       const response = await fetch('/api/optimize-query', {
         method: 'POST',
         headers: {
@@ -108,11 +111,14 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
         },
         body: JSON.stringify({
           connectionId,
-          query: currentQuery
+          query: currentQuery,
+          chatId: chatId // NEW: Include chatId in request
         })
       })
 
       const result = await response.json()
+      
+      console.log('⚡ QueryAssistant: Received optimization result:', result) // NEW: Enhanced logging
       
       if (result.success) {
         if (result.optimization) {
@@ -141,6 +147,11 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
         <CardTitle className="flex items-center gap-2 text-gray-200">
           <Wand2 className="h-5 w-5 text-blue-500" />
           Query Assistant
+          {chatId && (
+            <Badge variant="outline" className="ml-2 text-xs text-blue-400 border-blue-500/30">
+              Chat #{chatId}
+            </Badge>
+          )}
         </CardTitle>
         <CardDescription className="text-gray-400">
           Get help with understanding queries, generating new ones, and optimizing performance
@@ -348,6 +359,11 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
                         <p className="text-xs text-green-400 mb-3">
                           Expected improvement: {optimizationResult.expectedImprovement}
                         </p>
+                        {chatId && (
+                          <p className="text-xs text-blue-400 mb-3">
+                            💬 Optimization performed for Chat #{chatId}
+                          </p>
+                        )}
                       </div>
                       
                       <div>
@@ -384,6 +400,11 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
                   <Zap className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">No optimization suggestions for this query</p>
                   <p className="text-xs text-gray-500 mt-1">The query appears to be already well-optimized</p>
+                  {chatId && (
+                    <p className="text-xs text-blue-400 mt-2">
+                      💬 Analysis completed for Chat #{chatId}
+                    </p>
+                  )}
                 </div>
               ) : null}
 
@@ -399,6 +420,11 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
                   <li>• Replace correlated subqueries with JOINs when possible</li>
                   <li>• Use window functions instead of subqueries for aggregations</li>
                 </ul>
+                {chatId && (
+                  <p className="text-xs text-blue-400 mt-3 pt-2 border-t border-blue-500/20">
+                    💬 Tips provided for Chat #{chatId}
+                  </p>
+                )}
               </div>
             </div>
           </TabsContent>
