@@ -200,10 +200,8 @@ export const queryHistoryRelations = relations(queryHistory, ({ one }) => ({
     fields: [queryHistory.connectionId],
     references: [dbConnections.id],
   }),
-  chat: one(chats, {
-    fields: [queryHistory.chatId],
-    references: [chats.id],
-  }),
+  // UPDATED: Removed chat relation since there's no foreign key constraint
+  // This allows chatId to be any integer (like connection ID) without requiring a chat record
 }));
 
 
@@ -222,3 +220,9 @@ export const usageLimitsRelations = relations(usageLimits, ({ one, many }) => ({
   }),
   connections: many(dbConnections),
 }));
+
+
+
+
+
+
