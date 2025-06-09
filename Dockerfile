@@ -55,11 +55,22 @@ COPY package.json package-lock.json ./
 # 6) Install base dependencies
 RUN npm install
 
-# 7) Install additional required packages
-RUN npm install @clerk/nextjs@latest
-RUN npm install tailwindcss postcss autoprefixer tailwindcss-animate --save-dev
-RUN npm install class-variance-authority clsx tailwind-merge lucide-react @radix-ui/react-slot --save
-RUN npm install @radix-ui/react-dialog @radix-ui/react-switch @radix-ui/react-label @radix-ui/react-select --save
+# 7) Install additional required packages in one go
+RUN npm install \
+    @clerk/nextjs@latest \
+    class-variance-authority \
+    clsx \
+    tailwind-merge \
+    lucide-react \
+    @radix-ui/react-slot \
+    @radix-ui/react-dialog \
+    @radix-ui/react-switch \
+    @radix-ui/react-label \
+    @radix-ui/react-select \
+    tailwindcss \
+    postcss \
+    autoprefixer \
+    tailwindcss-animate
 
 # 8) Copy ALL source files including configs BEFORE building
 COPY . .
