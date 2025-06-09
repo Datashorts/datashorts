@@ -119,7 +119,7 @@ RUN echo '  return twMerge(clsx(inputs));' >> lib/utils.ts
 RUN echo '}' >> lib/utils.ts
 
 # 6.9) Create symlinks for app directory
-RUN ln -sf ../../../components/ui/button.tsx app/components/ui/button.tsx
+RUN ln -sf @/components/ui/button.tsx app/components/ui/button.tsx
 RUN ln -sf ../../lib/utils.ts app/lib/utils.ts
 
 # 6.10) Verify created files

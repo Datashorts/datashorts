@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { motion } from "framer-motion"
-import { Button } from "../../../components/ui/button"
+import { Button } from "@/components/ui/button"
 import { ArrowRight, Sparkles, Zap, TrendingUp, Users, CheckCircle } from "lucide-react"
 import { SignInButton, SignedIn, SignedOut, useUser } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
