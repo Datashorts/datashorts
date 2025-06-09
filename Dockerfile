@@ -48,28 +48,12 @@ ENV NEXT_PUBLIC_DODO_TEST_API=$NEXT_PUBLIC_DODO_TEST_API
 ENV NEXT_PUBLIC_RETURN_URL=$NEXT_PUBLIC_RETURN_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
-# Copy package files first
+# Copy package files and install ALL dependencies (including dev dependencies for build)
 COPY package.json package-lock.json ./
+RUN npm ci --include=dev
 
-# Install base dependencies from package.json
-RUN npm install
-
-# Explicitly install all required packages to ensure they're available
-RUN npm install \
-    @clerk/nextjs@latest \
-    tailwindcss \
-    postcss \
-    autoprefixer \
-    tailwindcss-animate \
-    @radix-ui/react-dialog \
-    @radix-ui/react-label \
-    @radix-ui/react-select \
-    @radix-ui/react-slot \
-    @radix-ui/react-switch \
-    class-variance-authority \
-    clsx \
-    lucide-react \
-    tailwind-merge
+# Install/upgrade additional packages needed for build
+RUN npm install @clerk/nextjs@latest @tailwindcss/postcss tailwindcss postcss autoprefixer tailwindcss-animate
 
 # Copy source code and build
 COPY . .
