@@ -1,13 +1,12 @@
 # ─── STAGE 1: deps + build ────────────────────────────────────────────────────
 FROM node:18-alpine AS build
 
-# 1) Use /app as your project directory
 WORKDIR /app
 
-# 2) Always use legacy-peer-deps for npm installs
+# Set npm config
 ENV NPM_CONFIG_LEGACY_PEER_DEPS=true
 
-# 3) Declare build-time env vars (Railway injects these automatically)
+# Declare build-time env vars
 ARG NEXT_PUBLIC_DRIZZLE_DATABASE_URL
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ARG NEXT_PUBLIC_CLERK_SIGN_IN_URL
@@ -28,7 +27,7 @@ ARG NEXT_PUBLIC_DODO_TEST_API
 ARG NEXT_PUBLIC_RETURN_URL
 ARG NEXT_PUBLIC_APP_URL
 
-# 4) Expose them as ENV so `next build` can see them
+# Expose them as ENV
 ENV NEXT_PUBLIC_DRIZZLE_DATABASE_URL=$NEXT_PUBLIC_DRIZZLE_DATABASE_URL
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ENV NEXT_PUBLIC_CLERK_SIGN_IN_URL=$NEXT_PUBLIC_CLERK_SIGN_IN_URL
@@ -49,33 +48,31 @@ ENV NEXT_PUBLIC_DODO_TEST_API=$NEXT_PUBLIC_DODO_TEST_API
 ENV NEXT_PUBLIC_RETURN_URL=$NEXT_PUBLIC_RETURN_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
-# 5) Copy package files first
+# Copy package files first
 COPY package.json package-lock.json ./
 
-# 6) Install base dependencies
+# Install base dependencies from package.json
 RUN npm install
 
-# 7) Install additional required packages in one go
+# Explicitly install all required packages to ensure they're available
 RUN npm install \
     @clerk/nextjs@latest \
-    class-variance-authority \
-    clsx \
-    tailwind-merge \
-    lucide-react \
-    @radix-ui/react-slot \
-    @radix-ui/react-dialog \
-    @radix-ui/react-switch \
-    @radix-ui/react-label \
-    @radix-ui/react-select \
     tailwindcss \
     postcss \
     autoprefixer \
-    tailwindcss-animate
+    tailwindcss-animate \
+    @radix-ui/react-dialog \
+    @radix-ui/react-label \
+    @radix-ui/react-select \
+    @radix-ui/react-slot \
+    @radix-ui/react-switch \
+    class-variance-authority \
+    clsx \
+    lucide-react \
+    tailwind-merge
 
-# 8) Copy ALL source files including configs BEFORE building
+# Copy source code and build
 COPY . .
-
-# 9) Now build with all configs and dependencies in place
 RUN npm run build
 
 
@@ -83,18 +80,15 @@ RUN npm run build
 FROM node:18-alpine AS runner
 WORKDIR /app
 
-# 10) Let Next.js bind to Railway's $PORT (default 3000)
 ARG PORT=3000
 ENV PORT=${PORT}
 
-# 11) Copy production artifacts from build stage
-COPY --from=build /app/.next      ./.next
-COPY --from=build /app/public     ./public
+# Copy production artifacts
+COPY --from=build /app/.next ./.next
+COPY --from=build /app/public ./public
 COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json  ./package.json
+COPY --from=build /app/package.json ./package.json
 
-# 12) Expose the listening port
 EXPOSE 3000
 
-# 13) Start the optimized Next.js server
 CMD ["npm", "start"]
