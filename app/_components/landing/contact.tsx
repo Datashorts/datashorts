@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
+import { Button } from "../../../components/ui/button"
 import { Mail, Phone, MapPin, Send, User, Building2, MessageCircle } from "lucide-react"
 
 export default function ContactPage() {

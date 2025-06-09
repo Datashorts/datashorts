@@ -49,8 +49,9 @@ COPY package.json package-lock.json ./
 RUN npm install
 # 6) Immediately override Clerk to the latest v6 (supports Next.js 15)
 RUN npm install @clerk/nextjs@latest
-# 6.5) Install Tailwind CSS v4 dependencies correctly
+# 6.5) Install required dependencies for Tailwind CSS v4
 RUN npm install tailwindcss@4 @tailwindcss/postcss --legacy-peer-deps
+RUN npm install class-variance-authority clsx tailwind-merge --legacy-peer-deps
 # 7) Copy the rest of your source (app/, components/, public/, etc.) and build
 COPY . .
 RUN npm run build
