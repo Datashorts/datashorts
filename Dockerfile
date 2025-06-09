@@ -49,87 +49,10 @@ COPY package.json package-lock.json ./
 RUN npm install
 # 6) Immediately override Clerk to the latest v6 (supports Next.js 15)
 RUN npm install @clerk/nextjs@latest
-# 6.5) Install required dependencies for Tailwind CSS v4 and UI components
-RUN npm install tailwindcss@4 @tailwindcss/postcss --legacy-peer-deps
-RUN npm install class-variance-authority clsx tailwind-merge @radix-ui/react-slot --legacy-peer-deps
-
-# 6.6) Create directories
-RUN mkdir -p components/ui lib app/components/ui app/lib
-
-# 6.7) Create button.tsx file
-RUN echo 'import * as React from "react";' > components/ui/button.tsx
-RUN echo 'import { Slot } from "@radix-ui/react-slot";' >> components/ui/button.tsx
-RUN echo 'import { cva, type VariantProps } from "class-variance-authority";' >> components/ui/button.tsx
-RUN echo 'import { cn } from "@/lib/utils";' >> components/ui/button.tsx
-RUN echo '' >> components/ui/button.tsx
-RUN echo 'const buttonVariants = cva(' >> components/ui/button.tsx
-RUN echo '  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",' >> components/ui/button.tsx
-RUN echo '  {' >> components/ui/button.tsx
-RUN echo '    variants: {' >> components/ui/button.tsx
-RUN echo '      variant: {' >> components/ui/button.tsx
-RUN echo '        default: "bg-primary text-primary-foreground hover:bg-primary/90",' >> components/ui/button.tsx
-RUN echo '        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",' >> components/ui/button.tsx
-RUN echo '        outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",' >> components/ui/button.tsx
-RUN echo '        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",' >> components/ui/button.tsx
-RUN echo '        ghost: "hover:bg-accent hover:text-accent-foreground",' >> components/ui/button.tsx
-RUN echo '        link: "text-primary underline-offset-4 hover:underline",' >> components/ui/button.tsx
-RUN echo '      },' >> components/ui/button.tsx
-RUN echo '      size: {' >> components/ui/button.tsx
-RUN echo '        default: "h-9 px-4 py-2",' >> components/ui/button.tsx
-RUN echo '        sm: "h-8 rounded-md px-3 text-xs",' >> components/ui/button.tsx
-RUN echo '        lg: "h-10 rounded-md px-8",' >> components/ui/button.tsx
-RUN echo '        icon: "h-9 w-9",' >> components/ui/button.tsx
-RUN echo '      },' >> components/ui/button.tsx
-RUN echo '    },' >> components/ui/button.tsx
-RUN echo '    defaultVariants: {' >> components/ui/button.tsx
-RUN echo '      variant: "default",' >> components/ui/button.tsx
-RUN echo '      size: "default",' >> components/ui/button.tsx
-RUN echo '    },' >> components/ui/button.tsx
-RUN echo '  }' >> components/ui/button.tsx
-RUN echo ');' >> components/ui/button.tsx
-RUN echo '' >> components/ui/button.tsx
-RUN echo 'export interface ButtonProps' >> components/ui/button.tsx
-RUN echo '  extends React.ButtonHTMLAttributes<HTMLButtonElement>,' >> components/ui/button.tsx
-RUN echo '    VariantProps<typeof buttonVariants> {' >> components/ui/button.tsx
-RUN echo '  asChild?: boolean;' >> components/ui/button.tsx
-RUN echo '}' >> components/ui/button.tsx
-RUN echo '' >> components/ui/button.tsx
-RUN echo 'const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(' >> components/ui/button.tsx
-RUN echo '  ({ className, variant, size, asChild = false, ...props }, ref) => {' >> components/ui/button.tsx
-RUN echo '    const Comp = asChild ? Slot : "button";' >> components/ui/button.tsx
-RUN echo '    return (' >> components/ui/button.tsx
-RUN echo '      <Comp' >> components/ui/button.tsx
-RUN echo '        className={cn(buttonVariants({ variant, size, className }))}' >> components/ui/button.tsx
-RUN echo '        ref={ref}' >> components/ui/button.tsx
-RUN echo '        {...props}' >> components/ui/button.tsx
-RUN echo '      />' >> components/ui/button.tsx
-RUN echo '    );' >> components/ui/button.tsx
-RUN echo '  }' >> components/ui/button.tsx
-RUN echo ');' >> components/ui/button.tsx
-RUN echo 'Button.displayName = "Button";' >> components/ui/button.tsx
-RUN echo '' >> components/ui/button.tsx
-RUN echo 'export { Button, buttonVariants };' >> components/ui/button.tsx
-
-# 6.8) Create utils.ts file
-RUN echo 'import { type ClassValue, clsx } from "clsx";' > lib/utils.ts
-RUN echo 'import { twMerge } from "tailwind-merge";' >> lib/utils.ts
-RUN echo '' >> lib/utils.ts
-RUN echo 'export function cn(...inputs: ClassValue[]) {' >> lib/utils.ts
-RUN echo '  return twMerge(clsx(inputs));' >> lib/utils.ts
-RUN echo '}' >> lib/utils.ts
-
-# 6.9) Create symlinks for app directory
-RUN ln -sf @/components/ui/button.tsx app/components/ui/button.tsx
-RUN ln -sf ../../lib/utils.ts app/lib/utils.ts
-
-# 6.10) Verify created files
-RUN ls -la components/ui/
-RUN ls -la lib/
-RUN ls -la app/components/ui/
-RUN ls -la app/lib/
 # 7) Copy the rest of your source (app/, components/, public/, etc.) and build
 COPY . .
 RUN npm run build
+
 # ─── STAGE 2: runtime ─────────────────────────────────────────────────────────
 FROM node:18-alpine AS runner
 WORKDIR /app
