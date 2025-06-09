@@ -49,9 +49,91 @@ COPY package.json package-lock.json ./
 RUN npm install
 # 6) Immediately override Clerk to the latest v6 (supports Next.js 15)
 RUN npm install @clerk/nextjs@latest
-# 6.5) Install required dependencies for Tailwind CSS v4
+# 6.5) Install required dependencies for Tailwind CSS v4 and UI components
 RUN npm install tailwindcss@4 @tailwindcss/postcss --legacy-peer-deps
-RUN npm install class-variance-authority clsx tailwind-merge --legacy-peer-deps
+RUN npm install class-variance-authority clsx tailwind-merge @radix-ui/react-slot --legacy-peer-deps
+
+# 6.6) Debug and ensure file paths
+RUN ls -la
+RUN echo "Checking for component files..."
+RUN find . -name "button.tsx" || echo "Button component not found"
+RUN find . -name "utils.ts" || echo "Utils file not found"
+
+# 6.7) Ensure directories exist
+RUN mkdir -p components/ui lib
+
+# 6.8) Create the Button component if it doesn't exist
+RUN if [ ! -f components/ui/button.tsx ]; then \
+    echo 'import * as React from "react"; \
+    import { Slot } from "@radix-ui/react-slot"; \
+    import { cva, type VariantProps } from "class-variance-authority"; \
+    import { cn } from "@/lib/utils"; \
+    const buttonVariants = cva( \
+      "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*=\'size-\'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive", \
+      { \
+        variants: { \
+          variant: { \
+            default: "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90", \
+            destructive: "bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60", \
+            outline: "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50", \
+            secondary: "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80", \
+            ghost: "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50", \
+            link: "text-primary underline-offset-4 hover:underline", \
+          }, \
+          size: { \
+            default: "h-9 px-4 py-2 has-[>svg]:px-3", \
+            sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5", \
+            lg: "h-10 rounded-md px-6 has-[>svg]:px-4", \
+            icon: "size-9", \
+          }, \
+        }, \
+        defaultVariants: { \
+          variant: "default", \
+          size: "default", \
+        }, \
+      } \
+    ); \
+    function Button({ \
+      className, \
+      variant, \
+      size, \
+      asChild = false, \
+      ...props \
+    }: React.ComponentProps<"button"> & \
+      VariantProps<typeof buttonVariants> & { \
+        asChild?: boolean \
+      }) { \
+      const Comp = asChild ? Slot : "button"; \
+      return ( \
+        <Comp \
+          data-slot="button" \
+          className={cn(buttonVariants({ variant, size, className }))} \
+          {...props} \
+        /> \
+      ) \
+    } \
+    export { Button, buttonVariants };' > components/ui/button.tsx; \
+fi
+
+# 6.9) Create the utils file if it doesn't exist
+RUN if [ ! -f lib/utils.ts ]; then \
+    echo 'import { type ClassValue, clsx } from "clsx"; \
+    import { twMerge } from "tailwind-merge"; \
+    export function cn(...inputs: ClassValue[]) { \
+      return twMerge(clsx(inputs)); \
+    }' > lib/utils.ts; \
+fi
+
+# 6.10) Create symlinks in app directory for better path resolution
+RUN mkdir -p app/components/ui app/lib
+RUN ln -sf ../../../components/ui/button.tsx app/components/ui/button.tsx || echo "Failed to create button.tsx symlink"
+RUN ln -sf ../../lib/utils.ts app/lib/utils.ts || echo "Failed to create utils.ts symlink"
+
+# 6.11) Verify the files exist
+RUN ls -la components/ui/
+RUN ls -la lib/
+RUN ls -la app/components/ui/
+RUN ls -la app/lib/
 # 7) Copy the rest of your source (app/, components/, public/, etc.) and build
 COPY . .
 RUN npm run build

@@ -5,7 +5,7 @@ import { Button } from "../../../components/ui/button"
 import { UserButton, SignedIn, SignedOut } from "@clerk/nextjs"
 import { useState, useEffect } from "react"
 import { LineChart, Menu, X } from "lucide-react"
-import { cn } from "../../../lib/utils"
+import { cn } from "@/lib/utils"
 
 export default function Header() {
   const [scrolled, setScrolled] = useState(false);
