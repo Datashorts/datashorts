@@ -49,20 +49,22 @@ ENV NEXT_PUBLIC_DODO_TEST_API=$NEXT_PUBLIC_DODO_TEST_API
 ENV NEXT_PUBLIC_RETURN_URL=$NEXT_PUBLIC_RETURN_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
-# 5) Install your declared dependencies
+# 5) Copy package files first
 COPY package.json package-lock.json ./
+
+# 6) Install base dependencies
 RUN npm install
 
-# 6) Immediately override Clerk to the latest v6 (supports Next.js 15)
+# 7) Install additional required packages
 RUN npm install @clerk/nextjs@latest
-
-# 7) Install missing dependencies for Tailwind and UI components
-RUN npm install @tailwindcss/postcss autoprefixer postcss --save-dev
+RUN npm install tailwindcss postcss autoprefixer tailwindcss-animate --save-dev
 RUN npm install class-variance-authority clsx tailwind-merge lucide-react @radix-ui/react-slot --save
 RUN npm install @radix-ui/react-dialog @radix-ui/react-switch @radix-ui/react-label @radix-ui/react-select --save
 
-# 8) Copy the rest of your source (app/, components/, public/, etc.) and build
+# 8) Copy ALL source files including configs BEFORE building
 COPY . .
+
+# 9) Now build with all configs and dependencies in place
 RUN npm run build
 
 
@@ -70,19 +72,18 @@ RUN npm run build
 FROM node:18-alpine AS runner
 WORKDIR /app
 
-# 9) Let Next.js bind to Railway's $PORT (default 3000)
+# 10) Let Next.js bind to Railway's $PORT (default 3000)
 ARG PORT=3000
 ENV PORT=${PORT}
 
-# 10) Copy production artifacts from build stage
+# 11) Copy production artifacts from build stage
 COPY --from=build /app/.next      ./.next
 COPY --from=build /app/public     ./public
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json  ./package.json
 
-# 11) Expose the listening port
+# 12) Expose the listening port
 EXPOSE 3000
 
-# 12) Start the optimized Next.js server (ensure your package.json has
-#     "start": "next start -p ${PORT:-3000}")
+# 13) Start the optimized Next.js server
 CMD ["npm", "start"]
