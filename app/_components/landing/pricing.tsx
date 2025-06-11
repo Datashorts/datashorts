@@ -115,7 +115,7 @@ export default function Pricing() {
           
           <PriceCard
             tier="Pro"
-            price="$20/mo"
+            price="$20/month"
             bestFor="Best for small teams"
             CTA={
               <button 
@@ -266,7 +266,7 @@ function PriceCard({ tier, price, bestFor, CTA, benefits }: PriceCardProps) {
             >
               <span className="text-4xl font-bold text-white">{price}</span>
               {price !== "Free" && price !== "Custom" && (
-                <span className="text-gray-400 ml-1">/month</span>
+                <span className="text-gray-400 ml-1"></span>
               )}
             </div>
             <p className="text-gray-300 text-sm">{bestFor}</p>
