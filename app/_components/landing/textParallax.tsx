@@ -32,7 +32,7 @@ const features: Feature[] = [
     callout: 'Your thoughts, translated.',
     title: "Natural Language to SQL",
     description:
-      'Type what you need in plain English—“show all published forms by users”—and DataChat gives you optimized, production-ready SQL instantly.',
+      'Type what you need in plain English—"show all published forms by users"—and DataChat gives you optimized, production-ready SQL instantly.',
     contentPosition: 'l',
     Icon: FiSearch,
     image: '/sql_query.jpeg',
@@ -42,7 +42,7 @@ const features: Feature[] = [
     callout: 'From tables to charts—automatically.',
     title: 'Auto-Generated Visualizations',
     description:
-      'Whether it’s column distribution or schema stats, DataChat instantly transforms your query results into interactive visuals like pie charts.',
+      'Whether it\'s column distribution or schema stats, DataChat instantly transforms your query results into interactive visuals like pie charts.',
     contentPosition: 'r',
     Icon: FiDollarSign,
     image: '/pie_chart.jpeg',
@@ -115,6 +115,8 @@ const SlidingFeatureDisplay: FC<SlidingFeatureDisplayProps> = ({ featureInView }
   );
 };
 
+export default Example;
+
 interface ContentProps {
   feature: Feature;
   setFeatureInView: (f: Feature) => void;
@@ -143,6 +145,7 @@ const Content: FC<ContentProps> = ({ feature, setFeatureInView }) => {
         <motion.div
           initial={{ opacity: 0, y: 25 }}
           whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
           transition={{ duration: 0.5, ease: 'easeInOut' }}
         >
           <span className="rounded-full bg-indigo-600 px-2 py-1.5 text-xs font-medium text-white">
@@ -154,6 +157,7 @@ const Content: FC<ContentProps> = ({ feature, setFeatureInView }) => {
         <motion.div
           initial={{ opacity: 0, y: 25 }}
           whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
           transition={{ duration: 0.5, ease: 'easeInOut' }}
           className="mt-8 block md:hidden"
         >
@@ -189,5 +193,3 @@ const ExampleFeature: FC<ExampleFeatureProps> = ({ feature }) => {
     </div>
   );
 };
-
-export default Example;
