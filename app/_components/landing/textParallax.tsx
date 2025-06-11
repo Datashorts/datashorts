@@ -42,7 +42,7 @@ const features: Feature[] = [
     callout: 'From tables to charts—automatically.',
     title: 'Auto-Generated Visualizations',
     description:
-      'Whether it\'s column distribution or schema stats, DataChat instantly transforms your query results into interactive visuals like pie charts.',
+      "Whether it's column distribution or schema stats, DataChat instantly transforms your query results into interactive visuals like pie charts.",
     contentPosition: 'r',
     Icon: FiDollarSign,
     image: '/pie_chart.jpeg',
@@ -142,27 +142,18 @@ const Content: FC<ContentProps> = ({ feature, setFeatureInView }) => {
       }}
     >
       <div className="grid h-full w-full place-content-center px-4 py-12 md:w-2/5 md:px-8 md:py-8">
-        <motion.div
-          initial={{ opacity: 0, y: 25 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5, ease: 'easeInOut' }}
-        >
+        <div>
           <span className="rounded-full bg-indigo-600 px-2 py-1.5 text-xs font-medium text-white">
             {feature.callout}
           </span>
           <p className="my-3 text-5xl font-bold text-white">{feature.title}</p>
           <p className="text-slate-400">{feature.description}</p>
-        </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 25 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5, ease: 'easeInOut' }}
+        </div>
+        <div
           className="mt-8 block md:hidden"
         >
           <ExampleFeature feature={feature} />
-        </motion.div>
+        </div>
       </div>
     </section>
   );
