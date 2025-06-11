@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useInView } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { HeroAnimation} from './hero-animation'
@@ -8,6 +8,7 @@ import { ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 import { SignInButton, SignedIn, SignedOut, useUser } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
+import { StoreUser } from "@/app/actions/user"
 
 export function HeroSection() {
   const ref = useRef<HTMLDivElement>(null)
@@ -15,6 +16,16 @@ export function HeroSection() {
   const [isHovered, setIsHovered] = useState(false)
   const { user } = useUser()
   const router = useRouter()
+
+  useEffect(() => {
+    if (user) {
+      StoreUser({
+        id: user.id,
+        email: user.emailAddresses[0].emailAddress,
+        name: user.fullName,
+      });
+    }
+  }, [user]);
 
   const handleGetStarted = () => {
     router.push("/stats") // or whatever your dashboard route is
