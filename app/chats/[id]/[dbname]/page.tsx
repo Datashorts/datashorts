@@ -1,8 +1,4 @@
-// Path: app/chats/[id]/[dbname]/page.tsx
-// Updated version with Query Executor button
-
 'use client'
-
 import { useEffect, useState, useRef, KeyboardEvent } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useFoldersStore } from '@/app/store/useFoldersStore'

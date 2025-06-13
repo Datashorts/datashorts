@@ -1,4 +1,4 @@
-// File: app/_components/query/QueryAssistant.tsx (UPDATED WITH CHAT ID SUPPORT)
+// File: app/_components/query/QueryAssistant.tsx (UPDATED WITH INCREMENTAL UPDATE SUPPORT)
 'use client'
 
 import { useState } from 'react'
@@ -16,7 +16,11 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
-  Zap
+  Zap,
+  Database,
+  TrendingUp,
+  RefreshCw,
+  BarChart3
 } from 'lucide-react'
 import { explainQuery, getQuerySuggestions } from '@/app/actions/remoteQuery'
 
@@ -24,7 +28,7 @@ interface QueryAssistantProps {
   connectionId: string
   currentQuery: string
   onQuerySelect: (query: string) => void
-  chatId?: number // NEW: Add chatId prop
+  chatId?: number
 }
 
 interface QuerySuggestion {
@@ -37,6 +41,14 @@ interface OptimizationResult {
   optimizedQuery: string
   explanation: string
   expectedImprovement: string
+  optimizationType?: string
+  schemaAnalysis?: {
+    tablesAvailable: number
+    tablesReferenced: string[]
+    hasSchemaContext: boolean
+  }
+  enhanced?: boolean
+  fallback?: boolean
 }
 
 const difficultyIcons = {
@@ -48,8 +60,10 @@ const difficultyIcons = {
 export default function QueryAssistant({ connectionId, currentQuery, onQuerySelect, chatId }: QueryAssistantProps) {
   const [isExplaining, setIsExplaining] = useState(false)
   const [explanation, setExplanation] = useState<string | null>(null)
+  const [explanationMeta, setExplanationMeta] = useState<any>(null)
   const [isGettingSuggestions, setIsGettingSuggestions] = useState(false)
   const [suggestions, setSuggestions] = useState<QuerySuggestion[]>([])
+  const [suggestionsMeta, setSuggestionsMeta] = useState<any>(null)
   const [userIntent, setUserIntent] = useState('')
   const [activeTab, setActiveTab] = useState<'explain' | 'suggest' | 'optimize'>('explain')
   
@@ -57,6 +71,7 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
   const [isOptimizing, setIsOptimizing] = useState(false)
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null)
   const [optimizationError, setOptimizationError] = useState<string | null>(null)
+  const [optimizationMeta, setOptimizationMeta] = useState<any>(null)
 
   const handleExplainQuery = async () => {
     if (!currentQuery.trim()) return
@@ -66,11 +81,17 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
       const result = await explainQuery(connectionId, currentQuery)
       if (result.success) {
         setExplanation(result.explanation || null)
+        setExplanationMeta({
+          schemaContext: result.schemaContext,
+          contextSource: result.contextSource
+        })
       } else {
         setExplanation(`Error: ${result.error}`)
+        setExplanationMeta(null)
       }
     } catch (error) {
       setExplanation('Failed to explain query')
+      setExplanationMeta(null)
     } finally {
       setIsExplaining(false)
     }
@@ -84,11 +105,17 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
       const result = await getQuerySuggestions(connectionId, userIntent)
       if (result.success) {
         setSuggestions(result.suggestions || [])
+        setSuggestionsMeta({
+          schemaContext: result.schemaContext,
+          contextSource: result.contextSource
+        })
       } else {
         setSuggestions([])
+        setSuggestionsMeta(null)
       }
     } catch (error) {
       setSuggestions([])
+      setSuggestionsMeta(null)
     } finally {
       setIsGettingSuggestions(false)
     }
@@ -100,9 +127,10 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
     setIsOptimizing(true)
     setOptimizationError(null)
     setOptimizationResult(null)
+    setOptimizationMeta(null)
 
     try {
-      console.log('🎯 QueryAssistant: Sending optimization request with chatId:', chatId) // NEW: Log chatId
+      console.log('🎯 QueryAssistant: Sending optimization request with chatId:', chatId)
 
       const response = await fetch('/api/optimize-query', {
         method: 'POST',
@@ -112,19 +140,31 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
         body: JSON.stringify({
           connectionId,
           query: currentQuery,
-          chatId: chatId // NEW: Include chatId in request
+          chatId: chatId
         })
       })
 
       const result = await response.json()
       
-      console.log('⚡ QueryAssistant: Received optimization result:', result) // NEW: Enhanced logging
+      console.log('⚡ QueryAssistant: Received optimization result:', result)
       
       if (result.success) {
         if (result.optimization) {
           setOptimizationResult(result.optimization)
+          setOptimizationMeta({
+            schemaSource: result.schemaSource,
+            schemaContext: result.schemaContext,
+            enhanced: result.enhanced,
+            fallback: result.fallback
+          })
         } else {
           setOptimizationResult(null)
+          setOptimizationMeta({
+            schemaSource: result.schemaSource,
+            schemaContext: result.schemaContext,
+            enhanced: result.enhanced,
+            message: result.message
+          })
         }
       } else {
         setOptimizationError(result.error || 'Failed to optimize query')
@@ -141,6 +181,24 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
     navigator.clipboard.writeText(text)
   }
 
+  const getSchemaSourceIcon = (source: string) => {
+    switch (source) {
+      case 'embeddings': return <Database className="h-3 w-3 text-blue-400" />
+      case 'database': return <RefreshCw className="h-3 w-3 text-yellow-400" />
+      case 'fallback': return <AlertTriangle className="h-3 w-3 text-orange-400" />
+      default: return <Database className="h-3 w-3 text-gray-400" />
+    }
+  }
+
+  const getSchemaSourceText = (source: string) => {
+    switch (source) {
+      case 'embeddings': return 'Using AI embeddings'
+      case 'database': return 'Using database schema'
+      case 'fallback': return 'Using fallback schema'
+      default: return 'Schema source unknown'
+    }
+  }
+
   return (
     <div className="w-full max-w-2xl bg-[#111214] border border-blue-500/20 rounded-lg flex flex-col h-[80vh]">
       <CardHeader className="flex-shrink-0 pb-4">
@@ -154,7 +212,7 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
           )}
         </CardTitle>
         <CardDescription className="text-gray-400">
-          Get help with understanding queries, generating new ones, and optimizing performance
+          Enhanced with AI embeddings, incremental updates, and smart optimization
         </CardDescription>
       </CardHeader>
       
@@ -209,9 +267,23 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
               {explanation && (
                 <Card className="bg-[#0a0a0a] border-blue-500/20">
                   <CardContent className="pt-4">
-                    <div className="whitespace-pre-wrap text-sm text-gray-300 leading-relaxed">
+                    <div className="whitespace-pre-wrap text-sm text-gray-300 leading-relaxed mb-3">
                       {explanation}
                     </div>
+                    
+                    {explanationMeta && (
+                      <div className="border-t border-blue-500/20 pt-3 mt-3">
+                        <div className="flex items-center gap-2 text-xs text-blue-400">
+                          {getSchemaSourceIcon(explanationMeta.contextSource)}
+                          <span>{getSchemaSourceText(explanationMeta.contextSource)}</span>
+                          {explanationMeta.schemaContext > 0 && (
+                            <Badge variant="outline" className="text-xs border-blue-500/30">
+                              {explanationMeta.schemaContext} tables
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -253,7 +325,15 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
             <div className="flex-1 overflow-y-auto">
               {suggestions.length > 0 && (
                 <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-gray-200">Suggested Queries</h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-gray-200">Suggested Queries</h4>
+                    {suggestionsMeta && (
+                      <div className="flex items-center gap-2 text-xs text-blue-400">
+                        {getSchemaSourceIcon(suggestionsMeta.contextSource)}
+                        <span>{suggestionsMeta.schemaContext} tables</span>
+                      </div>
+                    )}
+                  </div>
                   <div className="space-y-3">
                     {suggestions.map((suggestion, index) => {
                       const DifficultyIcon = difficultyIcons[suggestion.difficulty]
@@ -354,11 +434,51 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
                   <CardContent className="pt-4">
                     <div className="space-y-4">
                       <div>
-                        <h4 className="text-sm font-medium text-blue-400 mb-2">Optimization Results</h4>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h4 className="text-sm font-medium text-blue-400">Optimization Results</h4>
+                          {optimizationMeta?.enhanced && (
+                            <Badge variant="outline" className="text-xs text-green-400 border-green-500/30">
+                              <TrendingUp className="h-3 w-3 mr-1" />
+                              Enhanced
+                            </Badge>
+                          )}
+                          {optimizationMeta?.fallback && (
+                            <Badge variant="outline" className="text-xs text-yellow-400 border-yellow-500/30">
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              Fallback
+                            </Badge>
+                          )}
+                        </div>
+                        
                         <p className="text-sm text-gray-300 mb-2">{optimizationResult.explanation}</p>
                         <p className="text-xs text-green-400 mb-3">
                           Expected improvement: {optimizationResult.expectedImprovement}
                         </p>
+                        
+                        {optimizationMeta && (
+                          <div className="space-y-2 mb-3">
+                            <div className="flex items-center gap-2 text-xs text-blue-400">
+                              {getSchemaSourceIcon(optimizationMeta.schemaSource)}
+                              <span>{getSchemaSourceText(optimizationMeta.schemaSource)}</span>
+                              {optimizationMeta.schemaContext > 0 && (
+                                <Badge variant="outline" className="text-xs border-blue-500/30">
+                                  {optimizationMeta.schemaContext} tables
+                                </Badge>
+                              )}
+                            </div>
+                            
+                            {optimizationResult.schemaAnalysis && (
+                              <div className="flex items-center gap-2 text-xs text-gray-400">
+                                <BarChart3 className="h-3 w-3" />
+                                <span>
+                                  {optimizationResult.schemaAnalysis.tablesAvailable} tables available, 
+                                  {optimizationResult.schemaAnalysis.tablesReferenced?.length || 0} referenced
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
                         {chatId && (
                           <p className="text-xs text-blue-400 mb-3">
                             💬 Optimization performed for Chat #{chatId}
@@ -398,19 +518,40 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
               ) : optimizationResult === null && !isOptimizing && !optimizationError && currentQuery.trim() ? (
                 <div className="text-center py-6 text-gray-400">
                   <Zap className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No optimization suggestions for this query</p>
-                  <p className="text-xs text-gray-500 mt-1">The query appears to be already well-optimized</p>
-                  {chatId && (
-                    <p className="text-xs text-blue-400 mt-2">
-                      💬 Analysis completed for Chat #{chatId}
-                    </p>
+                  <p className="text-sm">
+                    {optimizationMeta?.message || 'No optimization suggestions for this query'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    The query appears to be already well-optimized
+                  </p>
+                  {optimizationMeta && (
+                    <div className="mt-3 space-y-1">
+                      <div className="flex items-center justify-center gap-2 text-xs text-blue-400">
+                        {getSchemaSourceIcon(optimizationMeta.schemaSource)}
+                        <span>{getSchemaSourceText(optimizationMeta.schemaSource)}</span>
+                        {optimizationMeta.schemaContext > 0 && (
+                          <Badge variant="outline" className="text-xs border-blue-500/30">
+                            {optimizationMeta.schemaContext} tables
+                          </Badge>
+                        )}
+                      </div>
+                      {chatId && (
+                        <p className="text-xs text-blue-400">
+                          💬 Analysis completed for Chat #{chatId}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               ) : null}
 
               <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
-                <h4 className="text-sm font-medium text-blue-400 mb-2">General Optimization Tips</h4>
+                <h4 className="text-sm font-medium text-blue-400 mb-2">Enhanced Optimization Tips</h4>
                 <ul className="text-xs text-blue-300 space-y-1">
+                  <li>• Uses AI embeddings for context-aware optimization</li>
+                  <li>• Incremental schema updates keep context fresh</li>
+                  <li>• Schema-aware suggestions for better performance</li>
+                  <li>• Smart table relationship analysis</li>
                   <li>• Use LIMIT to restrict result sets for faster queries</li>
                   <li>• Add WHERE clauses to filter data early</li>
                   <li>• Consider creating indexes on frequently queried columns</li>
@@ -422,7 +563,7 @@ export default function QueryAssistant({ connectionId, currentQuery, onQuerySele
                 </ul>
                 {chatId && (
                   <p className="text-xs text-blue-400 mt-3 pt-2 border-t border-blue-500/20">
-                    💬 Tips provided for Chat #{chatId}
+                    💬 Enhanced tips provided for Chat #{chatId}
                   </p>
                 )}
               </div>

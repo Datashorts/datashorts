@@ -1,6 +1,16 @@
-// lib/agents2/remoteQueryAgent.ts (Enhanced with chatId support)
+// lib/agents2/remoteQueryAgent.ts (Enhanced with Incremental Schema Updates)
 import { executeSQLQuery } from '@/app/lib/db/executeQuery';
 import { openaiClient } from '@/app/lib/clients';
+import { index as pinecone } from '@/app/lib/pinecone';
+import { db } from '@/configs/db';
+import { dbConnections } from '@/configs/schema';
+import { eq } from 'drizzle-orm';
+import OpenAI from 'openai';
+import { 
+  incrementalSchemaUpdate, 
+  smartSchemaUpdate, 
+  detectSchemaChangeType 
+} from '@/lib/utils/incrementalSchemaUpdates';
 
 interface QueryValidationResult {
   isValid: boolean;
@@ -33,23 +43,198 @@ interface RemoteQueryResult {
     affectedTables: string[];
     readOnly: boolean;
   };
+  schemaUpdate?: {
+    updated: boolean;
+    type: 'none' | 'incremental' | 'smart' | 'targeted';
+    tablesProcessed: number;
+    vectorsAdded: number;
+    vectorsRemoved: number;
+    vectorsUpdated: number;
+    details?: any;
+  };
+}
+
+interface SchemaEmbedding {
+  tableName: string;
+  text: string;
+  columns: string;
+  score: number;
+}
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+/**
+ * Retrieve schema context from Pinecone embeddings
+ */
+async function getSchemaEmbeddingsContext(connectionId: string, queryText: string): Promise<SchemaEmbedding[]> {
+  try {
+    console.log('🔍 Retrieving schema embeddings from Pinecone for connection:', connectionId);
+    
+    // Generate embedding for the query
+    const queryEmbedding = await openai.embeddings.create({
+      model: "text-embedding-ada-002",
+      input: `Database schema for: ${queryText}`,
+      encoding_format: "float",
+    });
+
+    // Search for relevant schema embeddings
+    const searchResult = await pinecone.query({
+      vector: queryEmbedding.data[0].embedding,
+      topK: 10,
+      filter: {
+        connectionId: connectionId,
+        pipeline: "pipeline2",
+        type: "schema"
+      },
+      includeMetadata: true,
+    });
+
+    if (!searchResult.matches || searchResult.matches.length === 0) {
+      console.log('⚠️ No schema embeddings found for connection:', connectionId);
+      return [];
+    }
+
+    // Process matches into schema context
+    const schemaContext: SchemaEmbedding[] = searchResult.matches.map(match => ({
+      tableName: match.metadata?.tableName as string || 'unknown',
+      text: match.metadata?.text as string || '',
+      columns: match.metadata?.columns as string || '',
+      score: match.score || 0
+    }));
+
+    console.log('✅ Retrieved', schemaContext.length, 'schema embeddings');
+    return schemaContext;
+    
+  } catch (error) {
+    console.error('❌ Error retrieving schema embeddings:', error);
+    return [];
+  }
 }
 
 /**
- * Validate SQL query for safety and potential issues
+ * Detect if query execution resulted in schema changes
  */
-async function validateQuery(sqlQuery: string, schema: any[]): Promise<QueryValidationResult> {
+function detectSchemaChanges(sqlQuery: string): boolean {
+  const upperQuery = sqlQuery.toUpperCase().trim();
+  
+  const schemaChangePatterns = [
+    'CREATE TABLE',
+    'DROP TABLE',
+    'ALTER TABLE',
+    'ADD COLUMN',
+    'DROP COLUMN',
+    'RENAME COLUMN',
+    'MODIFY COLUMN',
+    'ALTER COLUMN',
+    'CREATE INDEX',
+    'DROP INDEX',
+    'RENAME TABLE'
+  ];
+  
+  return schemaChangePatterns.some(pattern => upperQuery.includes(pattern));
+}
+
+/**
+ * Enhanced schema update with incremental approach
+ */
+async function updateSchemaEmbeddingsIncremental(connectionId: string, sqlQuery: string): Promise<{
+  success: boolean;
+  type: 'incremental' | 'smart' | 'targeted';
+  tablesProcessed: number;
+  vectorsAdded: number;
+  vectorsRemoved: number;
+  vectorsUpdated: number;
+  details?: any;
+  error?: string;
+}> {
   try {
+    console.log('🔄 Starting incremental schema update for connection:', connectionId);
+    console.log('🔍 Analyzing query for schema changes:', sqlQuery);
+    
+    // Detect the type of schema change
+    const changeDetection = detectSchemaChangeType(sqlQuery);
+    console.log('🎯 Change detection result:', changeDetection);
+    
+    let updateResult;
+    let updateType: 'incremental' | 'smart' | 'targeted' = 'incremental';
+    
+    // Choose update strategy based on change type
+    if (changeDetection.type !== 'NONE' && changeDetection.affectedTable) {
+      // Use smart update for specific table changes
+      console.log('🧠 Using smart schema update');
+      updateResult = await smartSchemaUpdate(connectionId, sqlQuery);
+      updateType = 'smart';
+    } else {
+      // Use incremental update for general changes
+      console.log('🔄 Using incremental schema update');
+      updateResult = await incrementalSchemaUpdate(connectionId);
+      updateType = 'incremental';
+    }
+    
+    if (updateResult.success) {
+      console.log('✅ Schema update completed:', {
+        type: updateType,
+        tablesProcessed: updateResult.tablesProcessed,
+        vectorsAdded: updateResult.vectorsAdded,
+        vectorsRemoved: updateResult.vectorsRemoved,
+        vectorsUpdated: updateResult.vectorsUpdated
+      });
+      
+      return {
+        success: true,
+        type: updateType,
+        tablesProcessed: updateResult.tablesProcessed,
+        vectorsAdded: updateResult.vectorsAdded,
+        vectorsRemoved: updateResult.vectorsRemoved,
+        vectorsUpdated: updateResult.vectorsUpdated,
+        details: updateResult.details
+      };
+    } else {
+      console.error('❌ Schema update failed:', updateResult.error);
+      return {
+        success: false,
+        type: updateType,
+        tablesProcessed: 0,
+        vectorsAdded: 0,
+        vectorsRemoved: 0,
+        vectorsUpdated: 0,
+        error: updateResult.error
+      };
+    }
+    
+  } catch (error) {
+    console.error('❌ Error in incremental schema update:', error);
+    return {
+      success: false,
+      type: 'incremental',
+      tablesProcessed: 0,
+      vectorsAdded: 0,
+      vectorsRemoved: 0,
+      vectorsUpdated: 0,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Enhanced validate query with schema embeddings context
+ */
+async function validateQuery(sqlQuery: string, schemaEmbeddings: SchemaEmbedding[]): Promise<QueryValidationResult> {
+  try {
+    // Create schema context from embeddings
+    const schemaContext = schemaEmbeddings.map(embedding => 
+      `Table: ${embedding.tableName} - ${embedding.columns}`
+    ).join('\n');
+
     const prompt = `
 Analyze this SQL query for potential issues, security risks, and optimization opportunities:
 
 Query: ${sqlQuery}
 
-Available tables and columns:
-${schema.map(table => `
-Table: ${table.tableName}
-Columns: ${table.columns.map((col: any) => `${col.column_name} (${col.data_type})`).join(', ')}
-`).join('\n')}
+Relevant schema context from embeddings:
+${schemaContext}
 
 Please evaluate:
 1. Security risks (SQL injection potential, privilege escalation)
@@ -72,7 +257,7 @@ Respond in JSON format:
       messages: [
         {
           role: "system",
-          content: "You are a database security and performance expert. Analyze SQL queries for potential issues and provide recommendations."
+          content: "You are a database security and performance expert. Analyze SQL queries using schema embeddings context for potential issues and provide recommendations."
         },
         {
           role: "user",
@@ -103,12 +288,12 @@ Respond in JSON format:
 }
 
 /**
- * Suggest query optimizations
+ * Enhanced optimize query with schema embeddings context
  */
-async function optimizeQuery(sqlQuery: string, schema: any[]): Promise<QueryOptimizationSuggestion | null> {
+async function optimizeQuery(sqlQuery: string, schemaEmbeddings: SchemaEmbedding[]): Promise<QueryOptimizationSuggestion | null> {
   try {
     // Basic query analysis first
-    const upperQuery = sqlQuery.toUpperCase().trim()
+    const upperQuery = sqlQuery.toUpperCase().trim();
     
     // Skip optimization for very simple queries
     if (upperQuery.length < 20 || 
@@ -116,20 +301,22 @@ async function optimizeQuery(sqlQuery: string, schema: any[]): Promise<QueryOpti
          !upperQuery.includes('ORDER BY') && !upperQuery.includes('GROUP BY') &&
          !upperQuery.includes('CROSS') && !upperQuery.includes('SUBQUERY') &&
          !upperQuery.includes('SELECT') || upperQuery.includes('LIMIT'))) {
-      return null
+      return null;
     }
 
+    // Create schema context from embeddings
+    const schemaContext = schemaEmbeddings.map(embedding => 
+      `Table: ${embedding.tableName}\nColumns: ${embedding.columns}\nContext: ${embedding.text}`
+    ).join('\n\n');
+
     const prompt = `
-Analyze and optimize this SQL query for better performance:
+Analyze and optimize this SQL query for better performance using schema embeddings context:
 
 Original Query:
 ${sqlQuery}
 
-Database Schema:
-${schema.map(table => `
-Table: ${table.tableName}
-Columns: ${table.columns.map((col: any) => `${col.column_name} (${col.data_type})`).join(', ')}
-`).join('\n')}
+Database Schema Context (from embeddings):
+${schemaContext}
 
 Look for these optimization opportunities:
 1. Unnecessary CROSS JOINs that can be eliminated or converted to proper JOINs
@@ -137,7 +324,7 @@ Look for these optimization opportunities:
 3. Missing LIMIT clauses for potentially large result sets
 4. Inefficient WHERE conditions that can be optimized
 5. Redundant DISTINCT operations
-6. Function calls on columns that prevent index usage (like DATE(), UPPER(), etc.)
+6. Function calls on columns that prevent index usage
 7. Complex nested queries that can be simplified
 8. Redundant EXISTS or IN clauses
 9. Inefficient ORDER BY operations
@@ -159,14 +346,14 @@ Respond in JSON format:
 
 If no meaningful optimizations are possible, respond with:
 {"canOptimize": false, "reason": "explanation why no optimization is needed"}
-`
+`;
 
     const response = await openaiClient.chat.completions.create({
       model: "gpt-4",
       messages: [
         {
           role: "system",
-          content: "You are an expert SQL query optimizer. Analyze queries and suggest concrete improvements for better performance. Focus on practical optimizations that will have measurable impact. Be specific about what changes you're making."
+          content: "You are an expert SQL query optimizer using schema embeddings context. Analyze queries and suggest concrete improvements for better performance."
         },
         {
           role: "user",
@@ -175,12 +362,12 @@ If no meaningful optimizations are possible, respond with:
       ],
       temperature: 0.1,
       max_tokens: 1200
-    })
+    });
 
-    const result = JSON.parse(response.choices[0].message.content || '{}')
+    const result = JSON.parse(response.choices[0].message.content || '{}');
     
     if (!result.canOptimize) {
-      return null
+      return null;
     }
 
     return {
@@ -188,10 +375,10 @@ If no meaningful optimizations are possible, respond with:
       optimizedQuery: result.optimizedQuery || sqlQuery,
       explanation: result.explanation || 'Query optimized for better performance',
       expectedImprovement: result.expectedImprovement || 'Performance improvement expected'
-    }
+    };
   } catch (error) {
-    console.error('Error optimizing query:', error)
-    return null
+    console.error('Error optimizing query:', error);
+    return null;
   }
 }
 
@@ -232,38 +419,42 @@ function analyzeQueryMetadata(sqlQuery: string): {
 }
 
 /**
- * Remote Query Execution Agent - Enhanced with chatId support
+ * Enhanced Remote Query Execution Agent with Incremental Schema Updates
  */
 export async function remoteQueryAgent(
   sqlQuery: string,
   connectionId: string,
-  schema: any[] = [],
+  schema: any[] = [], // Keep for backward compatibility, but use embeddings primarily
   options: {
     validateQuery?: boolean;
     optimizeQuery?: boolean;
     forceExecution?: boolean;
     saveToHistory?: boolean | undefined;
-    chatId?: number; // NEW: Add chatId support
+    chatId?: number;
   } = {}
 ): Promise<RemoteQueryResult> {
   const startTime = Date.now();
   
   try {
-    console.log('🎯 Remote Query Agent: Starting execution...');
+    console.log('🎯 Enhanced Remote Query Agent with Incremental Updates: Starting execution...');
     console.log('📝 Query:', sqlQuery);
     console.log('🔗 Connection ID:', connectionId);
-    console.log('💬 Chat ID:', options.chatId); // NEW: Log chatId
+    console.log('💬 Chat ID:', options.chatId);
     console.log('⚙️ Options:', options);
 
     // Analyze query metadata
     const metadata = analyzeQueryMetadata(sqlQuery);
     console.log('📊 Query metadata:', metadata);
 
-    // Validate query if requested
+    // Get schema context from embeddings instead of raw schema
+    const schemaEmbeddings = await getSchemaEmbeddingsContext(connectionId, sqlQuery);
+    console.log('🧠 Retrieved', schemaEmbeddings.length, 'relevant schema embeddings');
+
+    // Validate query if requested (using embeddings context)
     let validation: QueryValidationResult | undefined;
-    if (options.validateQuery !== false && schema.length > 0) {
-      console.log('🔍 Validating query...');
-      validation = await validateQuery(sqlQuery, schema);
+    if (options.validateQuery !== false && schemaEmbeddings.length > 0) {
+      console.log('🔍 Validating query with embeddings context...');
+      validation = await validateQuery(sqlQuery, schemaEmbeddings);
       console.log('✅ Validation result:', validation);
       
       // Block high-risk queries unless forced
@@ -277,11 +468,11 @@ export async function remoteQueryAgent(
       }
     }
 
-    // Get optimization suggestions if requested
+    // Get optimization suggestions if requested (using embeddings context)
     let optimization: QueryOptimizationSuggestion | undefined;
-    if (options.optimizeQuery && schema.length > 0) {
-      console.log('⚡ Optimizing query...');
-      optimization = (await optimizeQuery(sqlQuery, schema)) ?? undefined;
+    if (options.optimizeQuery && schemaEmbeddings.length > 0) {
+      console.log('⚡ Optimizing query with embeddings context...');
+      optimization = (await optimizeQuery(sqlQuery, schemaEmbeddings)) ?? undefined;
       console.log('🔧 Optimization result:', optimization);
     }
 
@@ -290,27 +481,46 @@ export async function remoteQueryAgent(
     const result = await executeSQLQuery(connectionId, sqlQuery);
     const executionTime = Date.now() - startTime;
     console.log('📈 Query executed in', executionTime, 'ms');
-    console.log('📊 Raw executeSQLQuery result:', {
-      success: result.success,
-      rows: result.rows ? `${result.rows.length} rows` : 'null',
-      rowCount: result.rowCount,
-      error: result.error
-    });
+
+    // Initialize schema update result
+    let schemaUpdate = {
+      updated: false,
+      type: 'none' as 'none' | 'incremental' | 'smart' | 'targeted',
+      tablesProcessed: 0,
+      vectorsAdded: 0,
+      vectorsRemoved: 0,
+      vectorsUpdated: 0
+    };
+
+    // Check if schema was modified and update embeddings incrementally if needed
+    if (result.success && detectSchemaChanges(sqlQuery)) {
+      console.log('🔄 Schema changes detected, performing incremental update...');
+    
+      const updateResult = await updateSchemaEmbeddingsIncremental(connectionId, sqlQuery);
+    
+      schemaUpdate = {
+        updated: updateResult.success,
+        type: updateResult.type,
+        tablesProcessed: updateResult.tablesProcessed,
+        vectorsAdded: updateResult.vectorsAdded,
+        vectorsRemoved: updateResult.vectorsRemoved,
+        vectorsUpdated: updateResult.vectorsUpdated
+      };
+    
+      console.log('📊 Incremental schema update result:', schemaUpdate);
+    }
 
     if (!result.success) {
       console.log('❌ Query failed, attempting to save failed query to history...');
       
       // Save failed query to history if enabled
       if (options.saveToHistory !== false) {
-        console.log('💾 saveToHistory option is enabled, proceeding with failed query save...');
         try {
-          console.log('🔄 Importing saveQueryToHistory...');
           const { saveQueryToHistory } = await import('@/app/actions/queryHistory');
-          console.log('✅ Successfully imported saveQueryToHistory');
           
           const historyEntry = {
             connectionId: Number(connectionId),
-            chatId: options.chatId, // NEW: Include chatId
+            chatId: options.chatId,
             sqlQuery: sqlQuery.trim(),
             success: false,
             executionTime,
@@ -323,20 +533,11 @@ export async function remoteQueryAgent(
             optimizationSuggestion: optimization,
           };
 
-          console.log('📋 Failed query history entry:', historyEntry);
           const saveResult = await saveQueryToHistory(historyEntry);
           console.log('💾 Failed query save result:', saveResult);
-          
-          if (!saveResult.success) {
-            console.error('❌ Failed to save failed query to history:', saveResult.error);
-          } else {
-            console.log('✅ Successfully saved failed query to history with ID:', saveResult.data?.id);
-          }
         } catch (historyError) {
-          console.error('💥 Error in failed query history saving process:', historyError);
+          console.error('💥 Error saving failed query to history:', historyError);
         }
-      } else {
-        console.log('⏭️ Skipping failed query history save (saveToHistory = false)');
       }
 
       return {
@@ -344,13 +545,13 @@ export async function remoteQueryAgent(
         error: result.error,
         validation,
         optimization,
-        metadata
+        metadata,
+        schemaUpdate
       };
     }
 
     // Extract column names from the first row
     const columns = result.rows && result.rows.length > 0 ? Object.keys(result.rows[0]) : [];
-    console.log('📋 Extracted columns:', columns);
 
     const queryResult: RemoteQueryResult = {
       success: true,
@@ -362,33 +563,25 @@ export async function remoteQueryAgent(
       },
       validation,
       optimization,
-      metadata
+      metadata,
+      schemaUpdate
     };
 
-    console.log('✅ Query executed successfully, now attempting to save to history...');
+    console.log('✅ Query executed successfully with incremental schema updates');
 
-    // Save successful query to history if enabled (default: true)
+    // Save successful query to history if enabled
     if (options.saveToHistory !== false) {
-      console.log('💾 saveToHistory option check:', {
-        saveToHistory: options.saveToHistory,
-        chatId: options.chatId, // NEW: Log chatId in save check
-        condition: 'options.saveToHistory !== false',
-        result: Boolean(options.saveToHistory ?? true)
-      });
-      
       try {
-        console.log('🔄 Importing saveQueryToHistory function...');
         const { saveQueryToHistory } = await import('@/app/actions/queryHistory');
-        console.log('✅ Successfully imported saveQueryToHistory');
         
         const historyEntry = {
           connectionId: Number(connectionId),
-          chatId: options.chatId, // NEW: Include chatId
+          chatId: options.chatId,
           sqlQuery: sqlQuery.trim(),
           success: true,
           executionTime,
           rowCount: result.rowCount || 0,
-          resultData: result.rows?.slice(0, 50), // Store first 50 rows
+          resultData: result.rows?.slice(0, 50),
           resultColumns: columns,
           generatedBy: 'manual' as const,
           validationEnabled: options.validateQuery !== false,
@@ -398,53 +591,26 @@ export async function remoteQueryAgent(
           optimizationSuggestion: optimization,
         };
 
-        console.log('📋 Successful query history entry to save:', {
-          ...historyEntry,
-          resultData: historyEntry.resultData ? `${historyEntry.resultData.length} rows` : 'null'
-        });
-
-        console.log('🔄 Calling saveQueryToHistory...');
         const saveResult = await saveQueryToHistory(historyEntry);
         console.log('💾 Successful query save result:', saveResult);
-        
-        if (!saveResult.success) {
-          console.error('❌ Failed to save successful query to history:', saveResult.error);
-        } else {
-          console.log('🎉 Successfully saved successful query to history with ID:', saveResult.data?.id);
-        }
       } catch (historyError) {
-        console.error('💥 Error in successful query history saving process:', historyError);
-        console.error('📊 History error details:', {
-          name: historyError instanceof Error ? historyError.name : 'Unknown',
-          message: historyError instanceof Error ? historyError.message : 'Unknown error',
-          stack: historyError instanceof Error ? historyError.stack : 'No stack trace'
-        });
-        // Don't fail the main query if history save fails
+        console.error('💥 Error saving successful query to history:', historyError);
       }
-    } else {
-      console.log('⏭️ Skipping successful query history save (saveToHistory = false)');
     }
 
-    console.log('🏁 Returning successful query result');
     return queryResult;
 
   } catch (error) {
-    console.error('💥 Error in remote query agent:', error);
-    console.error('📊 Agent error details:', {
-      name: error instanceof Error ? error.name : 'Unknown',
-      message: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : 'No stack trace'
-    });
+    console.error('💥 Error in enhanced remote query agent:', error);
     
     // Save failed query to history if enabled
     if (options.saveToHistory !== false) {
-      console.log('💾 Attempting to save exception query to history...');
       try {
         const { saveQueryToHistory } = await import('@/app/actions/queryHistory');
         
         const historyEntry = {
           connectionId: Number(connectionId),
-          chatId: options.chatId, // NEW: Include chatId
+          chatId: options.chatId,
           sqlQuery: sqlQuery.trim(),
           success: false,
           executionTime: Date.now() - startTime,
@@ -455,9 +621,7 @@ export async function remoteQueryAgent(
           forceExecution: options.forceExecution || false,
         };
 
-        console.log('📋 Exception query history entry:', historyEntry);
-        const saveResult = await saveQueryToHistory(historyEntry);
-        console.log('💾 Exception query save result:', saveResult);
+        await saveQueryToHistory(historyEntry);
       } catch (historyError) {
         console.error('💥 Error saving exception query to history:', historyError);
       }
@@ -466,12 +630,20 @@ export async function remoteQueryAgent(
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
-      metadata: analyzeQueryMetadata(sqlQuery)
+      metadata: analyzeQueryMetadata(sqlQuery),
+      schemaUpdate: {
+        updated: false,
+        type: 'none',
+        tablesProcessed: 0,
+        vectorsAdded: 0,
+        vectorsRemoved: 0,
+        vectorsUpdated: 0
+      }
     };
   }
 }
 
-// Enhanced batch query agent with chatId support
+// Enhanced batch query agent with incremental schema updates support
 export async function batchQueryAgent(
   queries: string[],
   connectionId: string,
@@ -481,7 +653,7 @@ export async function batchQueryAgent(
     stopOnError?: boolean;
     transactional?: boolean;
     saveToHistory?: boolean;
-    chatId?: number; // NEW: Add chatId support
+    chatId?: number;
   } = {}
 ): Promise<{
   success: boolean;
@@ -489,13 +661,31 @@ export async function batchQueryAgent(
   totalExecutionTime: number;
   successCount: number;
   errorCount: number;
+  schemaUpdate: {
+    updated: boolean;
+    totalTablesProcessed: number;
+    totalVectorsAdded: number;
+    totalVectorsRemoved: number;
+    totalVectorsUpdated: number;
+    updateDetails: any[];
+  };
 }> {
   const startTime = Date.now();
   const results: RemoteQueryResult[] = [];
   let successCount = 0;
   let errorCount = 0;
+  
+  // Track cumulative schema updates
+  let totalSchemaUpdates = {
+    updated: false,
+    totalTablesProcessed: 0,
+    totalVectorsAdded: 0,
+    totalVectorsRemoved: 0,
+    totalVectorsUpdated: 0,
+    updateDetails: [] as any[]
+  };
 
-  console.log(`Batch Query Agent: Executing ${queries.length} queries with chatId: ${options.chatId}`);
+  console.log(`Batch Query Agent with Incremental Updates: Executing ${queries.length} queries with chatId: ${options.chatId}`);
 
   try {
     // If transactional, wrap in BEGIN/COMMIT
@@ -513,13 +703,27 @@ export async function batchQueryAgent(
         validateQuery: options.validateQueries,
         optimizeQuery: false, // Skip optimization for batch to improve performance
         saveToHistory: options.saveToHistory !== false,
-        chatId: options.chatId // NEW: Pass chatId to individual queries
+        chatId: options.chatId
       });
 
       results.push(result);
 
       if (result.success) {
         successCount++;
+        
+        // Accumulate schema updates
+        if (result.schemaUpdate?.updated) {
+          totalSchemaUpdates.updated = true;
+          totalSchemaUpdates.totalTablesProcessed += result.schemaUpdate.tablesProcessed;
+          totalSchemaUpdates.totalVectorsAdded += result.schemaUpdate.vectorsAdded;
+          totalSchemaUpdates.totalVectorsRemoved += result.schemaUpdate.vectorsRemoved;
+          totalSchemaUpdates.totalVectorsUpdated += result.schemaUpdate.vectorsUpdated;
+          totalSchemaUpdates.updateDetails.push({
+            queryIndex: i,
+            query: query.substring(0, 100) + '...',
+            ...result.schemaUpdate
+          });
+        }
       } else {
         errorCount++;
         
@@ -542,12 +746,21 @@ export async function batchQueryAgent(
 
     const totalExecutionTime = Date.now() - startTime;
 
+    console.log('🏁 Batch execution completed with incremental schema updates:', {
+      successCount,
+      errorCount,
+      schemaUpdatesPerformed: totalSchemaUpdates.updated,
+      totalTablesProcessed: totalSchemaUpdates.totalTablesProcessed,
+      totalVectorsModified: totalSchemaUpdates.totalVectorsAdded + totalSchemaUpdates.totalVectorsRemoved + totalSchemaUpdates.totalVectorsUpdated
+    });
+
     return {
       success: errorCount === 0,
       results,
       totalExecutionTime,
       successCount,
-      errorCount
+      errorCount,
+      schemaUpdate: totalSchemaUpdates
     };
 
   } catch (error) {
@@ -567,141 +780,8 @@ export async function batchQueryAgent(
       results,
       totalExecutionTime: Date.now() - startTime,
       successCount,
-      errorCount: errorCount + 1
-    };
-  }
-}
-
-export async function explainQueryAgent(
-  sqlQuery: string,
-  schema: any[] = []
-): Promise<{
-  success: boolean;
-  explanation?: string;
-  queryPlan?: any;
-  error?: string;
-}> {
-  try {
-    const prompt = `
-Explain this SQL query in simple terms:
-
-Query: ${sqlQuery}
-
-Available schema:
-${schema.map(table => `
-Table: ${table.tableName}
-Columns: ${table.columns.map((col: any) => `${col.column_name} (${col.data_type})`).join(', ')}
-`).join('\n')}
-
-Provide a clear explanation that includes:
-1. What the query does
-2. Which tables it accesses
-3. What data it returns
-4. Any joins or complex operations
-5. Potential performance considerations
-
-Keep the explanation accessible to non-technical users while being accurate.
-`;
-
-    const response = await openaiClient.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        {
-          role: "system",
-          content: "You are a database expert who explains SQL queries in clear, simple terms for both technical and non-technical users."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.3,
-      max_tokens: 800
-    });
-
-    return {
-      success: true,
-      explanation: response.choices[0].message.content || 'No explanation available'
-    };
-
-  } catch (error) {
-    console.error('Error explaining query:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to explain query'
-    };
-  }
-}
-
-export async function suggestQueriesAgent(
-  userIntent: string,
-  schema: any[]
-): Promise<{
-  success: boolean;
-  suggestions?: Array<{
-    query: string;
-    description: string;
-    difficulty: 'beginner' | 'intermediate' | 'advanced';
-  }>;
-  error?: string;
-}> {
-  try {
-    const prompt = `
-Based on this user request, suggest relevant SQL queries:
-
-User Intent: ${userIntent}
-
-Available database schema:
-${schema.map(table => `
-Table: ${table.tableName}
-Columns: ${table.columns.map((col: any) => `${col.column_name} (${col.data_type})`).join(', ')}
-`).join('\n')}
-
-Provide 3-5 SQL query suggestions that would help fulfill the user's intent. For each suggestion, include:
-1. The SQL query
-2. A description of what it does
-3. Difficulty level (beginner/intermediate/advanced)
-
-Respond in JSON format:
-{
-  "suggestions": [
-    {
-      "query": "SELECT ...",
-      "description": "This query...",
-      "difficulty": "beginner"
-    }
-  ]
-}
-`;
-
-    const response = await openaiClient.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        {
-          role: "system",
-          content: "You are a helpful SQL assistant that suggests appropriate queries based on user needs."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.5,
-      max_tokens: 1000
-    });
-
-    const result = JSON.parse(response.choices[0].message.content || '{}');
-    
-    return {
-      success: true,
-      suggestions: result.suggestions || []
-    };
-
-  } catch (error) {
-    console.error('Error suggesting queries:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to suggest queries'
+      errorCount: errorCount + 1,
+      schemaUpdate: totalSchemaUpdates
     };
   }
 }
