@@ -1,4 +1,4 @@
-// File: app/actions/remoteQuery.ts (COMPLETE - WITH EMBEDDINGS CONTEXT LOGGING)
+// File: app/actions/remoteQuery.ts (COMPLETE ENHANCED - WITH DATABASE SCHEMA PERSISTENCE)
 'use server'
 
 import { currentUser } from '@clerk/nextjs/server'
@@ -30,7 +30,7 @@ interface QueryResponse {
     vectorsAdded: number
     vectorsRemoved: number
     vectorsUpdated: number
-    details?: any
+    schemaUpdated?: boolean
   }
 }
 
@@ -83,7 +83,7 @@ export async function getSchemaFromEmbeddings(connectionId: string, query: strin
 
     console.log('✅ Retrieved', schemaEmbeddings.length, 'relevant schema embeddings');
     
-    // 🆕 LOG EACH EMBEDDING CONTEXT
+    // LOG EACH EMBEDDING CONTEXT
     console.log('📋 EMBEDDINGS CONTEXT DETAILS:');
     schemaEmbeddings.forEach((embedding, index) => {
       console.log(`📦 Embedding ${index + 1}:`);
@@ -99,6 +99,213 @@ export async function getSchemaFromEmbeddings(connectionId: string, query: strin
   } catch (error) {
     console.error('❌ Error retrieving schema embeddings:', error);
     return [];
+  }
+}
+
+/**
+ * Get fresh schema from database and update db_connections table
+ */
+async function refreshDatabaseSchema(connectionId: string): Promise<{
+  success: boolean;
+  schema?: any[];
+  error?: string;
+}> {
+  try {
+    console.log('🔄 Refreshing database schema for connection:', connectionId);
+    
+    // Get connection details
+    const [connection] = await db
+      .select()
+      .from(dbConnections)
+      .where(eq(dbConnections.id, Number(connectionId)));
+
+    if (!connection) {
+      return { success: false, error: 'Connection not found' };
+    }
+
+    let freshSchema: any[] = [];
+
+    // Get fresh schema based on database type
+    if (connection.dbType === 'postgres' && connection.postgresUrl) {
+      freshSchema = await getPostgresSchema(connection.postgresUrl);
+    } else if (connection.dbType === 'mongodb' && connection.mongoUrl) {
+      freshSchema = await getMongoSchema(connection.mongoUrl);
+    } else {
+      return { success: false, error: 'Unsupported database type or missing connection URL' };
+    }
+
+    // Update the db_connections table with fresh schema
+    await db
+      .update(dbConnections)
+      .set({ 
+        tableSchema: freshSchema,
+        updatedAt: new Date()
+      })
+      .where(eq(dbConnections.id, Number(connectionId)));
+
+    console.log('✅ Database schema updated in db_connections table');
+    console.log('📊 Fresh schema contains', freshSchema.length, 'tables');
+
+    return { success: true, schema: freshSchema };
+  } catch (error) {
+    console.error('❌ Error refreshing database schema:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to refresh schema' 
+    };
+  }
+}
+
+/**
+ * Get PostgreSQL schema
+ */
+async function getPostgresSchema(postgresUrl: string): Promise<any[]> {
+  try {
+    const { Pool } = await import('pg');
+    const pool = new Pool({ 
+      connectionString: postgresUrl,
+      ssl: postgresUrl.includes('localhost') ? false : { rejectUnauthorized: false }
+    });
+
+    // Get all tables
+    const tablesResult = await pool.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_type = 'BASE TABLE'
+      ORDER BY table_name
+    `);
+
+    const schema = [];
+
+    for (const table of tablesResult.rows) {
+      const tableName = table.table_name;
+      
+      // Get columns for each table
+      const columnsResult = await pool.query(`
+        SELECT 
+          column_name,
+          data_type,
+          is_nullable,
+          column_default,
+          character_maximum_length
+        FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = $1
+        ORDER BY ordinal_position
+      `, [tableName]);
+
+      schema.push({
+        tableName,
+        columns: columnsResult.rows,
+        columnCount: columnsResult.rows.length
+      });
+    }
+
+    await pool.end();
+    return schema;
+  } catch (error) {
+    console.error('Error getting PostgreSQL schema:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get MongoDB schema
+ */
+async function getMongoSchema(mongoUrl: string): Promise<any[]> {
+  try {
+    const { connectToMongoDB } = await import('@/configs/mongoDB');
+    const collections = await connectToMongoDB(mongoUrl);
+    
+    return collections.map(collection => ({
+      tableName: collection.collectionName,
+      columns: collection.schema,
+      columnCount: collection.schema.length
+    }));
+  } catch (error) {
+    console.error('Error getting MongoDB schema:', error);
+    throw error;
+  }
+}
+
+/**
+ * Enhanced schema update with database persistence
+ */
+async function updateSchemaEmbeddingsWithPersistence(
+  connectionId: string, 
+  sqlQuery: string
+): Promise<{
+  success: boolean;
+  type: 'incremental' | 'smart' | 'targeted';
+  tablesProcessed: number;
+  vectorsAdded: number;
+  vectorsRemoved: number;
+  vectorsUpdated: number;
+  schemaUpdated: boolean;
+  details?: any;
+}> {
+  try {
+    console.log('🔄 Starting enhanced schema update with database persistence');
+    
+    // Step 1: Detect the type of schema change
+    const changeDetection = detectSchemaChangeType(sqlQuery);
+    console.log('🎯 Change detection result:', changeDetection);
+    
+    let updateResult;
+    let updateType: 'incremental' | 'smart' | 'targeted' = 'incremental';
+    let schemaUpdated = false;
+    
+    // Step 2: Update embeddings based on change type
+    if (changeDetection.type !== 'NONE' && changeDetection.affectedTable) {
+      console.log('🧠 Using smart schema update for specific table changes');
+      updateResult = await smartSchemaUpdate(connectionId, sqlQuery);
+      updateType = 'smart';
+    } else {
+      console.log('🔄 Using incremental schema update for general changes');
+      updateResult = await incrementalSchemaUpdate(connectionId);
+      updateType = 'incremental';
+    }
+    
+    // Step 3: If embeddings were updated successfully, refresh database schema
+    if (updateResult.success && (updateResult.vectorsAdded > 0 || updateResult.vectorsUpdated > 0 || updateResult.vectorsRemoved > 0)) {
+      console.log('📊 Embeddings updated, refreshing database schema...');
+      
+      const schemaRefreshResult = await refreshDatabaseSchema(connectionId);
+      
+      if (schemaRefreshResult.success) {
+        console.log('✅ Database schema successfully updated in db_connections table');
+        schemaUpdated = true;
+      } else {
+        console.error('❌ Failed to update database schema:', schemaRefreshResult.error);
+      }
+    }
+    
+    return {
+      success: updateResult.success,
+      type: updateType,
+      tablesProcessed: updateResult.tablesProcessed,
+      vectorsAdded: updateResult.vectorsAdded,
+      vectorsRemoved: updateResult.vectorsRemoved,
+      vectorsUpdated: updateResult.vectorsUpdated,
+      schemaUpdated,
+      details: {
+        ...updateResult.details,
+        databaseSchemaUpdated: schemaUpdated
+      }
+    };
+    
+  } catch (error) {
+    console.error('❌ Error in enhanced schema update with persistence:', error);
+    return {
+      success: false,
+      type: 'incremental',
+      tablesProcessed: 0,
+      vectorsAdded: 0,
+      vectorsRemoved: 0,
+      vectorsUpdated: 0,
+      schemaUpdated: false
+    };
   }
 }
 
@@ -223,84 +430,6 @@ function detectSchemaChanges(sqlQuery: string): boolean {
 }
 
 /**
- * Update schema embeddings incrementally after schema changes
- */
-async function updateSchemaEmbeddingsIncremental(connectionId: string, sqlQuery: string): Promise<{
-  success: boolean;
-  type: 'incremental' | 'smart' | 'targeted';
-  tablesProcessed: number;
-  vectorsAdded: number;
-  vectorsRemoved: number;
-  vectorsUpdated: number;
-  details?: any;
-}> {
-  try {
-    console.log('🔄 Starting incremental schema update for connection:', connectionId);
-    
-    // Detect the type of schema change
-    const changeDetection = detectSchemaChangeType(sqlQuery);
-    console.log('🎯 Change detection result:', changeDetection);
-    
-    let updateResult;
-    let updateType: 'incremental' | 'smart' | 'targeted' = 'incremental';
-    
-    // Choose update strategy based on change type
-    if (changeDetection.type !== 'NONE' && changeDetection.affectedTable) {
-      // Use smart update for specific table changes
-      console.log('🧠 Using smart schema update');
-      updateResult = await smartSchemaUpdate(connectionId, sqlQuery);
-      updateType = 'smart';
-    } else {
-      // Use incremental update for general changes
-      console.log('🔄 Using incremental schema update');
-      updateResult = await incrementalSchemaUpdate(connectionId);
-      updateType = 'incremental';
-    }
-    
-    if (updateResult.success) {
-      console.log('✅ Schema update completed:', {
-        type: updateType,
-        tablesProcessed: updateResult.tablesProcessed,
-        vectorsAdded: updateResult.vectorsAdded,
-        vectorsRemoved: updateResult.vectorsRemoved,
-        vectorsUpdated: updateResult.vectorsUpdated
-      });
-      
-      return {
-        success: true,
-        type: updateType,
-        tablesProcessed: updateResult.tablesProcessed,
-        vectorsAdded: updateResult.vectorsAdded,
-        vectorsRemoved: updateResult.vectorsRemoved,
-        vectorsUpdated: updateResult.vectorsUpdated,
-        details: updateResult.details
-      };
-    } else {
-      console.error('❌ Schema update failed:', updateResult.error);
-      return {
-        success: false,
-        type: updateType,
-        tablesProcessed: 0,
-        vectorsAdded: 0,
-        vectorsRemoved: 0,
-        vectorsUpdated: 0
-      };
-    }
-    
-  } catch (error) {
-    console.error('❌ Error in incremental schema update:', error);
-    return {
-      success: false,
-      type: 'incremental',
-      tablesProcessed: 0,
-      vectorsAdded: 0,
-      vectorsRemoved: 0,
-      vectorsUpdated: 0
-    };
-  }
-}
-
-/**
  * Save query execution to history with chatId support
  * Excludes schema discovery queries from being saved to history
  */
@@ -378,7 +507,7 @@ async function saveToHistory(
 }
 
 /**
- * Enhanced execute query with schema embeddings and incremental updates
+ * Enhanced execute query with database schema persistence
  */
 export async function executeRemoteQuery(
   connectionId: string,
@@ -394,7 +523,7 @@ export async function executeRemoteQuery(
   const startTime = Date.now()
   
   try {
-    console.log('🎯 executeRemoteQuery: Starting with enhanced schema embeddings and incremental updates...')
+    console.log('🎯 executeRemoteQuery: Starting with enhanced schema persistence...')
     console.log('🎯 executeRemoteQuery: Received options:', JSON.stringify(options, null, 2))
     console.log('🎯 executeRemoteQuery: chatId:', options.chatId)
     
@@ -406,7 +535,7 @@ export async function executeRemoteQuery(
       }
     }
 
-    // QUICK SECURITY CHECK (no AI, no database calls)
+    // QUICK SECURITY CHECK
     const securityCheck = quickSecurityCheck(sqlQuery, options.forceExecution);
     if (securityCheck.blocked) {
       return {
@@ -427,7 +556,6 @@ export async function executeRemoteQuery(
         error: 'Connection not found or access denied'
       }
       
-      // Save failed query to history if enabled
       if (options.saveToHistory !== false) {
         console.log('🔄 executeRemoteQuery: Saving failed query with chatId:', options.chatId)
         await saveToHistory(connectionId, sqlQuery, errorResult, Date.now() - startTime, {
@@ -441,18 +569,17 @@ export async function executeRemoteQuery(
       return errorResult
     }
 
-    // Get schema context from embeddings only
+    // Get schema context from embeddings
     let schemaContext: SchemaEmbedding[] = [];
     try {
       schemaContext = await getSchemaFromEmbeddings(connectionId, sqlQuery);
     } catch (embeddingError) {
       console.error('Error getting schema context:', embeddingError);
-      // Continue with empty schema context
     }
 
     console.log('🧠 Using schema context with', schemaContext.length, 'tables');
 
-    // Execute query and return consistent format
+    // Execute query
     const result = await executeBasicQuery(connectionId, sqlQuery);
     const executionTime = Date.now() - startTime;
     
@@ -465,14 +592,15 @@ export async function executeRemoteQuery(
       tablesProcessed: 0,
       vectorsAdded: 0,
       vectorsRemoved: 0,
-      vectorsUpdated: 0
+      vectorsUpdated: 0,
+      schemaUpdated: false
     };
 
-    // Check if schema was modified and update embeddings incrementally
+    // Check if schema was modified and update both embeddings and database
     if (result.success && detectSchemaChanges(sqlQuery)) {
-      console.log('🔄 Schema changes detected, performing incremental update...');
+      console.log('🔄 Schema changes detected, performing enhanced update with persistence...');
       
-      const updateResult = await updateSchemaEmbeddingsIncremental(connectionId, sqlQuery);
+      const updateResult = await updateSchemaEmbeddingsWithPersistence(connectionId, sqlQuery);
       
       schemaUpdate = {
         updated: updateResult.success,
@@ -480,10 +608,11 @@ export async function executeRemoteQuery(
         tablesProcessed: updateResult.tablesProcessed,
         vectorsAdded: updateResult.vectorsAdded,
         vectorsRemoved: updateResult.vectorsRemoved,
-        vectorsUpdated: updateResult.vectorsUpdated
+        vectorsUpdated: updateResult.vectorsUpdated,
+        schemaUpdated: updateResult.schemaUpdated
       };
       
-      console.log('📊 Incremental schema update result:', schemaUpdate);
+      console.log('📊 Enhanced schema update result:', schemaUpdate);
     }
 
     // Add schemaUpdate to result
@@ -492,7 +621,7 @@ export async function executeRemoteQuery(
       schemaUpdate
     };
 
-    // Save to history if enabled (default: true)
+    // Save to history if enabled
     if (options.saveToHistory !== false) {
       console.log('🔄 executeRemoteQuery: About to save to history with chatId:', options.chatId)
       
@@ -575,7 +704,7 @@ export async function explainQuery(connectionId: string, sqlQuery: string) {
         `Table: ${embedding.tableName}\nColumns: ${embedding.columns}\nContext: ${embedding.text}`
       ).join('\n\n');
 
-      // 🆕 LOG THE EXACT CONTEXT SENT TO LLM
+      // LOG THE EXACT CONTEXT SENT TO LLM
       console.log('🤖 EXPLAIN QUERY - CONTEXT SENT TO LLM:');
       console.log('================================================');
       console.log(`📋 Schema Context Text (${schemaContextText.length} characters):`);
@@ -673,7 +802,7 @@ export async function getQuerySuggestions(connectionId: string, userIntent: stri
         `${embedding.tableName}: ${embedding.columns}`
       ).join('\n');
 
-      // 🆕 LOG THE EXACT CONTEXT SENT TO LLM
+      // LOG THE EXACT CONTEXT SENT TO LLM
       console.log('🤖 GET SUGGESTIONS - CONTEXT SENT TO LLM:');
       console.log('================================================');
       console.log(`📋 Schema Context Text (${schemaContextText.length} characters):`);
