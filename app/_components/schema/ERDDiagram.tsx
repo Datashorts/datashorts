@@ -772,8 +772,11 @@ const getConnectionPoints = (fromTable: string, toTable: string, fromColumn: str
                       }`}
                     >
                       <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {/* FIXED: Wrapped KeyRound in span with title */}
                         {column.is_primary_key && (
-                          <KeyRound className="w-3 h-3 text-yellow-500 flex-shrink-0" title="Primary Key" />
+                          <span title="Primary Key">
+                            <KeyRound className="w-3 h-3 text-yellow-500 flex-shrink-0" />
+                          </span>
                         )}
                         {column.is_foreign_key && !column.is_primary_key && (
                           <div className="w-3 h-3 bg-blue-400 rounded-full flex-shrink-0" title={`Foreign Key to ${column.foreign_table}`} />
