@@ -7,7 +7,12 @@ import {
   MousePointer,
   Maximize,
   KeyRound,
-  Lock
+  Lock,
+  RotateCcw,
+  Grid3x3,
+  Settings,
+  Expand,
+  Minimize
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -75,6 +80,8 @@ export default function ERDDiagram({
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [interactionMode, setInteractionMode] = useState<'select' | 'pan'>('select');
   const [isLocked, setIsLocked] = useState(false);
+  const [showGrid, setShowGrid] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   
   const diagramRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -91,13 +98,13 @@ export default function ERDDiagram({
 
   const generateInitialLayout = (tables: TableSchema[]) => {
     const positions = new Map<string, TablePosition>();
-    const tableWidth = 280;
-    const baseHeight = 60;
-    const columnHeight = 28;
-    const padding = 100;
+    const tableWidth = 320;
+    const baseHeight = 80;
+    const columnHeight = 32;
+    const padding = 150;
     
     const totalTables = tables.length;
-    const cols = Math.ceil(Math.sqrt(totalTables * 1.5));
+    const cols = Math.ceil(Math.sqrt(totalTables * 1.2));
     
     tables.forEach((table, index) => {
       const row = Math.floor(index / cols);
@@ -105,8 +112,8 @@ export default function ERDDiagram({
       const tableHeight = baseHeight + (table.columns.length * columnHeight);
       
       positions.set(table.tableName, {
-        x: col * (tableWidth + padding) + 100,
-        y: row * (tableHeight + padding) + 100,
+        x: col * (tableWidth + padding) + 150,
+        y: row * (tableHeight + padding) + 150,
         width: tableWidth,
         height: tableHeight
       });
@@ -151,28 +158,6 @@ export default function ERDDiagram({
       });
     });
     
-    tables.forEach(table => {
-      if (table.relationships) {
-        table.relationships.forEach(rel => {
-          if (rel.type === 'one-to-many') {
-            const targetTable = tableMap.get(rel.targetTable);
-            if (targetTable) {
-              const fkColumn = targetTable.columns.find(col => col.column_name === rel.foreignKey);
-              if (fkColumn) {
-                rels.push({
-                  fromTable: table.tableName,
-                  toTable: rel.targetTable,
-                  fromColumn: fkColumn.foreign_column || 'id',
-                  toColumn: rel.foreignKey,
-                  type: 'one-to-many'
-                });
-              }
-            }
-          }
-        });
-      }
-    });
-    
     setRelationships(rels);
   };
 
@@ -213,7 +198,7 @@ export default function ERDDiagram({
         const clientX = (event.clientX - rect.left - panOffset.x) / zoomLevel;
         const clientY = (event.clientY - rect.top - panOffset.y) / zoomLevel;
         
-        const snapTo = (val: number) => Math.round(val / 10) * 10;
+        const snapTo = (val: number) => Math.round(val / 20) * 20;
         const newX = snapTo(clientX - dragOffset.x);
         const newY = snapTo(clientY - dragOffset.y);
         
@@ -260,23 +245,17 @@ export default function ERDDiagram({
     };
   }, [handleMouseMove, handleMouseUp]);
 
-const getConnectionPoints = (fromTable: string, toTable: string, fromColumn: string) => {
+  const getConnectionPoints = (fromTable: string, toTable: string, fromColumn: string) => {
     const fromPos = tablePositions.get(fromTable);
     const toPos = tablePositions.get(toTable);
     
     if (!fromPos || !toPos) return null;
     
-    const fromColumnObj = schemaData.find(t => t.tableName === fromTable)?.columns.find(c => c.column_name === fromColumn);
-    const toColumnObj = schemaData.find(t => t.tableName === toTable)?.columns.find(c => c.column_name === 'id');
-    
-    if (!fromColumnObj) return null;
-    
-    // Use find instead of find23
     const fromIndex = schemaData.find(t => t.tableName === fromTable)?.columns.findIndex(c => c.column_name === fromColumn) || 0;
     const toIndex = schemaData.find(t => t.tableName === toTable)?.columns.findIndex(c => c.column_name === 'id') || 0;
     
-    const headerHeight = 40;
-    const columnHeight = 28;
+    const headerHeight = 50;
+    const columnHeight = 32;
     
     let initialFromY = fromPos.y + headerHeight + (fromIndex + 0.5) * columnHeight;
     let initialToY = toPos.y + headerHeight + (toIndex + 0.5) * columnHeight;
@@ -304,7 +283,7 @@ const getConnectionPoints = (fromTable: string, toTable: string, fromColumn: str
     }
     
     return { fromX, fromY, toX, toY };
-};
+  };
 
   const renderRelationshipLine = (relationship: Relationship, index: number) => {
     const points = getConnectionPoints(relationship.fromTable, relationship.toTable, relationship.fromColumn);
@@ -318,160 +297,48 @@ const getConnectionPoints = (fromTable: string, toTable: string, fromColumn: str
       ? `M ${fromX} ${fromY} L ${midX} ${fromY} L ${midX} ${toY} L ${toX} ${toY}`
       : `M ${fromX} ${fromY} L ${fromX} ${midY} L ${toX} ${midY} L ${toX} ${toY}`;
     
-    const isRightToLeft = fromX > toX;
-    
-    const getRelationshipMarkers = () => {
-      const isHorizontal = Math.abs(fromX - toX) > Math.abs(fromY - toY);
-      const markerX = isHorizontal ? midX : (fromX + toX) / 2;
-      const markerY = isHorizontal ? (fromY + toY) / 2 : midY;
-      
-      if (relationship.type === 'many-to-one') {
-        return (
-          <>
-            <g transform={`translate(${fromX + (isRightToLeft ? -20 : 20)}, ${fromY})`}>
-              <path 
-                d="M-6,-5 L0,0 L-6,5" 
-                stroke="#6b7280" 
-                strokeWidth="1.5" 
-                fill="none"
-                transform={isRightToLeft ? "scale(-1,1)" : ""}
-              />
-              <path 
-                d="M-10,-5 L-4,0 L-10,5" 
-                stroke="#6b7280" 
-                strokeWidth="1.5" 
-                fill="none"
-                transform={isRightToLeft ? "scale(-1,1)" : ""}
-              />
-            </g>
-            <g transform={`translate(${toX + (isRightToLeft ? 20 : -20)}, ${toY})`}>
-              <line 
-                x1="-5" 
-                y1="-8" 
-                x2="-5" 
-                y2="8" 
-                stroke="#6b7280" 
-                strokeWidth="1.5" 
-                transform={!isRightToLeft ? "scale(-1,1)" : ""}
-              />
-            </g>
-          </>
-        );
-      } else if (relationship.type === 'one-to-many') {
-        return (
-          <>
-            <g transform={`translate(${fromX + (isRightToLeft ? -20 : 20)}, ${fromY})`}>
-              <line 
-                x1="-5" 
-                y1="-8" 
-                x2="-5" 
-                y2="8" 
-                stroke="#6b7280" 
-                strokeWidth="1.5" 
-                transform={isRightToLeft ? "scale(-1,1)" : ""}
-              />
-            </g>
-            <g transform={`translate(${toX + (isRightToLeft ? 20 : -20)}, ${toY})`}>
-              <path 
-                d="M-6,-5 L0,0 L-6,5" 
-                stroke="#6b7280" 
-                strokeWidth="1.5" 
-                fill="none"
-                transform={!isRightToLeft ? "scale(-1,1)" : ""}
-              />
-              <path 
-                d="M-10,-5 L-4,0 L-10,5" 
-                stroke="#6b7280" 
-                strokeWidth="1.5" 
-                fill="none"
-                transform={!isRightToLeft ? "scale(-1,1)" : ""}
-              />
-            </g>
-          </>
-        );
-      } else if (relationship.type === 'many-to-many') {
-        return (
-          <>
-            <g transform={`translate(${fromX + (isRightToLeft ? -20 : 20)}, ${fromY})`}>
-              <path 
-                d="M-6,-5 L0,0 L-6,5" 
-                stroke="#6b7280" 
-                strokeWidth="1.5" 
-                fill="none"
-                transform={isRightToLeft ? "scale(-1,1)" : ""}
-              />
-              <path 
-                d="M-10,-5 L-4,0 L-10,5" 
-                stroke="#6b7280" 
-                strokeWidth="1.5" 
-                fill="none"
-                transform={isRightToLeft ? "scale(-1,1)" : ""}
-              />
-            </g>
-            <g transform={`translate(${toX + (isRightToLeft ? 20 : -20)}, ${toY})`}>
-              <path 
-                d="M-6,-5 L0,0 L-6,5" 
-                stroke="#6b7280" 
-                strokeWidth="1.5" 
-                fill="none"
-                transform={!isRightToLeft ? "scale(-1,1)" : ""}
-              />
-              <path 
-                d="M-10,-5 L-4,0 L-10,5" 
-                stroke="#6b7280" 
-                strokeWidth="1.5" 
-                fill="none"
-                transform={!isRightToLeft ? "scale(-1,1)" : ""}
-              />
-            </g>
-          </>
-        );
-      }
-      
-      return null;
-    };
-    
     return (
       <g key={`rel-${index}`} className="relationship">
         <path
           d={pathD}
-          stroke="#6b7280"
-          strokeWidth="1.5"
+          stroke="url(#connectionGradient)"
+          strokeWidth="2"
           fill="none"
-          className="relationship-line"
+          className="relationship-line drop-shadow-sm"
         />
         <circle
           cx={fromX}
           cy={fromY}
-          r="3"
+          r="4"
           fill="#3b82f6"
-          className="connection-point"
+          className="connection-point drop-shadow-sm"
         />
         <circle
           cx={toX}
           cy={toY}
-          r="3"
-          fill="#3b82f6"
-          className="connection-point"
+          r="4"
+          fill="#8b5cf6"
+          className="connection-point drop-shadow-sm"
         />
-        {getRelationshipMarkers()}
         <g transform={`translate(${midX}, ${midY})`}>
           <rect 
-            x="-25" 
-            y="-10" 
-            width="50" 
-            height="20" 
-            rx="4" 
-            fill="white" 
-            stroke="#e5e7eb" 
+            x="-30" 
+            y="-12" 
+            width="60" 
+            height="24" 
+            rx="12" 
+            fill="rgba(0, 0, 0, 0.8)" 
+            stroke="rgba(59, 130, 246, 0.3)" 
+            className="backdrop-blur-sm"
           />
           <text 
             x="0" 
             y="4" 
-            fontSize="8" 
-            fontFamily="sans-serif" 
+            fontSize="10" 
+            fontFamily="Inter, sans-serif" 
             textAnchor="middle" 
-            fill="#6b7280"
+            fill="#e5e7eb"
+            className="font-medium"
           >
             {relationship.type.replace('-', ' ')}
           </text>
@@ -482,14 +349,14 @@ const getConnectionPoints = (fromTable: string, toTable: string, fromColumn: str
 
   const getTableHeaderColor = (tableName: string) => {
     const colors = [
-      'bg-blue-500',
-      'bg-green-500', 
-      'bg-purple-500',
-      'bg-yellow-500',
-      'bg-red-500',
-      'bg-cyan-500',
-      'bg-pink-500',
-      'bg-indigo-500'
+      'from-blue-600 to-blue-700',
+      'from-purple-600 to-purple-700', 
+      'from-teal-600 to-teal-700',
+      'from-indigo-600 to-indigo-700',
+      'from-cyan-600 to-cyan-700',
+      'from-violet-600 to-violet-700',
+      'from-emerald-600 to-emerald-700',
+      'from-sky-600 to-sky-700'
     ];
     const hash = tableName.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
     return colors[hash % colors.length];
@@ -534,7 +401,7 @@ const getConnectionPoints = (fromTable: string, toTable: string, fromColumn: str
       const zoomSensitivity = 0.05;
       const delta = e.deltaY > 0 ? -zoomSensitivity : zoomSensitivity;
       const minZoom = 0.1;
-      const maxZoom = 5;
+      const maxZoom = 3;
       const newZoom = Math.max(minZoom, Math.min(maxZoom, zoomLevel + delta));
       
       if (newZoom !== zoomLevel) {
@@ -561,160 +428,162 @@ const getConnectionPoints = (fromTable: string, toTable: string, fromColumn: str
     }
   }, [isLocked, zoomLevel, panOffset]);
 
-  const toggleInteractionMode = () => {
-    setInteractionMode(prev => prev === 'select' ? 'pan' : 'select');
-    setIsPanning(false);
-    setDraggedTable(null);
-  };
-
-  const toggleLock = () => {
-    setIsLocked(prev => !prev);
-    setIsPanning(false);
-    setDraggedTable(null);
-  };
-
-  const exportAsPng = () => {
-    if (!diagramRef.current || !svgRef.current) return;
-    if (onExport) {
-      onExport('png');
-    }
-  };
-
   if (schemaData.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+      <div className="h-full flex items-center justify-center bg-gradient-to-br from-black via-gray-900 to-black border border-white/10 rounded-xl">
         <div className="text-center">
-          <Database className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-600 mb-2">No Schema Data</h3>
-          <p className="text-gray-500">Load a database connection to view its schema diagram</p>
+          <Database className="h-16 w-16 text-blue-400 mx-auto mb-6" />
+          <h3 className="text-2xl font-semibold text-white mb-3">No Schema Data</h3>
+          <p className="text-gray-400 text-lg">Load a database connection to view its schema diagram</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
-      <div className="flex items-center justify-between p-2 bg-white border-b border-gray-200 gap-2">
-        <div className="flex items-center gap-1">
-          <div className="bg-gray-100 rounded-md p-0.5 flex items-center mr-2">
+    <div className={`h-full flex flex-col ${isFullscreen ? 'fixed inset-0 z-[9999] bg-black' : 'bg-gradient-to-br from-black via-gray-900 to-black rounded-xl border border-white/10 overflow-hidden'}`}>
+      {/* Enhanced Toolbar */}
+      <div className="flex items-center justify-between p-4 bg-black/40 backdrop-blur-sm border-b border-white/10">
+        <div className="flex items-center gap-3">
+          {/* Mode Toggle */}
+          <div className="bg-white/5 rounded-lg p-1 flex items-center border border-white/10">
             <Button
               variant={interactionMode === 'select' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setInteractionMode('select')}
               className={interactionMode === 'select' 
-                ? 'bg-blue-600 hover:bg-blue-700 h-8 px-2 rounded-sm shadow-sm' 
-                : 'hover:bg-gray-200 h-8 px-2 rounded-sm'}
+                ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 h-9 px-3 text-white shadow-lg' 
+                : 'hover:bg-white/10 h-9 px-3 text-gray-300'}
               disabled={isLocked}
-              title="Select Mode"
             >
-              <MousePointer className="h-4 w-4" />
+              <MousePointer className="h-4 w-4 mr-1" />
+              Select
             </Button>
             <Button
               variant={interactionMode === 'pan' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setInteractionMode('pan')}
               className={interactionMode === 'pan' 
-                ? 'bg-blue-600 hover:bg-blue-700 h-8 px-2 rounded-sm shadow-sm' 
-                : 'hover:bg-gray-200 h-8 px-2 rounded-sm'}
+                ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 h-9 px-3 text-white shadow-lg' 
+                : 'hover:bg-white/10 h-9 px-3 text-gray-300'}
               disabled={isLocked}
-              title="Pan Mode"
             >
-              <Move className="h-4 w-4" />
+              <Move className="h-4 w-4 mr-1" />
+              Pan
             </Button>
           </div>
-          <div className="bg-gray-100 rounded-md p-1 flex items-center">
+
+          {/* Zoom Controls */}
+          <div className="bg-white/5 rounded-lg p-2 flex items-center gap-2 border border-white/10">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setZoomLevel(Math.max(0.1, zoomLevel - 0.1))}
-              className="hover:bg-gray-200 h-6 w-6 p-0 rounded-sm"
-              title="Zoom Out"
+              className="hover:bg-white/10 h-8 w-8 p-0 text-gray-300"
             >
-              <ZoomOut className="h-3.5 w-3.5" />
+              <ZoomOut className="h-4 w-4" />
             </Button>
-            <div className="relative w-28 mx-1">
+            <div className="relative w-32 mx-2">
               <input 
                 type="range" 
                 min="10" 
-                max="500" 
-                step="5"
+                max="300" 
+                step="10"
                 value={zoomLevel * 100} 
                 onChange={(e) => setZoomLevel(parseInt(e.target.value) / 100)}
-                className="w-full h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer"
+                className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer slider-thumb"
               />
-              <span className="absolute top-4 left-1/2 transform -translate-x-1/2 text-xs text-gray-500">
+              <span className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-gray-400 font-medium">
                 {Math.round(zoomLevel * 100)}%
               </span>
             </div>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setZoomLevel(Math.min(5, zoomLevel + 0.1))}
-              className="hover:bg-gray-200 h-6 w-6 p-0 rounded-sm"
-              title="Zoom In"
+              onClick={() => setZoomLevel(Math.min(3, zoomLevel + 0.1))}
+              className="hover:bg-white/10 h-8 w-8 p-0 text-gray-300"
             >
-              <ZoomIn className="h-3.5 w-3.5" />
+              <ZoomIn className="h-4 w-4" />
             </Button>
           </div>
-          <div className="h-6 mx-2 w-px bg-gray-300" />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={autoLayout}
-            className="hover:bg-gray-100 h-8 text-xs"
-            disabled={isLocked}
-            title="Auto-arrange tables"
-          >
-            <Move className="h-3.5 w-3.5 mr-1" />
-            Auto Layout
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={resetView}
-            className="hover:bg-gray-100 h-8 text-xs"
-            title="Reset zoom and position"
-          >
-            <Maximize className="h-3.5 w-3.5 mr-1" />
-            Reset View
-          </Button>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={autoLayout}
+              className="bg-white/5 border-white/20 hover:bg-white/10 text-gray-300 h-9"
+              disabled={isLocked}
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Auto Layout
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={resetView}
+              className="bg-white/5 border-white/20 hover:bg-white/10 text-gray-300 h-9"
+            >
+              <Maximize className="h-4 w-4 mr-2" />
+              Reset View
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowGrid(!showGrid)}
+              className={`border-white/20 h-9 ${showGrid ? 'bg-white/10 text-white' : 'bg-white/5 text-gray-300'} hover:bg-white/10`}
+            >
+              <Grid3x3 className="h-4 w-4 mr-2" />
+              Grid
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className="border-white/20 text-gray-300 bg-white/5">
+              {schemaData.length} tables
+            </Badge>
+            <Badge variant="outline" className="border-white/20 text-gray-300 bg-white/5">
+              {relationships.length} relationships
+            </Badge>
+            {selectedTable && (
+              <Badge className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+                {selectedTable}
+              </Badge>
+            )}
+          </div>
+          
           <Button
             variant={isLocked ? 'default' : 'outline'}
             size="sm"
-            onClick={toggleLock}
+            onClick={() => setIsLocked(!isLocked)}
             className={isLocked 
-              ? 'bg-amber-600 hover:bg-amber-700 h-8 text-xs' 
-              : 'hover:bg-gray-100 h-8 text-xs'}
-            title={isLocked ? "Unlock diagram" : "Lock diagram to prevent changes"}
+              ? 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 h-9 text-white' 
+              : 'bg-white/5 border-white/20 hover:bg-white/10 text-gray-300 h-9'}
           >
-            <Lock className="h-3.5 w-3.5 mr-1" />
-            {isLocked ? 'Unlock' : 'Lock View'}
+            <Lock className="h-4 w-4 mr-2" />
+            {isLocked ? 'Unlock' : 'Lock'}
           </Button>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="border-gray-300 text-gray-600">
-            {schemaData.length} tables
-          </Badge>
-          <Badge variant="outline" className="border-gray-300 text-gray-600">
-            {relationships.length} relationships
-          </Badge>
-          {selectedTable && (
-            <Badge variant="default" className="bg-blue-600">
-              {selectedTable}
-            </Badge>
-          )}
-        </div>
       </div>
+
+      {/* Diagram Canvas */}
       <div 
         ref={diagramRef}
-        className={`flex-1 relative overflow-hidden touch-none ${
+        className={`flex-1 relative overflow-hidden ${
           interactionMode === 'pan' ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
         } ${isLocked ? 'cursor-not-allowed' : ''}`}
         onMouseDown={handleDiagramMouseDown}
         onWheel={handleWheel}
         style={{
-          backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
-          backgroundSize: '24px 24px',
+          backgroundImage: showGrid ? `
+            radial-gradient(circle at 1px 1px, rgba(59, 130, 246, 0.2) 1px, transparent 0),
+            linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)
+          ` : 'none',
+          backgroundSize: showGrid ? '40px 40px, 40px 40px, 40px 40px' : 'auto',
           height: "100%"
         }}
       >
@@ -725,7 +594,7 @@ const getConnectionPoints = (fromTable: string, toTable: string, fromColumn: str
             transformOrigin: '0 0',
             width: '10000px',
             height: '10000px',
-            transition: draggedTable || isPanning ? 'none' : 'transform 0.1s ease-out'
+            transition: draggedTable || isPanning ? 'none' : 'transform 0.2s ease-out'
           }}
         >
           <svg
@@ -733,67 +602,82 @@ const getConnectionPoints = (fromTable: string, toTable: string, fromColumn: str
             className="absolute inset-0 pointer-events-none"
             style={{ width: '100%', height: '100%' }}
           >
+            <defs>
+              <linearGradient id="connectionGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#3b82f6" />
+                <stop offset="100%" stopColor="#8b5cf6" />
+              </linearGradient>
+            </defs>
             {relationships.map((rel, index) => renderRelationshipLine(rel, index))}
           </svg>
+
           {schemaData.map(table => {
             const position = tablePositions.get(table.tableName);
             if (!position) return null;
 
-            const headerColor = getTableHeaderColor(table.tableName);
+            const headerGradient = getTableHeaderColor(table.tableName);
 
             return (
               <div
                 key={table.tableName}
-                className={`absolute bg-white border rounded-lg shadow-lg select-none ${
+                className={`absolute bg-black/60 backdrop-blur-md border rounded-xl shadow-2xl select-none transition-all duration-200 ${
                   selectedTable === table.tableName
-                    ? 'border-blue-500 shadow-blue-200 ring-2 ring-blue-500/20'
-                    : 'border-gray-200 hover:border-gray-300'
-                } ${draggedTable === table.tableName ? 'shadow-xl z-50 opacity-90 scale-[1.02]' : ''}`}
+                    ? 'border-blue-500 shadow-blue-500/25 ring-2 ring-blue-500/30 scale-105'
+                    : 'border-white/20 hover:border-white/30 hover:shadow-xl'
+                } ${draggedTable === table.tableName ? 'shadow-2xl z-50 opacity-95 scale-110' : ''}`}
                 style={{
                   left: position.x,
                   top: position.y,
                   width: position.width,
                   minHeight: position.height,
                   zIndex: selectedTable === table.tableName || draggedTable === table.tableName ? 10 : 1,
-                  transition: draggedTable === table.tableName ? 'none' : 'transform 0.1s ease-out, box-shadow 0.1s ease-out'
                 }}
                 onMouseDown={(e) => handleTableMouseDown(table.tableName, e)}
                 onClick={(e) => handleTableClick(table.tableName, e)}
               >
-                <div className={`table-header ${headerColor} rounded-t-lg px-4 py-3 cursor-move`}>
-                  <h4 className="font-bold text-white text-sm">{table.tableName}</h4>
+                <div className={`bg-gradient-to-r ${headerGradient} rounded-t-xl px-5 py-4 cursor-move border-b border-white/10`}>
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-white text-base">{table.tableName}</h4>
+                    <Badge variant="secondary" className="bg-white/20 text-white border-0 text-xs">
+                      {table.columnCount}
+                    </Badge>
+                  </div>
                 </div>
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-white/10">
                   {table.columns.map((column, index) => (
                     <div
                       key={column.column_name}
-                      className={`flex items-center justify-between px-4 py-2 text-xs ${
-                        column.is_primary_key ? 'bg-yellow-50' : ''
+                      className={`flex items-center justify-between px-5 py-3 text-sm hover:bg-white/5 transition-colors ${
+                        column.is_primary_key ? 'bg-yellow-500/10 border-l-2 border-yellow-500' : ''
                       }`}
                     >
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {/* FIXED: Wrapped KeyRound in span with title */}
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
                         {column.is_primary_key && (
-                          <span title="Primary Key">
-                            <KeyRound className="w-3 h-3 text-yellow-500 flex-shrink-0" />
-                          </span>
+                          <div className="flex-shrink-0 bg-yellow-500/20 p-1 rounded" title="Primary Key">
+                            <KeyRound className="w-3 h-3 text-yellow-400" />
+                          </div>
                         )}
                         {column.is_foreign_key && !column.is_primary_key && (
-                          <div className="w-3 h-3 bg-blue-400 rounded-full flex-shrink-0" title={`Foreign Key to ${column.foreign_table}`} />
+                          <div className="w-3 h-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex-shrink-0" 
+                               title={`Foreign Key to ${column.foreign_table}`} />
                         )}
-                        <span className="font-mono text-gray-800 truncate font-medium">
-                          {column.column_name}
-                        </span>
-                        {column.is_foreign_key && (
-                          <span className="text-xs text-blue-500 truncate">
-                            → {column.foreign_table}
+                        <div className="flex-1 min-w-0">
+                          <span className="font-mono text-white truncate font-semibold block">
+                            {column.column_name}
                           </span>
-                        )}
+                          {column.is_foreign_key && (
+                            <span className="text-xs text-blue-400 truncate block">
+                              → {column.foreign_table}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-gray-500 text-right ml-2 flex-shrink-0">
-                        {column.data_type}
-                        {column.character_maximum_length && `(${column.character_maximum_length})`}
-                        {column.is_nullable === 'NO' ? '' : '?'}
+                      <div className="text-gray-400 text-right ml-3 flex-shrink-0">
+                        <div className="text-xs bg-white/10 px-2 py-1 rounded font-mono">
+                          {column.data_type}
+                          {column.character_maximum_length && `(${column.character_maximum_length})`}
+                          {column.is_nullable === 'NO' ? '' : '?'}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -802,12 +686,14 @@ const getConnectionPoints = (fromTable: string, toTable: string, fromColumn: str
             );
           })}
         </div>
-        <div className="absolute bottom-4 right-4 w-48 h-36 bg-white border border-gray-300 rounded-lg shadow-lg overflow-hidden">
-          <div className="w-full h-full relative bg-gray-50">
+
+        {/* Enhanced Minimap */}
+        <div className="absolute bottom-6 right-6 w-56 h-40 bg-black/80 backdrop-blur-sm border border-white/20 rounded-lg shadow-2xl overflow-hidden">
+          <div className="w-full h-full relative bg-gradient-to-br from-gray-900/50 to-black/50">
             <div 
               className="absolute" 
               style={{
-                transform: `scale(${0.05})`, 
+                transform: `scale(${0.04})`, 
                 transformOrigin: 'top left'
               }}
             >
@@ -815,83 +701,125 @@ const getConnectionPoints = (fromTable: string, toTable: string, fromColumn: str
                 const position = tablePositions.get(table.tableName);
                 if (!position) return null;
                 
-                const headerColor = getTableHeaderColor(table.tableName);
+                const headerGradient = getTableHeaderColor(table.tableName);
                 
                 return (
                   <div
                     key={`mini-${table.tableName}`}
-                    className={`absolute ${headerColor}`}
+                    className={`absolute border border-white/40 rounded`}
                     style={{
                       left: position.x,
                       top: position.y,
                       width: position.width,
-                      height: 30,
-                      opacity: 0.8
+                      height: Math.min(position.height, 120),
+                      background: headerGradient.includes('blue') ? 'rgba(59, 130, 246, 0.6)' :
+                                 headerGradient.includes('purple') ? 'rgba(139, 92, 246, 0.6)' :
+                                 headerGradient.includes('teal') ? 'rgba(45, 212, 191, 0.6)' :
+                                 'rgba(99, 102, 241, 0.6)',
+                      opacity: selectedTable === table.tableName ? 1 : 0.7
                     }}
                   />
                 );
               })}
             </div>
             <div 
-              className="absolute border-2 border-blue-500 bg-blue-500/10 pointer-events-none"
+              className="absolute border-2 border-blue-400 bg-blue-400/20 pointer-events-none rounded"
               style={{
-                left: `${Math.min(100, Math.max(0, (-panOffset.x / 100) * 5))}%`,
-                top: `${Math.min(100, Math.max(0, (-panOffset.y / 100) * 5))}%`,
+                left: `${Math.min(95, Math.max(0, (-panOffset.x / 120) * 5))}%`,
+                top: `${Math.min(95, Math.max(0, (-panOffset.y / 120) * 5))}%`,
                 width: `${Math.min(100, 100 / zoomLevel)}%`,
                 height: `${Math.min(100, 100 / zoomLevel)}%`,
               }}
             />
           </div>
+          <div className="absolute top-2 left-2 text-xs text-gray-400 font-medium">
+            Minimap
+          </div>
         </div>
       </div>
-      <div className="flex items-center justify-between px-4 py-2 bg-white border-t border-gray-200 text-xs text-gray-600">
-        <div className="flex items-center gap-4">
-          <span>Tables: {schemaData.length}</span>
-          <span>Relationships: {relationships.length}</span>
-          <span>Zoom: {Math.round(zoomLevel * 100)}%</span>
-          <span>Mode: {interactionMode === 'select' ? 'Select' : 'Pan'}</span>
-          <div className="flex items-center gap-3 ml-4">
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-              <span>PK</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-              <span>FK</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <svg width="20" height="8" className="inline">
-                <line x1="0" y1="4" x2="5" y2="4" stroke="#6b7280" strokeWidth="1.5" />
-                <line x1="10" y1="0" x2="10" y2="8" stroke="#6b7280" strokeWidth="1.5" />
-                <line x1="15" y1="4" x2="20" y2="4" stroke="#6b7280" strokeWidth="1.5" />
-              </svg>
-              <span>One</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <svg width="20" height="8" className="inline">
-                <line x1="0" y1="4" x2="5" y2="4" stroke="#6b7280" strokeWidth="1.5" />
-                <path d="M10,0 L15,4 L10,8" stroke="#6b7280" strokeWidth="1.5" fill="none" />
-                <line x1="15" y1="4" x2="20" y2="4" stroke="#6b7280" strokeWidth="1.5" />
-              </svg>
-              <span>Many</span>
-            </div>
+
+      {/* Enhanced Status Bar */}
+      <div className="flex items-center justify-between px-6 py-3 bg-black/40 backdrop-blur-sm border-t border-white/10">
+        <div className="flex items-center gap-6 text-sm">
+          <div className="flex items-center gap-2 text-gray-300">
+            <Database className="h-4 w-4" />
+            <span className="font-medium">{schemaData.length} Tables</span>
           </div>
-          {isLocked && <span className="text-amber-600 font-medium">View Locked</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          {interactionMode === 'select' ? (
-            <>
-              <MousePointer className="h-3 w-3" />
-              <span>Click to select • Drag to move tables</span>
-            </>
-          ) : (
-            <>
-              <Move className="h-3 w-3" />
-              <span>Drag to pan • Ctrl+Scroll to zoom</span>
-            </>
+          <div className="flex items-center gap-2 text-gray-300">
+            <div className="w-2 h-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
+            <span className="font-medium">{relationships.length} Relationships</span>
+          </div>
+          <div className="text-gray-400">
+            Zoom: <span className="font-medium text-white">{Math.round(zoomLevel * 100)}%</span>
+          </div>
+          <div className="text-gray-400">
+            Mode: <span className="font-medium text-white capitalize">{interactionMode}</span>
+          </div>
+          {isLocked && (
+            <div className="flex items-center gap-2 text-amber-400">
+              <Lock className="h-4 w-4" />
+              <span className="font-medium">Locked</span>
+            </div>
           )}
         </div>
+
+        <div className="flex items-center gap-6">
+          {/* Legend */}
+          <div className="flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-yellow-500 rounded-full border border-yellow-400"></div>
+              <span className="text-gray-400">Primary Key</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
+              <span className="text-gray-400">Foreign Key</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <svg width="24" height="12" className="inline">
+                <defs>
+                  <linearGradient id="legendGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="100%" stopColor="#8b5cf6" />
+                  </linearGradient>
+                </defs>
+                <line x1="0" y1="6" x2="24" y2="6" stroke="url(#legendGradient)" strokeWidth="2" />
+              </svg>
+              <span className="text-gray-400">Relationship</span>
+            </div>
+          </div>
+
+          <div className="text-gray-400 text-xs">
+            {interactionMode === 'select' ? (
+              <span>Click to select • Drag to move tables</span>
+            ) : (
+              <span>Drag to pan • Ctrl+Scroll to zoom</span>
+            )}
+          </div>
+        </div>
       </div>
+
+      <style jsx>{`
+        .slider-thumb::-webkit-slider-thumb {
+          appearance: none;
+          height: 16px;
+          width: 16px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+          cursor: pointer;
+          border: 2px solid rgba(255, 255, 255, 0.2);
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        .slider-thumb::-moz-range-thumb {
+          height: 16px;
+          width: 16px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+          cursor: pointer;
+          border: 2px solid rgba(255, 255, 255, 0.2);
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+      `}</style>
     </div>
   );
 }
