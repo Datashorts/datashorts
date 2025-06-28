@@ -48,9 +48,10 @@ export interface ConnectionData {
   id: number
   connectionName: string
   dbType: string
-  updatedAt: Date | string
+  updatedAt: Date | string | null
   tableCount: number
   hasSchema: boolean
+  host?: string
 }
 
 export interface ConnectionsResponse {

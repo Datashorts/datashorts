@@ -78,10 +78,11 @@ export default function SchemaListPage() {
     return matchesSearch && matchesStatus && matchesDbType
   })
 
-  const getStatusColor = (hasSchema: boolean, updatedAt: string) => {
+  const getStatusColor = (hasSchema: boolean, updatedAt: string | Date | null) => {
     if (!hasSchema) return 'bg-red-500/10 text-red-400 border-red-500/20'
     
     // Check if connection is recent (within last 24 hours)
+    if (!updatedAt) return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
     const lastUpdate = new Date(updatedAt)
     const now = new Date()
     const hoursDiff = (now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60)
@@ -90,9 +91,10 @@ export default function SchemaListPage() {
     return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
   }
 
-  const getStatusIcon = (hasSchema: boolean, updatedAt: string) => {
+  const getStatusIcon = (hasSchema: boolean, updatedAt: string | Date | null) => {
     if (!hasSchema) return <WifiOff className="h-4 w-4" />
     
+    if (!updatedAt) return <AlertCircle className="h-4 w-4" />
     const lastUpdate = new Date(updatedAt)
     const now = new Date()
     const hoursDiff = (now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60)
@@ -101,9 +103,10 @@ export default function SchemaListPage() {
     return <AlertCircle className="h-4 w-4" />
   }
 
-  const getStatusText = (hasSchema: boolean, updatedAt: string) => {
+  const getStatusText = (hasSchema: boolean, updatedAt: string | Date | null) => {
     if (!hasSchema) return 'No Schema'
     
+    if (!updatedAt) return 'Unknown'
     const lastUpdate = new Date(updatedAt)
     const now = new Date()
     const hoursDiff = (now.getTime() - lastUpdate.getTime()) / (1000 * 60 * 60)
@@ -161,7 +164,8 @@ export default function SchemaListPage() {
     }
   }
 
-  const getLastActivityText = (updatedAt: string) => {
+  const getLastActivityText = (updatedAt: string | Date | null) => {
+    if (!updatedAt) return 'Never'
     const lastUpdate = new Date(updatedAt)
     const now = new Date()
     const diffInMs = now.getTime() - lastUpdate.getTime()
@@ -471,7 +475,7 @@ export default function SchemaListPage() {
                         </div>
                         <div className="flex items-center gap-2 text-gray-300">
                           <Clock className="h-5 w-5 text-gray-400" />
-                          <span>Updated {new Date(conn.updatedAt).toLocaleDateString()}</span>
+                          <span>Updated {conn.updatedAt ? new Date(conn.updatedAt).toLocaleDateString() : 'Never'}</span>
                         </div>
                         <div className="flex items-center gap-2 text-gray-300">
                           <Activity className="h-5 w-5 text-gray-400" />

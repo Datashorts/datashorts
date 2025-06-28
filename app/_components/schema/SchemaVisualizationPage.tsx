@@ -542,9 +542,9 @@ export default function SchemaPage() {
                                     </div>
                                   </td>
                                   <td className="p-4 text-gray-400 font-mono text-xs">
-                                    {column.column_default ? (
+                                    {(column as any).column_default ? (
                                       <code className="bg-white/10 px-2 py-1 rounded text-gray-300">
-                                        {column.column_default}
+                                        {(column as any).column_default}
                                       </code>
                                     ) : (
                                       <span className="text-gray-500">NULL</span>
