@@ -1,4 +1,4 @@
-import { grokClient } from "@/app/lib/clients";
+import { openaiClient } from "@/app/lib/clients";
 import { generateSQLQuery } from "@/app/actions/pipeline2Query";
 import { executeSQLQuery } from "@/app/lib/db/executeQuery";
 
@@ -57,8 +57,8 @@ Return JSON format.`,
       messages.filter((m) => m.role === "user").pop()?.content || "";
 
     // Analyze conversation context
-    const contextAnalysis = await grokClient.chat.completions.create({
-      model: "grok-2-latest",
+    const contextAnalysis = await openaiClient.chat.completions.create({
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -188,8 +188,8 @@ Return a JSON object with:
     const chartType = determineChartType(lastUserMessage, queryResult);
     const processedData = processQueryResults(queryResult, chartType);
 
-    const response = await grokClient.chat.completions.create({
-      model: "grok-2-latest",
+    const response = await openaiClient.chat.completions.create({
+      model: "gpt-4o",
       messages: [
         systemPrompt,
         ...messages,

@@ -18,7 +18,7 @@ DataChat is a modern web application that allows you to interact with your datab
 - **Authentication**: Clerk
 - **Database**: Neon PostgreSQL with DrizzleORM
 - **Vector Database**: Pinecone
-- **AI/ML**: OpenAI Embeddings (text-embedding-ada-002), Grok API
+- **AI/ML**: OpenAI Embeddings (text-embedding-ada-002), OpenAI API
 
 ## Getting Started
 
@@ -30,7 +30,6 @@ DataChat is a modern web application that allows you to interact with your datab
 - A Neon PostgreSQL database
 - A Pinecone account for vector storage
 - OpenAI API access
-- Grok API access
 
 ### Installation
 
@@ -68,7 +67,6 @@ DataChat is a modern web application that allows you to interact with your datab
 
    # AI Services
    OPENAI_API_KEY=your_openai_api_key
-   XAI_API_KEY=your_grok_api_key
 
    # Other Configuration
    NODE_TLS_REJECT_UNAUTHORIZED=0
@@ -98,7 +96,6 @@ Here's a detailed explanation of the environment variables:
 | `PINECONE_API_KEY`                                | Your Pinecone API key             | Yes      |
 | `PINECONE_INDEX_NAME`                             | Name of your Pinecone index       | Yes      |
 | `OPENAI_API_KEY`                                  | Your OpenAI API key               | Yes      |
-| `XAI_API_KEY`                                     | Your Grok API key                 | Yes      |
 | `NODE_TLS_REJECT_UNAUTHORIZED`                    | SSL verification setting          | Yes      |
 
 ## Contributing
@@ -118,4 +115,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [DrizzleORM](https://orm.drizzle.team/)
 - [Pinecone](https://www.pinecone.io/)
 - [OpenAI](https://openai.com/)
-- [Grok API](https://grok.x.ai/)

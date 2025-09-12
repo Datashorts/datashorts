@@ -1,4 +1,4 @@
-import { grokClient } from "@/app/lib/clients";
+import { openaiClient } from "@/app/lib/clients";
 import { executeSQLQuery } from "@/app/lib/db/executeQuery";
 import { generateSQLQuery } from "@/app/actions/pipeline2Query";
 
@@ -118,9 +118,9 @@ Columns: ${table.columns}
 Query Results:
 ${JSON.stringify(queryResult, null, 2)}`;
 
-    console.log("\n--- Sending to Grok for Analysis ---");
-    const response = await grokClient.chat.completions.create({
-      model: "grok-2-latest",
+    console.log("\n--- Sending to OpenAI for Analysis ---");
+    const response = await openaiClient.chat.completions.create({
+      model: "gpt-4o",
       messages: [
         systemPrompt,
         {
@@ -132,7 +132,7 @@ ${JSON.stringify(queryResult, null, 2)}`;
       response_format: { type: "json_object" },
     });
 
-    console.log("\n--- Processing Grok Response ---");
+    console.log("\n--- Processing OpenAI Response ---");
     const content = response.choices[0].message.content;
     if (!content) {
       throw new Error("No content in response");

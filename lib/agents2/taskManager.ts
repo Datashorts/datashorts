@@ -1,4 +1,4 @@
-import { grokClient } from '@/app/lib/clients';
+import { openaiClient } from '@/app/lib/clients';
 
 type Message = 
   | { role: 'system'; content: string }
@@ -79,8 +79,8 @@ Return JSON format.`
   };
 
   try {
-    const response = await grokClient.chat.completions.create({
-      model: 'grok-2-latest',
+    const response = await openaiClient.chat.completions.create({
+      model: 'gpt-4o',
       messages: [
         systemPrompt,
         {

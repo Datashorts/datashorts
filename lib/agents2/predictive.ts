@@ -1,4 +1,4 @@
-import { grokClient } from '@/app/lib/clients';
+import { openaiClient } from '@/app/lib/clients';
 import { generateSQLQuery } from '@/app/actions/pipeline2Query';
 import { executeSQLQuery } from '@/app/lib/db/executeQuery';
 
@@ -564,7 +564,7 @@ function assessDataQuality(data: any[]): string {
     // 5. Analyze domain context for better predictions
     const domainContext = analyzeDomainContext(reconstructedSchema, userQuery);
 
-    // 6. Generate prediction using Grok with enhanced context
+    // 6. Generate prediction using OpenAI with enhanced context
     const prompt = `
 BUSINESS CONTEXT ANALYSIS:
 User Query: "${userQuery}"
@@ -613,9 +613,9 @@ Generate a prediction that provides specific, actionable business value for this
     console.log("Domain Context:", domainContext);
     console.log("Suggested Chart Type:", suggestedChartType);
 
-    console.log("\n--- Sending to Grok for Prediction ---");
-    const response = await grokClient.chat.completions.create({
-      model: 'grok-2-latest',
+    console.log("\n--- Sending to OpenAI for Prediction ---");
+    const response = await openaiClient.chat.completions.create({
+      model: 'gpt-4o',
       messages: [
         systemPrompt,
         {

@@ -153,7 +153,7 @@ async function executeSQLQuery(connectionId: string, sqlQuery: string) {
 }
 
 /**
- * Generate SQL query using Grok based on schema and user query
+ * Generate SQL query using OpenAI based on schema and user query
  * @param schema The reconstructed schema information
  * @param userQuery The original user query
  * @returns The generated SQL query
@@ -389,27 +389,128 @@ Consider the following when generating the query:
 }
 
 /**
+ * Use AI to determine which columns are relevant to a query
+ * @param query The user's query
+ * @param columnsString The columns string from metadata
+ * @returns Array of relevant column names
+ */
+async function getRelevantColumns(query: string, columnsString: string): Promise<string[]> {
+  try {
+    const columns = columnsString.split(",").map(col => col.trim());
+    
+    const prompt = `Given this database query and list of columns, identify which columns are relevant to answering the query.
+
+Query: "${query}"
+
+Available columns: ${columns.join(", ")}
+
+Return only the column names that are relevant to the query, separated by commas. If no columns are relevant, return "none".
+
+Examples:
+- Query: "show me all users and their roles" → "name, role, id"
+- Query: "find user by email" → "email, name, id"
+- Query: "get all data" → "id, name, email, role, created_at, updated_at"
+
+Relevant columns:`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: "You are a database expert. Analyze queries and identify relevant columns. Return only column names separated by commas, or 'none' if no columns are relevant."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.1,
+      max_tokens: 100
+    });
+
+    const result = response.choices[0]?.message?.content?.trim() || "none";
+    
+    if (result.toLowerCase() === "none") {
+      return [];
+    }
+
+    // Parse the result and filter to only include actual columns
+    const relevantColumns = result.split(",")
+      .map(col => col.trim())
+      .filter(col => columns.some(availableCol => 
+        availableCol.toLowerCase().includes(col.toLowerCase()) ||
+        col.toLowerCase().includes(availableCol.toLowerCase())
+      ));
+
+    return relevantColumns;
+  } catch (error) {
+    console.error("Error determining relevant columns:", error);
+    // Fallback to simple matching
+    return columns.filter(col => {
+      const colName = col.split("(")[0].trim().toLowerCase();
+      return query.toLowerCase().includes(colName) || colName.includes("id");
+    });
+  }
+}
+
+/**
  * Generate embeddings for a query using OpenAI
  * @param query The user's query text
  * @returns The embedding vector
  */
 async function generateQueryEmbeddings(query: string) {
   try {
-    const enhancedQuery = `Find database tables containing: ${query}`;
+    // Use AI to dynamically enhance the query for better vector search
+    const enhancementPrompt = `Analyze this database query and create an enhanced version that will help find relevant database tables and columns. 
 
-    console.log("Generating embeddings for query:", enhancedQuery);
+Original query: "${query}"
 
-    const response = await openai.embeddings.create({
+Create a comprehensive search query that includes:
+1. The core intent of the query
+2. Related database concepts and terms
+3. Common synonyms and variations
+4. Data types and relationships that might be relevant
+
+Return only the enhanced query, no explanations.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: "You are a database query enhancement expert. Create search queries that will help find relevant database tables and columns using semantic search."
+        },
+        {
+          role: "user",
+          content: enhancementPrompt
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 200
+    });
+
+    const enhancedQuery = response.choices[0]?.message?.content?.trim() || query;
+    console.log("Original query:", query);
+    console.log("Enhanced query:", enhancedQuery);
+
+    const embeddingResponse = await openai.embeddings.create({
       model: "text-embedding-ada-002",
       input: enhancedQuery,
       encoding_format: "float",
     });
 
     console.log("Successfully generated query embeddings");
-    return response.data[0].embedding;
+    return embeddingResponse.data[0].embedding;
   } catch (error) {
     console.error("Error generating query embeddings:", error);
-    throw new Error("Failed to generate query embeddings");
+    // Fallback to original query if enhancement fails
+    const fallbackResponse = await openai.embeddings.create({
+      model: "text-embedding-ada-002",
+      input: query,
+      encoding_format: "float",
+    });
+    return fallbackResponse.data[0].embedding;
   }
 }
 
@@ -454,25 +555,48 @@ export async function processPipeline2Query(
       console.log(
         "No matches found in Pinecone. Checking if embeddings exist..."
       );
-      return {
-        success: true,
-        reconstructedSchema: [],
-        matches: [],
-        debug: {
-          message: "No matches found in Pinecone",
-          connectionId,
-          query,
+      
+      // Dynamic fallback: Use AI to determine what tables might be relevant
+      console.log("Attempting dynamic fallback search...");
+      
+      const fallbackResponse = await pinecone.query({
+        vector: queryEmbedding,
+        topK: 20, // Increase topK for fallback
+        filter: {
+          connectionId: connectionId,
+          pipeline: "pipeline2",
+          type: "schema",
         },
-      };
+        includeMetadata: true,
+      });
+      
+      if (fallbackResponse.matches && fallbackResponse.matches.length > 0) {
+        console.log("Fallback search found", fallbackResponse.matches.length, "matches");
+        // Use the fallback results
+        queryResponse.matches = fallbackResponse.matches;
+      } else {
+        return {
+          success: true,
+          reconstructedSchema: [],
+          matches: [],
+          debug: {
+            message: "No matches found in Pinecone, including fallback search",
+            connectionId,
+            query,
+          },
+        };
+      }
     }
 
     const tableMatches = new Map();
-    queryResponse.matches.forEach((match) => {
+    
+    // Process matches asynchronously
+    for (const match of queryResponse.matches) {
       console.log("Processing match:", match);
       const tableName = match.metadata?.tableName;
       if (!tableName) {
         console.log("Match has no tableName in metadata:", match);
-        return;
+        continue;
       }
 
       let relevanceScore = match.score || 0;
@@ -483,18 +607,9 @@ export async function processPipeline2Query(
       }
 
       const columns = String(match.metadata?.columns || "");
-      const columnMatches = columns
-        .toLowerCase()
-        .split(",")
-        .filter((col) => {
-          const colName = col.split("(")[0].trim().toLowerCase();
-          return (
-            query.toLowerCase().includes(colName) ||
-            colName.includes("id") ||
-            colName.includes("user") ||
-            colName.includes("post")
-          );
-        });
+      
+      // Use AI to determine which columns are relevant to the query
+      const columnMatches = await getRelevantColumns(query, columns);
 
       if (columnMatches.length > 0) {
         relevanceScore += 0.1 * columnMatches.length;
@@ -515,7 +630,7 @@ export async function processPipeline2Query(
           score: relevanceScore,
         });
       }
-    });
+    }
 
     const reconstructedSchema = Array.from(tableMatches.values()).sort(
       (a, b) => b.score - a.score
