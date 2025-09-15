@@ -395,8 +395,9 @@ Consider the following when generating the query:
  * @returns Array of relevant column names
  */
 async function getRelevantColumns(query: string, columnsString: string): Promise<string[]> {
+  const columns = columnsString.split(",").map(col => col.trim());
+  
   try {
-    const columns = columnsString.split(",").map(col => col.trim());
     
     const prompt = `Given this database query and list of columns, identify which columns are relevant to answering the query.
 
