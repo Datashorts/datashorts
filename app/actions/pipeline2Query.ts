@@ -575,16 +575,43 @@ export async function processPipeline2Query(
         // Use the fallback results
         queryResponse.matches = fallbackResponse.matches;
       } else {
-        return {
-          success: true,
-          reconstructedSchema: [],
-          matches: [],
-          debug: {
-            message: "No matches found in Pinecone, including fallback search",
-            connectionId,
-            query,
-          },
-        };
+        console.log("No Pinecone matches found, falling back to direct schema analysis");
+        
+        // Fallback: Use the actual database schema from connection details
+        const [connection] = await db
+          .select()
+          .from(dbConnections)
+          .where(eq(dbConnections.id, Number(connectionId)));
+
+        if (!connection || !connection.tableSchema) {
+          return {
+            success: true,
+            reconstructedSchema: [],
+            matches: [],
+            debug: {
+              message: "No matches found in Pinecone and no schema available",
+              connectionId,
+              query,
+            },
+          };
+        }
+
+        // Convert tableSchema to the format expected by the rest of the pipeline
+        const schemaTables = Array.isArray(connection.tableSchema) 
+          ? connection.tableSchema 
+          : JSON.parse(connection.tableSchema as string);
+
+        console.log("Using direct schema fallback with", schemaTables.length, "tables");
+        
+        // Create mock matches from the actual schema
+        queryResponse.matches = schemaTables.map((table: any) => ({
+          score: 0.5, // Default relevance score
+          metadata: {
+            tableName: table.tableName,
+            columns: table.columns.join(','),
+            text: `${table.tableName} table with columns: ${table.columns.join(', ')}`
+          }
+        }));
       }
     }
 

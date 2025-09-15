@@ -65,30 +65,6 @@ export const tableSyncStatus = pgTable('table_sync_status', {
   connectionTableIdx: index('connection_table_idx').on(table.connectionId, table.tableName)
 }));
 
-export const subscriptions = pgTable('subscriptions', {
-  id: serial('id').primaryKey(),
-  userId: text('user_id').references(() => users.clerk_id).notNull(),
-  planType: varchar('plan_type', { length: 50 }).notNull().default('free'),
-  customerId: text('customer_id').notNull(),
-  subscriptionId: text('subscription_id').unique().notNull(),
-  status: varchar('status', { length: 50 }).notNull().default('active'),
-  recurringAmount: integer('recurring_amount'),
-  currency: varchar('currency', { length: 10 }).default('USD'),
-  productId: text('product_id'),
-  quantity: integer('quantity').default(1),
-  trialPeriodDays: integer('trial_period_days'),
-  subscriptionPeriodInterval: varchar('subscription_period_interval', { length: 50 }),
-  paymentFrequencyInterval: varchar('payment_frequency_interval', { length: 50 }),
-  subscriptionPeriodCount: integer('subscription_period_count'),
-  paymentFrequencyCount: integer('payment_frequency_count'),
-  nextBillingDate: timestamp('next_billing_date'),
-  previousBillingDate: timestamp('previous_billing_date'),
-  currentPeriodStart: timestamp('current_period_start'),
-  currentPeriodEnd: timestamp('current_period_end'),
-  cancelledAt: timestamp('cancelled_at'),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow()
-});
 
 export const usageLimits = pgTable('usage_limits', {
   id: serial('id').primaryKey(),
@@ -200,12 +176,6 @@ export const queryHistoryRelations = relations(queryHistory, ({ one }) => ({
   // This allows chatId to be any integer (like connection ID) without requiring a chat record
 }));
 
-export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
-  user: one(users, {
-    fields: [subscriptions.userId],
-    references: [users.clerk_id],
-  }),
-}));
 
 export const usageLimitsRelations = relations(usageLimits, ({ one, many }) => ({
   user: one(users, {

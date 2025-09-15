@@ -258,12 +258,12 @@ const QUESTIONS: Record<string, QuestionProps[]> = {
   ],
   Billing: [
     {
-      question: "Is there a free trial?",
-      answer: "Yes, we offer a 14-day free trial with full access to all features."
+      question: "Is there a free plan?",
+      answer: "Yes, we offer a free plan with basic features to get you started."
     },
     {
-      question: "What happens after the trial ends?",
-      answer: "You'll be asked to upgrade to a paid plan to continue accessing premium features."
+      question: "How do I upgrade to premium features?",
+      answer: "Contact our sales team to discuss premium features and enterprise solutions."
     },
     {
       question: "Do you offer student or team discounts?",
