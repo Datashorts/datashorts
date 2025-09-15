@@ -21,6 +21,7 @@ export const users = pgTable('users', {
   name: text('name'),
   email: text('email'),
   clerk_id: text('clerk_id').unique(),
+  credits: integer('credits').notNull().default(5),
   createdAt: timestamp('created_at').defaultNow()
 });
 
