@@ -7,8 +7,9 @@ import { useUser } from '@clerk/nextjs'
 import { submitChat, getChatHistory, toggleBookmark } from '@/app/actions/chat'
 import ChatMessage from '@/app/_components/chat/ChatMessage'
 import { Button } from '@/components/ui/button'
-import { Copy, RefreshCw, Bookmark, Database, Terminal } from 'lucide-react'
+import { Copy, RefreshCw, Bookmark, Database, Terminal, Coins } from 'lucide-react'
 import Link from 'next/link'
+import { getUserCredits } from '@/app/lib/credits'
 
 interface ChatMessageProps {
   message: string | {
@@ -43,12 +44,28 @@ export default function ChatWithDbPage() {
   const [dbUrl,       setDbUrl]       = useState('')
   const [isSyncing,   setIsSyncing]   = useState(false)
   const [isPredictiveMode, setIsPredictiveMode] = useState(false)
+  const [userCredits, setUserCredits] = useState(0)
 
   const chatRef = useRef<HTMLDivElement>(null)
 
+  // Fetch user credits
+  const fetchUserCredits = async () => {
+    if (user?.id) {
+      try {
+        const credits = await getUserCredits(user.id)
+        setUserCredits(credits)
+      } catch (error) {
+        console.error('Error fetching user credits:', error)
+      }
+    }
+  }
+
   
   useEffect(() => {
-    if (user) loadFolders(user.id)
+    if (user) {
+      loadFolders(user.id)
+      fetchUserCredits()
+    }
   }, [user, loadFolders])
 
 
@@ -240,6 +257,12 @@ export default function ChatWithDbPage() {
             <h1 className="text-lg sm:text-xl font-semibold">Chat with <span className="text-blue-400">{dbName}</span></h1>
 
             <div className="flex gap-2">
+              {/* Credits Display */}
+              <div className="px-3 py-1.5 rounded-lg border border-yellow-400/30 bg-yellow-500/10 text-sm flex items-center gap-1 text-yellow-400">
+                <Coins className="h-4 w-4" />
+                {userCredits} Credits
+              </div>
+
               <Link 
                 href={`/chats/${connectionId}/${dbName}/dashboard`}
                 className="px-3 py-1.5 rounded-lg border border-blue-400/30 hover:bg-blue-500/10 text-sm flex items-center gap-1"
@@ -388,12 +411,16 @@ export default function ChatWithDbPage() {
             <div className="flex-1 flex gap-2">
               <textarea
                 rows={2}
-                className="flex-1 resize-none bg-[#0f1013] border border-blue-500/20 rounded-lg p-3 focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/40 focus:outline-none placeholder-gray-500 text-gray-200 scrollbar-thin scrollbar-thumb-blue-500/30"
-                placeholder="Ask something about your database…"
+                className={`flex-1 resize-none bg-[#0f1013] border rounded-lg p-3 focus:ring-2 focus:outline-none scrollbar-thin scrollbar-thumb-blue-500/30 ${
+                  userCredits > 0 
+                    ? 'border-blue-500/20 focus:ring-blue-500/40 focus:border-blue-500/40 placeholder-gray-500 text-gray-200' 
+                    : 'border-red-500/20 focus:ring-red-500/40 focus:border-red-500/40 placeholder-red-500/50 text-gray-400'
+                }`}
+                placeholder={userCredits > 0 ? "Ask something about your database…" : "You need credits to send messages. Please purchase credits to continue."}
                 value={userQuery}
                 onChange={e => setUserQuery(e.target.value)}
                 onKeyDown={onKey}
-                disabled={isLoading}
+                disabled={isLoading || userCredits <= 0}
               />
               <div className="flex flex-col justify-center">
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -411,11 +438,29 @@ export default function ChatWithDbPage() {
 
             <button
               onClick={() => handleSend()}
-              disabled={isLoading || !userQuery.trim()}
-              className="px-5 py-2 rounded-lg bg-gradient-to-r from-blue-600/90 to-blue-500/90 hover:from-blue-600 hover:to-blue-500 text-white transition shadow-md shadow-blue-500/10 disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed">
-              {isLoading ? '…' : 'Send'}
+              disabled={isLoading || !userQuery.trim() || userCredits <= 0}
+              className={`px-5 py-2 rounded-lg text-white transition shadow-md disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed ${
+                userCredits > 0 
+                  ? 'bg-gradient-to-r from-blue-600/90 to-blue-500/90 hover:from-blue-600 hover:to-blue-500 shadow-blue-500/10' 
+                  : 'bg-gradient-to-r from-red-600/90 to-red-500/90 shadow-red-500/10'
+              }`}>
+              {isLoading ? '…' : userCredits <= 0 ? 'No Credits' : 'Send'}
             </button>
           </div>
+          
+          {/* Credits warning message */}
+          {userCredits <= 0 && (
+            <div className="max-w-3xl mx-auto mt-3 text-center">
+              <p className="text-sm text-red-400 mb-2">You're out of credits!</p>
+              <Link 
+                href="/"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-yellow-600/90 to-yellow-500/90 hover:from-yellow-600 hover:to-yellow-500 text-white text-sm font-medium transition shadow-md shadow-yellow-500/10"
+              >
+                <Coins className="h-4 w-4" />
+                Purchase Credits
+              </Link>
+            </div>
+          )}
         </footer>
       </div>
     </div>

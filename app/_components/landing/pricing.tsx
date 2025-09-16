@@ -47,65 +47,90 @@ export default function Pricing() {
             Simple <span className="bg-gradient-to-r from-blue-500 via-purple-500 to-teal-500 bg-clip-text text-transparent">Pricing</span>
           </h2>
           <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-            Start free and scale with your team. No hidden fees, cancel anytime.
+            Simple pricing for everyone. Choose your region and get started instantly.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8" style={{ perspective: '1000px' }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto" style={{ perspective: '1000px' }}>
           <PriceCard
-            tier="Starter"
-            price="Free"
-            bestFor="Perfect for individuals"
+            tier="India"
+            price="₹149"
+            bestFor="For users in India"
             CTA={
-              <button className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/20 px-4 py-2 rounded-lg transition-colors">
-                Get Started Free
-              </button>
-            }
-            benefits={[
-              { text: "5 queries per day", checked: true },
-              { text: "Basic visualizations", checked: true },
-              { text: "1 database connection", checked: true },
-              { text: "Email support", checked: true },
-              { text: "Advanced analytics", checked: false },
-              { text: "Priority support", checked: false },
-            ]}
-          />
-          
-          <PriceCard
-            tier="Pro"
-            price="$20/month"
-            bestFor="Best for small teams"
-            CTA={
-              <button className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/20 px-4 py-2 rounded-lg transition-colors">
-                Contact Sales
+              <button 
+                className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white px-6 py-3 rounded-lg transition-all duration-300 font-semibold"
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/create-subscription', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        priceId: 'price_1S7yMkSKyTkuBUG2eeiKydCc' // Replace with your actual India Price ID
+                      })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.url) {
+                      window.location.href = data.url;
+                    }
+                  } catch (error) {
+                    console.error('Error creating checkout session:', error);
+                  }
+                }}
+              >
+                Get Started - ₹149
               </button>
             }
             benefits={[
               { text: "Unlimited queries", checked: true },
-              { text: "Advanced visualizations", checked: true },
-              { text: "5 database connections", checked: true },
-              { text: "Priority email support", checked: true },
+              { text: "All visualizations", checked: true },
+              { text: "Multiple database connections", checked: true },
+              { text: "Priority support", checked: true },
               { text: "Advanced analytics", checked: true },
-              { text: "Team collaboration", checked: true },
+              { text: "Export capabilities", checked: true },
             ]}
           />
           
           <PriceCard
-            tier="Enterprise"
-            price="Custom"
-            bestFor="For large organizations"
+            tier="Global"
+            price="$6.49"
+            bestFor="For users worldwide"
             CTA={
-              <button className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/20 px-4 py-2 rounded-lg transition-colors">
-                Contact Sales
+              <button 
+                className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white px-6 py-3 rounded-lg transition-all duration-300 font-semibold"
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/create-subscription', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        priceId: 'price_1S7bFGSKyTkuBUG2ekAw27zs' // Replace with your actual Global Price ID
+                      })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.url) {
+                      window.location.href = data.url;
+                    }
+                  } catch (error) {
+                    console.error('Error creating checkout session:', error);
+                  }
+                }}
+              >
+                Get Started - $6.49
               </button>
             }
             benefits={[
-              { text: "Everything in Pro", checked: true },
-              { text: "Unlimited databases", checked: true },
-              { text: "Custom integrations", checked: true },
-              { text: "24/7 phone support", checked: true },
-              { text: "SSO & SAML", checked: true },
-              { text: "Dedicated success manager", checked: true },
+              { text: "Unlimited queries", checked: true },
+              { text: "All visualizations", checked: true },
+              { text: "Multiple database connections", checked: true },
+              { text: "Priority support", checked: true },
+              { text: "Advanced analytics", checked: true },
+              { text: "Export capabilities", checked: true },
             ]}
           />
         </div>
