@@ -245,7 +245,7 @@ export default function Pricing() {
                 {...pricingData}
                 CTA={
                   <button 
-                    className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white px-6 py-4 rounded-lg transition-all duration-300 font-semibold text-lg shadow-lg hover:shadow-blue-500/25 hover:scale-105 transform"
+                    className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white px-6 py-4 rounded-lg transition-all duration-200 font-semibold text-lg shadow-lg hover:shadow-blue-500/25 active:scale-95 hover:scale-102"
                     onClick={() => handleSubscription(pricingData.priceId)}
                   >
                     Get Started - {pricingData.price}
