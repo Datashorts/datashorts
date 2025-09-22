@@ -201,7 +201,7 @@ export default function Pricing() {
             <p className="text-gray-400">Detecting your location for personalized pricing...</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-center" style={{ perspective: '1000px' }}>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center" style={{ perspective: '1000px' }}>
             
             {/* Left Side - Features Highlight */}
             <motion.div
@@ -236,13 +236,7 @@ export default function Pricing() {
                 />
               </div>
 
-              <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 mt-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span className="text-green-400 font-medium text-sm">30-Day Money Back Guarantee</span>
-                </div>
-                <p className="text-gray-300 text-sm">Try DataShorts risk-free. Cancel anytime, no questions asked.</p>
-              </div>
+
             </motion.div>
 
             {/* Center - Main Pricing Card */}
@@ -254,65 +248,11 @@ export default function Pricing() {
                     className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white px-6 py-4 rounded-lg transition-all duration-300 font-semibold text-lg shadow-lg hover:shadow-blue-500/25 hover:scale-105 transform"
                     onClick={() => handleSubscription(pricingData.priceId)}
                   >
-                    Start Free Trial - {pricingData.price}
+                    Get Started - {pricingData.price}
                   </button>
                 }
               />
             </div>
-
-            {/* Right Side - Social Proof & Stats */}
-            <motion.div
-              initial={{ opacity: 0, x: 50 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.8 }}
-              viewport={{ once: true }}
-              className="space-y-6"
-            >
-              <h3 className="text-2xl font-bold text-white mb-6">Trusted by thousands</h3>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <StatCard
-                  number="10,000+"
-                  label="Active Users"
-                  icon="👥"
-                />
-                <StatCard
-                  number="99.9%"
-                  label="Uptime"
-                  icon="⚡"
-                />
-                <StatCard
-                  number="5x"
-                  label="Faster Queries"
-                  icon="🚀"
-                />
-                <StatCard
-                  number="4.9/5"
-                  label="User Rating"
-                  icon="⭐"
-                />
-              </div>
-
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                    <span className="text-white font-bold text-sm">DS</span>
-                  </div>
-                  <div>
-                    <div className="text-white font-medium">Sarah Chen</div>
-                    <div className="text-gray-400 text-xs">Data Analyst at TechCorp</div>
-                  </div>
-                </div>
-                <p className="text-gray-300 text-sm italic">
-                  "DataShorts transformed how our team works with data. What used to take hours of SQL writing now takes seconds of conversation."
-                </p>
-                <div className="flex gap-1 mt-2">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="w-4 h-4 text-yellow-400 fill-current" />
-                  ))}
-                </div>
-              </div>
-            </motion.div>
           </div>
         )}
 
@@ -363,7 +303,7 @@ export default function Pricing() {
             />
             <FAQItem
               question="Do you offer refunds?"
-              answer="We offer a 30-day money-back guarantee for all paid plans. If you're not satisfied, we'll refund your payment in full."
+              answer="Yes, we offer refunds for unused portions of your subscription. Contact our support team for assistance."
             />
             <FAQItem
               question="What databases do you support?"
@@ -493,7 +433,7 @@ function PriceCard({ tier, price, originalPrice, bestFor, CTA, benefits, isPopul
           <div className="mt-4 text-center">
             <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
               <Shield className="w-3 h-3" />
-              <span>Secure SSL • Cancel Anytime • 30-Day Guarantee</span>
+              <span>Secure SSL • Cancel Anytime</span>
             </div>
           </div>
         </div>
