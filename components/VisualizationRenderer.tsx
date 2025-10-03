@@ -9,9 +9,8 @@ interface VisualizationRendererProps {
     chartType: 'bar' | 'pie' | 'line';
     data: Array<{
       label: string;
-      value: number;
-      color?: string;
-      percentage?: string;
+      value?: number;
+      [key: string]: any; // Support for multiple data series
     }>;
     config: {
       title: string;
@@ -36,9 +35,11 @@ interface VisualizationRendererProps {
         smooth?: boolean;
         showArea?: boolean;
         tension?: number;
-        lineColor?: string;
-        areaColor?: string;
         showGridLines?: boolean;
+        multiLine?: boolean;
+        dataKeys?: string[];
+        lineColors?: string[];
+        lineNames?: string[];
       };
       barConfig?: {
         barThickness?: number;
@@ -92,7 +93,7 @@ const VisualizationRenderer: React.FC<VisualizationRendererProps> = ({ visualiza
         <div className="h-80">
           {chartType === 'pie' ? (
             <PieChart
-              data={data}
+              data={data.map((item) => ({ ...item, value: item.value ?? 0 }))}
               config={{
                 donut: config.pieConfig?.donut || false,
                 showPercentages: config.pieConfig?.showPercentages ?? true,
@@ -110,14 +111,16 @@ const VisualizationRenderer: React.FC<VisualizationRendererProps> = ({ visualiza
                 smooth: config.lineConfig?.smooth ?? true,
                 showArea: config.lineConfig?.showArea ?? false,
                 tension: config.lineConfig?.tension ?? 0.4,
-                lineColor: config.lineConfig?.lineColor,
-                areaColor: config.lineConfig?.areaColor,
                 showGridLines: config.lineConfig?.showGridLines ?? true,
+                multiLine: config.lineConfig?.multiLine ?? false,
+                dataKeys: config.lineConfig?.dataKeys,
+                lineColors: config.lineConfig?.lineColors,
+                lineNames: config.lineConfig?.lineNames,
               }}
             />
           ) : (
             <BarChart
-              data={data}
+              data={data.map((item) => ({ ...item, value: item.value ?? 0 }))}
               config={{
                 barThickness: config.barConfig?.barThickness || 40,
                 horizontal: config.barConfig?.horizontal || false,
@@ -139,13 +142,32 @@ const VisualizationRenderer: React.FC<VisualizationRendererProps> = ({ visualiza
         <div className="bg-gray-900/40 rounded-lg p-3 border border-gray-700/50">
           <p className="text-gray-400 mb-1">Total Value</p>
           <p className="text-lg font-semibold text-gray-200">
-            {data.reduce((sum, item) => sum + item.value, 0).toLocaleString()}
+            {data.reduce((sum, item) => {
+              // Handle both single value and multi-line data
+              if (item.value !== undefined) {
+                return sum + item.value;
+              }
+              // Sum all numeric values for multi-line
+              return sum + Object.values(item).reduce((acc: number, val: any) => {
+                return typeof val === 'number' ? acc + val : acc;
+              }, 0);
+            }, 0).toLocaleString()}
           </p>
         </div>
         <div className="bg-gray-900/40 rounded-lg p-3 border border-gray-700/50">
           <p className="text-gray-400 mb-1">Average</p>
           <p className="text-lg font-semibold text-gray-200">
-            {(data.reduce((sum, item) => sum + item.value, 0) / data.length).toFixed(2)}
+            {(() => {
+              const total = data.reduce((sum, item) => {
+                if (item.value !== undefined) {
+                  return sum + item.value;
+                }
+                return sum + Object.values(item).reduce((acc: number, val: any) => {
+                  return typeof val === 'number' ? acc + val : acc;
+                }, 0);
+              }, 0);
+              return (total / data.length).toFixed(2);
+            })()}
           </p>
         </div>
         <div className="bg-gray-900/40 rounded-lg p-3 border border-gray-700/50">
