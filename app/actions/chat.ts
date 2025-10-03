@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { chats, dbConnections } from "@/configs/schema";
 import { chunkTableData } from "@/lib/utils/tokenManagement";
 import { processPipeline2Query } from "./pipeline2Query";
+import { deductCredits, hasEnoughCredits } from "@/app/lib/credits";
 
 export async function getChatHistory(connectionId: string | number) {
   try {
@@ -120,6 +121,29 @@ export async function submitChat(userQuery: string, url: string, predictiveMode:
   );
 
   try {
+    // Get current user first for credit check
+    const user = await currentUser();
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+
+    // Check if user has enough credits
+    const hasCredits = await hasEnoughCredits(user.id, 1);
+    if (!hasCredits) {
+      console.log("User has insufficient credits");
+      // Return error in the same format as other responses
+      return {
+        success: false,
+        connectionId,
+        connectionName,
+        agentType: "error",
+        agentOutput: {
+          message: "Insufficient credits. Please purchase more credits to continue.",
+          requiresCredits: true
+        }
+      };
+    }
+
     const connectionDetails = await db
       .select()
       .from(dbConnections)
@@ -149,6 +173,14 @@ export async function submitChat(userQuery: string, url: string, predictiveMode:
       connectionId
     );
 
+    // Deduct credits after successful processing
+    const creditDeducted = await deductCredits(user.id, 1);
+    if (!creditDeducted) {
+      console.warn("Failed to deduct credits after successful query processing");
+    } else {
+      console.log("Successfully deducted 1 credit from user:", user.id);
+    }
+
     return {
       success: true,
       connectionId,
@@ -158,9 +190,11 @@ export async function submitChat(userQuery: string, url: string, predictiveMode:
     };
   } catch (error) {
     console.error("Error in submitChat:", error);
+    // Don't deduct credits if there was an error
     throw error;
   }
 }
+
 
 async function storeChatInDatabase(
   userQuery: string,

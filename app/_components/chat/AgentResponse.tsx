@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import PredictiveResponse from "./PredictiveResponse";
 import PieChart from "@/components/PieChart";
 import BarChart from "@/components/BarChart";
+import LineChart from "@/components/LineChart";
 import { Bookmark } from "lucide-react";
 
 // Helper function to safely format cell values
@@ -430,7 +431,7 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                       )}
                   </Card>
 
-                  {/* chart */}
+                  {/* chart - Updated section with line chart support */}
                   {agentOutput.analysisResult.visualization && (
                     <>
                       <Card
@@ -440,14 +441,28 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                       >
                         <div className="p-4 bg-[#0d0e10]/80 rounded-lg">
                           <div className="relative">
-                            {agentOutput.analysisResult.visualization.chartType ===
-                            "pie" ? (
+                            {agentOutput.analysisResult.visualization.chartType === "pie" ? (
                               <PieChart
                                 data={agentOutput.analysisResult.visualization.data}
                                 config={{
                                   donut: false,
                                   showPercentages: true,
                                   ...(agentOutput.analysisResult.visualization.config?.pieConfig || {})
+                                }}
+                              />
+                            ) : agentOutput.analysisResult.visualization.chartType === "line" ? (
+                              <LineChart
+                                data={agentOutput.analysisResult.visualization.data}
+                                config={{
+                                  xAxisLabel:
+                                    agentOutput.analysisResult.visualization.config?.xAxis || "X Axis",
+                                  yAxisLabel:
+                                    agentOutput.analysisResult.visualization.config?.yAxis || "Y Axis",
+                                  showPoints: true,
+                                  smooth: true,
+                                  showArea: false,
+                                  showGridLines: true,
+                                  ...(agentOutput.analysisResult.visualization.config?.lineConfig || {})
                                 }}
                               />
                             ) : (
@@ -483,18 +498,32 @@ const AgentResponse: React.FC<AgentResponseProps> = ({
                         </div>
                       </Card>
 
-                      {/* Expanded View */}
+                      {/* Expanded View - Updated */}
                       {isVisualizationExpanded && (
                         <div className="fixed inset-0 z-50 bg-[#0d0e10] flex items-center justify-center">
                           <div className="w-[90vw] h-[90vh] flex items-center justify-center">
-                            {agentOutput.analysisResult.visualization.chartType ===
-                            "pie" ? (
+                            {agentOutput.analysisResult.visualization.chartType === "pie" ? (
                               <PieChart
                                 data={agentOutput.analysisResult.visualization.data}
                                 config={{
                                   donut: false,
                                   showPercentages: true,
                                   ...(agentOutput.analysisResult.visualization.config?.pieConfig || {})
+                                }}
+                              />
+                            ) : agentOutput.analysisResult.visualization.chartType === "line" ? (
+                              <LineChart
+                                data={agentOutput.analysisResult.visualization.data}
+                                config={{
+                                  xAxisLabel:
+                                    agentOutput.analysisResult.visualization.config?.xAxis || "X Axis",
+                                  yAxisLabel:
+                                    agentOutput.analysisResult.visualization.config?.yAxis || "Y Axis",
+                                  showPoints: true,
+                                  smooth: true,
+                                  showArea: false,
+                                  showGridLines: true,
+                                  ...(agentOutput.analysisResult.visualization.config?.lineConfig || {})
                                 }}
                               />
                             ) : (

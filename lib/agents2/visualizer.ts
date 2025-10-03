@@ -1,391 +1,405 @@
-import { openaiClient } from "@/app/lib/clients";
-import { generateSQLQuery } from "@/app/actions/pipeline2Query";
+// lib/agents2/visualizer.ts - Enhanced with multiple trend lines
+import OpenAI from "openai";
 import { executeSQLQuery } from "@/app/lib/db/executeQuery";
 
-export const visualizer = async function visualizer(
-  messages: any[],
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+interface VisualizationConfig {
+  chartType: "bar" | "pie" | "line";
+  title: string;
+  description: string;
+  xAxis?: string;
+  yAxis?: string;
+  legend?: boolean;
+  stacked?: boolean;
+  pieConfig?: {
+    donut?: boolean;
+    innerRadius?: number;
+    outerRadius?: number;
+    showPercentages?: boolean;
+  };
+  lineConfig?: {
+    showPoints?: boolean;
+    smooth?: boolean;
+    showArea?: boolean;
+    tension?: number;
+    multiLine?: boolean;
+    dataKeys?: string[];
+    lineColors?: string[];
+    lineNames?: string[];
+  };
+  barConfig?: {
+    barThickness?: number;
+    barPercentage?: number;
+    categoryPercentage?: number;
+    horizontal?: boolean;
+  };
+}
+
+interface Message {
+  role: string;
+  content: string;
+}
+
+/**
+ * Detect if query requires multiple trend lines
+ */
+function detectMultiLineTrend(query: string): boolean {
+  const multiLineKeywords = [
+    'compare', 'comparison', 'versus', 'vs', 'by type', 'by category',
+    'by pizza type', 'by size', 'each', 'different', 'separate',
+    'breakdown', 'split by', 'grouped by', 'per category'
+  ];
+  
+  const lowerQuery = query.toLowerCase();
+  return multiLineKeywords.some(keyword => lowerQuery.includes(keyword));
+}
+
+/**
+ * Visualizer Agent - Enhanced with multiple trend lines support
+ */
+export async function visualizer(
+  messages: Message[],
   reconstructedSchema: any[],
   connectionId: string
 ) {
-  const systemPrompt = {
-    role: "system",
-    content: `You are a data visualization expert that creates meaningful visualizations based on database query results.
-    
-Your role is to analyze the query results and create appropriate visualizations. Return a JSON object with the following structure:
-{
-  "visualization": {
-    "chartType": string,    // Type of chart: "bar" | "line" | "pie" | "scatter"
-    "data": any[],         // Data points for visualization
-    "config": {            // Chart configuration
-      "title": string,     // Chart title
-      "description": string, // Brief description
-      "xAxis": string,     // X-axis label
-      "yAxis": string,     // Y-axis label
-      "legend": boolean,   // Whether to show legend
-      "pieConfig": {       // Specific to pie charts
-        "labels": string[], // Labels for pie segments
-        "values": number[]  // Values for pie segments
-      }
-    }
-  },
-  "content": {
-    "title": string,      // Title of the analysis
-    "summary": string,    // Brief summary of findings
-    "details": string[],  // List of specific insights
-    "metrics": {          // Key metrics
-      "total": number,    // Total count or sum
-      "average": number,  // Average value
-      "min": number,      // Minimum value
-      "max": number       // Maximum value
-    }
-  }
-}
-
-Focus on:
-1. Choosing appropriate chart types for the data
-2. Clear and meaningful visualizations
-3. Proper data formatting
-4. Informative titles and labels
-5. Relevant metrics and insights
-
-Return JSON format.`,
-  };
-
   try {
-    // Get the last user message
-    const lastUserMessage =
-      messages.filter((m) => m.role === "user").pop()?.content || "";
+    console.log("🎨 Visualizer Agent - Starting with multi-line support");
+    console.log("📊 Available tables:", reconstructedSchema.map((s) => s.tableName));
 
-    // Analyze conversation context
-    const contextAnalysis = await openaiClient.chat.completions.create({
+    const userQuery = messages[messages.length - 1].content;
+    console.log("🔍 User query:", userQuery);
+
+    // Detect if multiple trend lines are needed
+    const requiresMultiLine = detectMultiLineTrend(userQuery);
+    console.log("📈 Multiple trend lines needed:", requiresMultiLine);
+
+    // Enhanced prompt for chart type detection
+    const chartTypePrompt = `Analyze this query and determine the best chart type (bar, pie, or line).
+
+User Query: "${userQuery}"
+
+Rules:
+1. Use LINE chart for:
+   - Time series data (dates, timestamps, months, years)
+   - Trends over time
+   - Continuous data progression
+   - Comparisons showing change over time
+   - Multiple categories over time (use multiple lines)
+
+2. Use BAR chart for:
+   - Categorical comparisons at a single point in time
+   - Rankings or top N items
+   - Discrete categories without time progression
+
+3. Use PIE chart for:
+   - Parts of a whole
+   - Percentage distributions
+   - Single point in time composition
+
+Available tables: ${reconstructedSchema.map((s) => s.tableName).join(", ")}
+
+Return ONLY a JSON object:
+{
+  "chartType": "bar" | "pie" | "line",
+  "reason": "brief explanation",
+  "requiresTimeSeries": true/false,
+  "requiresMultiLine": true/false
+}`;
+
+    const chartTypeResponse = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: `You are a context analyzer. Analyze the conversation and determine if the current request is a follow-up to a previous query.
-Return a JSON object with:
-{
-  "isFollowUp": boolean,    // Whether this is a follow-up request
-  "previousQuery": string,  // The previous query to reference, if any
-  "reason": string         // Brief explanation of your decision
-}`,
+          content: "You are a data visualization expert. You MUST respond with valid JSON only.",
         },
-        ...messages,
-        { role: "user", content: lastUserMessage },
+        {
+          role: "user",
+          content: chartTypePrompt,
+        },
       ],
       response_format: { type: "json_object" },
       temperature: 0.1,
+      max_tokens: 200,
     });
 
-    const content = contextAnalysis.choices[0].message.content;
-    if (!content) {
-      throw new Error("No content in context analysis response");
-    }
-    const contextResult = JSON.parse(content);
-    console.log("Context analysis:", contextResult);
+    const chartTypeDecision = JSON.parse(
+      chartTypeResponse.choices[0]?.message?.content || '{"chartType": "bar"}'
+    );
+    const chartType = chartTypeDecision.chartType || "bar";
+    const needsMultiLine = chartTypeDecision.requiresMultiLine || requiresMultiLine;
 
-    let sqlQuery;
-    if (contextResult.isFollowUp) {
-      // For follow-up requests, look for the last successful query in the conversation history
-      const lastAssistantMessage = messages
-        .filter((m) => m.role === "assistant")
-        .reverse()
-        .find((m) => {
-          try {
-            const response = JSON.parse(m.content);
-            return response.sqlQuery && response.queryResults;
-          } catch (e) {
-            return false;
-          }
-        });
+    console.log("📊 Chart type decision:", chartTypeDecision);
 
-      if (lastAssistantMessage) {
-        try {
-          const lastResponse = JSON.parse(lastAssistantMessage.content);
-          if (lastResponse.sqlQuery) {
-            sqlQuery = lastResponse.sqlQuery;
-            console.log("Using previous query:", sqlQuery);
-          }
-        } catch (e) {
-          console.log("Could not parse last assistant message");
-        }
-      }
-    }
+    // Enhanced SQL generation
+    const sqlPrompt = `Generate a SQL query for visualization.
 
-    // If no previous query found or not a follow-up, generate new query
-    if (!sqlQuery) {
-      const generatedQuery = await generateSQLQuery(
-        reconstructedSchema,
-        lastUserMessage
+User Query: "${userQuery}"
+Chart Type: ${chartType}
+Multiple Lines Needed: ${needsMultiLine}
+Available Schema: ${JSON.stringify(reconstructedSchema, null, 2)}
+
+Requirements:
+${
+  chartType === "line" && needsMultiLine
+    ? `MULTI-LINE CHART - Return data with multiple value columns:
+- First column: x-axis (dates/time periods) - name it clearly (e.g., 'month', 'date')
+- Additional columns: one for each trend line (e.g., 'Margherita', 'Pepperoni', 'Hawaiian')
+- Use CASE statements or multiple SUM() with filters to create separate columns
+- GROUP BY the x-axis column
+- ORDER BY the x-axis column
+
+Example for comparing pizza types over time:
+SELECT 
+  TO_CHAR(order_datetime, 'YYYY-MM') as month,
+  SUM(CASE WHEN pizza_type = 'Margherita' THEN total_price ELSE 0 END) as Margherita,
+  SUM(CASE WHEN pizza_type = 'Pepperoni' THEN total_price ELSE 0 END) as Pepperoni,
+  SUM(CASE WHEN pizza_type = 'Hawaiian' THEN total_price ELSE 0 END) as Hawaiian
+FROM pizza_sales
+GROUP BY TO_CHAR(order_datetime, 'YYYY-MM')
+ORDER BY month`
+    : chartType === "line"
+      ? `SINGLE-LINE CHART:
+- First column: x-axis (dates/time)
+- Second column: y-axis (numeric value)
+- ORDER BY x-axis column
+- Use TO_CHAR() for monthly grouping`
+      : chartType === "bar"
+        ? `BAR CHART - Categorical data:
+- First column: category labels
+- Second column: numeric values`
+        : `PIE CHART - Parts of whole:
+- First column: category labels
+- Second column: numeric values`
+}
+
+Return this exact JSON structure:
+{
+  "sqlQuery": "SELECT statement",
+  "xAxisColumn": "name of x-axis column",
+  "yAxisColumn": "name of primary y-axis column",
+  "additionalColumns": ["column2", "column3"],
+  "xAxisLabel": "display label",
+  "yAxisLabel": "display label",
+  "columnLabels": {
+    "column1": "Display Name 1",
+    "column2": "Display Name 2"
+  },
+  "requiresTimeFormatting": true or false,
+  "isMultiLine": true or false
+}`;
+
+    const sqlResponse = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: "You are a SQL expert. You MUST respond with valid JSON only.",
+        },
+        {
+          role: "user",
+          content: sqlPrompt,
+        },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.1,
+      max_tokens: 400,
+    });
+
+    let sqlDecision;
+    try {
+      sqlDecision = JSON.parse(
+        sqlResponse.choices[0]?.message?.content ||
+          '{"sqlQuery": "SELECT * FROM table LIMIT 10"}'
       );
-      // Validate that the generated query is actually SQL
-      if (
-        typeof generatedQuery === "string" &&
-        generatedQuery.trim().toLowerCase().startsWith("select") &&
-        !generatedQuery.toLowerCase().includes("error") &&
-        !generatedQuery.toLowerCase().includes("sorry")
-      ) {
-        sqlQuery = generatedQuery;
-        console.log("Generated new query:", sqlQuery);
-      } else {
-        throw new Error(
-          "Failed to generate valid SQL query. Please try rephrasing your question."
-        );
-      }
+    } catch (parseError) {
+      console.error("Failed to parse SQL response:", sqlResponse.choices[0]?.message?.content);
+      throw new Error("Invalid SQL response format from AI");
     }
 
-    // Execute the query
-    const queryResult = await executeSQLQuery(connectionId, sqlQuery);
-    console.log("Query results:", queryResult);
+    console.log("🔍 Generated SQL:", sqlDecision.sqlQuery);
+    console.log("📊 Multi-line config:", {
+      isMultiLine: sqlDecision.isMultiLine,
+      additionalColumns: sqlDecision.additionalColumns,
+    });
+
+    // Execute the SQL query
+    const queryResult = await executeSQLQuery(connectionId, sqlDecision.sqlQuery);
 
     if (!queryResult.success) {
-      throw new Error(queryResult.error || "Failed to execute query");
+      throw new Error(`Query execution failed: ${queryResult.error}`);
     }
 
-    // Validate query results
-    if (
-      !queryResult.rows ||
-      !Array.isArray(queryResult.rows) ||
-      queryResult.rows.length === 0
-    ) {
-      throw new Error(
-        "No data found for visualization. Please try a different query."
-      );
-    }
+    console.log("✅ Query executed, rows returned:", queryResult.rows?.length || 0);
 
-    // Process the query results for visualization
-    const determineChartType = (message: string, data: { rows: any[] }) => {
-      // First check explicit user preference
-      if (message.toLowerCase().includes("pie")) return "pie";
-      if (message.toLowerCase().includes("bar")) return "bar";
+    // Transform data for visualization
+    let visualizationData;
+    const isMultiLine = sqlDecision.isMultiLine && chartType === "line";
 
-      // If no explicit preference, analyze the data
-      if (data?.rows?.length > 0) {
-        const columns = Object.keys(data.rows[0]);
-        const valueColumn = columns[1]; // Assuming second column is the value
+    if (isMultiLine) {
+      // Multi-line transformation - keep all columns
+      visualizationData = queryResult.rows?.map((row: any) => {
+        const keys = Object.keys(row);
+        const labelKey = sqlDecision.xAxisColumn || keys[0];
+        
+        let label = row[labelKey];
+        if (sqlDecision.requiresTimeFormatting && (label instanceof Date || !isNaN(Date.parse(label)))) {
+          const date = new Date(label);
+          label = date.toLocaleDateString();
+        }
 
-        // Check if data is suitable for pie chart
-        const total = data.rows.reduce(
-          (sum: number, row: any) => sum + Math.abs(Number(row[valueColumn])),
-          0
-        );
-        const hasReasonableDistribution = data.rows.every((row: any) => {
-          const value = Math.abs(Number(row[valueColumn]));
-          const percentage = (value / total) * 100;
-          return percentage >= 5; // Each slice should be at least 5% of total
+        // Include all numeric columns for multiple lines
+        const dataPoint: any = { label: String(label) };
+        keys.forEach(key => {
+          if (key !== labelKey && typeof row[key] === 'number') {
+            dataPoint[key] = row[key];
+          }
         });
 
-        // If data has reasonable distribution and not too many categories, use pie
-        if (hasReasonableDistribution && data.rows.length <= 8) {
-          return "pie";
-        }
-      }
+        return dataPoint;
+      }) || [];
+    } else {
+      // Single line/bar/pie transformation
+      visualizationData = queryResult.rows?.map((row: any, index: number) => {
+        const keys = Object.keys(row);
+        const labelKey = sqlDecision.xAxisColumn || keys[0];
+        const valueKey = sqlDecision.yAxisColumn || keys[1] || keys[0];
 
-      // Default to bar chart
-      return "bar";
-    };
-
-    const chartType = determineChartType(lastUserMessage, queryResult);
-    const processedData = processQueryResults(queryResult, chartType);
-
-    const response = await openaiClient.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        systemPrompt,
-        ...messages,
-        {
-          role: "system",
-          content: `Query Results: ${JSON.stringify(processedData)}
-Context: ${contextResult.reason}
-Chart Type: ${chartType}`,
-        },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.1,
-    });
-
-    const responseContent = response.choices[0].message.content;
-    if (!responseContent) {
-      throw new Error("No content in visualization response");
-    }
-    const result = JSON.parse(responseContent);
-
-    // Ensure the chart type matches what we processed
-    result.visualization.chartType = chartType;
-    result.visualization.data = processedData;
-
-    return {
-      ...result,
-      sqlQuery,
-      tablesUsed: reconstructedSchema.map((table) => table.tableName),
-      queryResults: queryResult.rows,
-    };
-  } catch (error) {
-    console.error("Error in visualizer:", error);
-    return {
-      visualization: {
-        chartType: "bar",
-        data: [],
-        config: {
-          title: "Error in Visualization",
-          description: "Failed to generate visualization",
-          xAxis: "",
-          yAxis: "",
-          legend: false,
-        },
-      },
-      content: {
-        title: "Error",
-        summary:
-          "Sorry, I encountered an error while creating the visualization.",
-        details: ["Please try rephrasing your question or try again later."],
-        metrics: {},
-      },
-      sqlQuery: "",
-      tablesUsed: [],
-      queryResults: [],
-    };
-  }
-};
-
-function processQueryResults(queryResult: any, chartType: "bar" | "pie") {
-  if (!queryResult || !queryResult.rows || !Array.isArray(queryResult.rows)) {
-    return [];
-  }
-
-  const columns = Object.keys(queryResult.rows[0]);
-  const labelColumn = columns[0];
-  const valueColumn = columns[1];
-
-  const colors = [
-    "#4CAF50",
-    "#2196F3",
-    "#FFC107",
-    "#F44336",
-    "#9C27B0",
-    "#00BCD4",
-    "#FF9800",
-    "#795548",
-    "#607D8B",
-    "#E91E63",
-  ];
-
-  if (chartType === "pie") {
-    const total = queryResult.rows.reduce(
-      (sum: number, row: any) => sum + Math.abs(Number(row[valueColumn])),
-      0
-    );
-
-    return queryResult.rows
-      .map((row: any, index: number) => {
-        const value = Math.abs(Number(row[valueColumn]));
-        const percentage = total > 0 ? (value / total) * 100 : 0;
-
-        return {
-          label: String(row[labelColumn]),
-          value: value,
-          percentage: percentage.toFixed(1),
-          color: colors[index % colors.length],
-        };
-      })
-      .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
-  } else {
-    return queryResult.rows
-      .map((row: any, index: number) => {
-        let value = Number(row[valueColumn]);
-        let label = String(row[labelColumn]);
-
-        if (
-          labelColumn.toLowerCase().includes("date") ||
-          labelColumn.toLowerCase().includes("time")
-        ) {
-          try {
+        let label = row[labelKey];
+        if (chartType === "line" && sqlDecision.requiresTimeFormatting) {
+          if (label instanceof Date || !isNaN(Date.parse(label))) {
             const date = new Date(label);
-            if (!isNaN(date.getTime())) {
-              label = date.toLocaleDateString();
-            }
-          } catch (e) {
-            console.log("Not a valid date:", label);
+            label = date.toLocaleDateString();
           }
         }
 
-        if (!isNaN(Number(label))) {
-          label = `${label}`;
-        }
-
-        if (value < 0) {
-          value = Math.abs(value);
-          label = `${label} (negative)`;
-        }
-
         return {
-          label: label,
-          value: value,
-          color: colors[index % colors.length],
+          label: String(label || `Item ${index + 1}`),
+          value: Number(row[valueKey]) || 0,
         };
-      })
-      .sort((a: { value: number }, b: { value: number }) => b.value - a.value);
-  }
-}
-
-function formatNumber(value: number): string {
-  if (value >= 1000000) {
-    return `${(value / 1000000).toFixed(1)}M`;
-  } else if (value >= 1000) {
-    return `${(value / 1000).toFixed(1)}K`;
-  }
-  return value.toFixed(1);
-}
-
-function isTimeSeriesData(rows: any[], labelColumn: string): boolean {
-  if (rows.length < 2) return false;
-
-  try {
-    const firstDate = new Date(rows[0][labelColumn]);
-    const secondDate = new Date(rows[1][labelColumn]);
-    return !isNaN(firstDate.getTime()) && !isNaN(secondDate.getTime());
-  } catch (e) {
-    return false;
-  }
-}
-
-function groupTimeSeriesData(
-  rows: any[],
-  labelColumn: string,
-  valueColumn: string,
-  period: "day" | "week" | "month" | "year" = "day"
-) {
-  const groupedData = new Map();
-
-  rows.forEach((row) => {
-    const date = new Date(row[labelColumn]);
-    let key: string;
-
-    switch (period) {
-      case "day":
-        key = date.toLocaleDateString();
-        break;
-      case "week":
-        const weekStart = new Date(date);
-        weekStart.setDate(date.getDate() - date.getDay());
-        key = weekStart.toLocaleDateString();
-        break;
-      case "month":
-        key = `${date.getFullYear()}-${date.getMonth() + 1}`;
-        break;
-      case "year":
-        key = date.getFullYear().toString();
-        break;
+      }) || [];
     }
 
-    if (!groupedData.has(key)) {
-      groupedData.set(key, 0);
-    }
-    groupedData.set(key, groupedData.get(key) + Number(row[valueColumn]));
-  });
+    console.log("📊 Transformed data:", visualizationData.length, "points");
 
-  return Array.from(groupedData.entries()).map(([key, value]) => ({
-    label: key,
-    value: value,
-  }));
+    // Generate analysis
+    const analysisPrompt = `Analyze this ${chartType} chart data.
+
+User Query: "${userQuery}"
+Chart Type: ${chartType}
+Multi-line: ${isMultiLine}
+Sample Data: ${JSON.stringify(visualizationData.slice(0, 5), null, 2)}
+
+Provide insights in this exact JSON structure:
+{
+  "title": "Chart Title (max 60 chars)",
+  "summary": "Brief overview",
+  "details": ["insight 1", "insight 2", "insight 3"],
+  "metrics": {
+    "total": 0,
+    "average": 0,
+    "highest": "label: value",
+    "lowest": "label: value"
+  }
+}`;
+
+    const analysisResponse = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: "You are a data analyst. You MUST respond with valid JSON only.",
+        },
+        {
+          role: "user",
+          content: analysisPrompt,
+        },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.3,
+      max_tokens: 600,
+    });
+
+    let analysis;
+    try {
+      analysis = JSON.parse(
+        analysisResponse.choices[0]?.message?.content ||
+          '{"title": "Data Visualization", "summary": "Chart generated", "details": [], "metrics": {}}'
+      );
+    } catch (parseError) {
+      analysis = {
+        title: "Data Visualization",
+        summary: "Chart generated successfully",
+        details: ["Data has been visualized"],
+        metrics: {}
+      };
+    }
+
+    // Create configuration
+    const config: VisualizationConfig = {
+      chartType: chartType as "bar" | "pie" | "line",
+      title: analysis.title,
+      description: analysis.summary,
+      xAxis: sqlDecision.xAxisLabel || "Category",
+      yAxis: sqlDecision.yAxisLabel || "Value",
+      legend: true,
+      stacked: false,
+    };
+
+    // Add chart-specific configurations
+    if (chartType === "line") {
+      // Get data keys for multiple lines
+      const dataKeys = isMultiLine 
+        ? Object.keys(visualizationData[0] || {}).filter(k => k !== 'label')
+        : ['value'];
+      
+      // Get display names for each line
+      const lineNames = dataKeys.map(key => 
+        sqlDecision.columnLabels?.[key] || 
+        key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ')
+      );
+
+      config.lineConfig = {
+        showPoints: true,
+        smooth: true,
+        showArea: false,
+        tension: 0.4,
+        multiLine: isMultiLine,
+        dataKeys: dataKeys,
+        lineNames: lineNames,
+      };
+    } else if (chartType === "pie") {
+      config.pieConfig = {
+        donut: false,
+        showPercentages: true,
+      };
+    } else if (chartType === "bar") {
+      config.barConfig = {
+        barThickness: 40,
+        horizontal: false,
+      };
+    }
+
+    return {
+      content: {
+        title: analysis.title,
+        summary: analysis.summary,
+        details: analysis.details || [],
+        metrics: analysis.metrics || {},
+      },
+      visualization: {
+        chartType: chartType,
+        data: visualizationData,
+        config: config,
+      },
+      sqlQuery: sqlDecision.sqlQuery,
+      queryResult: queryResult,
+    };
+  } catch (error) {
+    console.error("❌ Error in visualizer agent:", error);
+    throw error;
+  }
 }
