@@ -1,55 +1,63 @@
 import { db } from '@/configs/db'
 import { users } from '@/configs/schema'
 import { eq } from 'drizzle-orm'
-import Stripe from 'stripe'
+import { NextRequest, NextResponse } from 'next/server';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-    apiVersion: '2025-08-27.basil'
-})
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { orderId } = body;
 
-
-export async function POST(req: Request) {
-    const body = await req.text()
-    const signature = req.headers.get('stripe-signature') as string
-    const webHookSecret = process.env.STRIPE_WEBHOOK_SECRET
-
-    if (!webHookSecret) {
-        return new Response('Webhook secret not present or expired buddy', { status: 400 })
+    // Validate required fields
+    if (!orderId) {
+      return NextResponse.json(
+        { error: 'Order ID is required' },
+        { status: 400 }
+      );
     }
 
-    const event = stripe.webhooks.constructEvent(body, signature, webHookSecret)
+    // Get order details from Razorpay to extract metadata
+    const Razorpay = require('razorpay');
+    const razorpay = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID!,
+      key_secret: process.env.RAZORPAY_KEY_SECRET!,
+    });
 
-    if (event.type === 'checkout.session.completed') {
-        const session = event.data.object as Stripe.Checkout.Session
-        const userId = session.metadata?.userId
-        const priceId = session.metadata?.priceId
+    const order = await razorpay.orders.fetch(orderId);
+    const userId = order.notes?.userId;
+    const priceId = order.notes?.priceId;
+    const creditsToAdd = order.notes?.credits || 150; // Default to 150 credits
 
+    if (userId && creditsToAdd > 0) {
+      const [user] = await db
+        .select({ credits: users.credits })
+        .from(users)
+        .where(eq(users.clerk_id, userId));
 
-        const creditMap: Record<string, number> = {
-            'price_1S7bEoSKyTkuBUG2Pu5stctC': 150, 
-            'price_1S7bFGSKyTkuBUG2ekAw27zs': 150  
-        }
-
-        const creditsToAdd = creditMap[priceId || ''] || 0
-
-        if (userId && creditsToAdd > 0) {
-
-            const [user] = await db
-                .select({ credits: users.credits })
-                .from(users)
-                .where(eq(users.clerk_id, userId))
-
-            if (user) {
-
-                await db
-                    .update(users)
-                    .set({ 
-                        credits: user.credits + creditsToAdd 
-                    })
-                    .where(eq(users.clerk_id, userId))
-            }
-        }
+      if (user) {
+        await db
+          .update(users)
+          .set({ 
+            credits: user.credits + creditsToAdd 
+          })
+          .where(eq(users.clerk_id, userId));
+      }
     }
 
-    return new Response('OK', { status: 200 })
+    return NextResponse.json({
+      success: true,
+      message: 'Payment processed and credits added successfully'
+    });
+
+  } catch (error) {
+    console.error('Payment processing error:', error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: 'Failed to process payment',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
 }

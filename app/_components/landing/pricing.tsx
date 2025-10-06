@@ -81,8 +81,44 @@ export default function Pricing() {
       });
       
       const data = await response.json();
-      if (data.url) {
-        window.location.href = data.url;
+      if (data.success) {
+        // Load Razorpay script
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.onload = () => {
+          const options = {
+            key: data.key,
+            amount: data.order.amount,
+            currency: data.order.currency,
+            name: 'DataShorts',
+            description: 'DataShorts Pro Subscription',
+            image: '/favicon.ico',
+            order_id: data.order.id,
+            prefill: {
+              name: data.user.name,
+              email: data.user.email,
+            },
+            theme: {
+              color: '#3399cc',
+            },
+            callback_url: `${window.location.origin}/success?order_id=${data.order.id}`,
+            handler: function (response: any) {
+              // Redirect to success page immediately after payment
+              window.location.href = `/success?order_id=${data.order.id}&payment_id=${response.razorpay_payment_id}`;
+            },
+            modal: {
+              ondismiss: function() {
+                console.log('Payment modal closed');
+              }
+            }
+          };
+
+          const rzp = new (window as any).Razorpay(options);
+          rzp.open();
+        };
+        document.body.appendChild(script);
+      } else {
+        console.error('Error creating order:', data.error);
       }
     } catch (error) {
       console.error('Error creating checkout session:', error);
@@ -96,7 +132,7 @@ export default function Pricing() {
         price: "₹149",
         originalPrice: "₹299",
         bestFor: "Special pricing for India",
-        priceId: "price_1S7yMkSKyTkuBUG2eeiKydCc",
+        priceId: "india_149_inr", // Custom identifier for India pricing
         isPopular: true,
         savings: "50% OFF",
         locationIcon: <MapPin className="w-5 h-5" />,
@@ -118,7 +154,7 @@ export default function Pricing() {
         price: "$6.49",
         originalPrice: "$12.99",
         bestFor: "For users worldwide",
-        priceId: "price_1S7bFGSKyTkuBUG2ekAw27zs",
+        priceId: "global_649_usd", // Custom identifier for Global pricing
         isPopular: true,
         savings: "50% OFF",
         locationIcon: <Globe className="w-5 h-5" />,

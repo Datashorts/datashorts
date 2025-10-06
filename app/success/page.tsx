@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { Suspense } from 'react';
 
-export default function SuccessPage() {
+function SuccessContent() {
   return (
     <div className="min-h-screen bg-black flex items-center justify-center">
       <div className="max-w-md mx-auto text-center p-8">
@@ -11,9 +12,15 @@ export default function SuccessPage() {
             </svg>
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Payment Successful!</h1>
-          <p className="text-gray-300">
-            Thank you for your purchase. Your subscription is now active.
+          <p className="text-gray-300 mb-4">
+            Thank you for your purchase. 150 credits have been added to your account.
           </p>
+          <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 mb-6">
+            <p className="text-green-400 text-sm">
+              ✅ Credits added successfully<br/>
+              💳 Payment verified and processed
+            </p>
+          </div>
         </div>
         
         <div className="space-y-4">
@@ -33,5 +40,17 @@ export default function SuccessPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SuccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    }>
+      <SuccessContent />
+    </Suspense>
   );
 }

@@ -10,10 +10,16 @@ export default function CancelPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Payment Cancelled</h1>
-          <p className="text-gray-300">
-            Your payment was cancelled. No charges have been made to your account.
+          <h1 className="text-3xl font-bold text-white mb-2">Payment Failed</h1>
+          <p className="text-gray-300 mb-4">
+            Your payment was not completed. No charges have been made to your account.
           </p>
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6">
+            <p className="text-red-400 text-sm">
+              ❌ Payment verification failed<br/>
+              💳 No charges made to your account
+            </p>
+          </div>
         </div>
         
         <div className="space-y-4">
