@@ -133,7 +133,7 @@ export default function PaymentsPage() {
       }
     } catch (error) {
       console.error('Error creating checkout session:', error);
-      alert('Error creating payment session: ' + (error.message || 'Unknown error'));
+      alert('Error creating payment session: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setLoading(null);
     }
