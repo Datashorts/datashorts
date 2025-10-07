@@ -1,7 +1,49 @@
+"use client"
+
 import Link from "next/link";
-import { Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 function SuccessContent() {
+  const searchParams = useSearchParams();
+  const orderId = searchParams.get('order_id');
+  const paymentId = searchParams.get('payment_id');
+  const [creditsAdded, setCreditsAdded] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const addCredits = async () => {
+      if (!orderId) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/stripe/webhook', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ orderId }),
+        });
+
+        const data = await response.json();
+        
+        if (data.success) {
+          setCreditsAdded(true);
+        } else {
+          console.error('Failed to add credits:', data.error);
+        }
+      } catch (error) {
+        console.error('Error adding credits:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    addCredits();
+  }, [orderId]);
+
   return (
     <div className="min-h-screen bg-black flex items-center justify-center">
       <div className="max-w-md mx-auto text-center p-8">
@@ -13,12 +55,17 @@ function SuccessContent() {
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Payment Successful!</h1>
           <p className="text-gray-300 mb-4">
-            Thank you for your purchase. 150 credits have been added to your account.
+            Thank you for your purchase. {loading ? 'Processing...' : '150 credits have been added to your account.'}
           </p>
           <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 mb-6">
             <p className="text-green-400 text-sm">
-              ✅ Credits added successfully<br/>
-              💳 Payment verified and processed
+              {loading ? (
+                <>⏳ Processing payment...</>
+              ) : creditsAdded ? (
+                <>✅ Credits added successfully<br/>💳 Payment verified and processed</>
+              ) : (
+                <>❌ Error adding credits. Please contact support.</>
+              )}
             </p>
           </div>
         </div>

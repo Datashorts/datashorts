@@ -28,6 +28,15 @@ export async function POST(request: NextRequest) {
     const priceId = order.notes?.priceId;
     const creditsToAdd = order.notes?.credits || 150; // Default to 150 credits
 
+    // Check if order is paid before adding credits
+    if (order.status !== 'paid') {
+      return NextResponse.json({
+        success: false,
+        error: 'Order is not paid yet',
+        orderStatus: order.status
+      }, { status: 400 });
+    }
+
     if (userId && creditsToAdd > 0) {
       const [user] = await db
         .select({ credits: users.credits })
@@ -41,7 +50,21 @@ export async function POST(request: NextRequest) {
             credits: user.credits + creditsToAdd 
           })
           .where(eq(users.clerk_id, userId));
+        
+        console.log(`Added ${creditsToAdd} credits to user ${userId}. New balance: ${user.credits + creditsToAdd}`);
+      } else {
+        console.error(`User not found: ${userId}`);
+        return NextResponse.json({
+          success: false,
+          error: 'User not found'
+        }, { status: 404 });
       }
+    } else {
+      console.error('Invalid userId or creditsToAdd:', { userId, creditsToAdd });
+      return NextResponse.json({
+        success: false,
+        error: 'Invalid user or credits data'
+      }, { status: 400 });
     }
 
     return NextResponse.json({
