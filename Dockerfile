@@ -1,9 +1,12 @@
 # ─── STAGE 1: deps + build ────────────────────────────────────────────────────
-FROM node:18-alpine AS build
+FROM node:20-alpine AS build
+
 # 1) Use /app as your project directory
 WORKDIR /app
+
 # 2) Always use legacy-peer-deps for npm installs
 ENV NPM_CONFIG_LEGACY_PEER_DEPS=true
+
 # 3) Declare build-time env vars (Railway injects these automatically)
 ARG NEXT_PUBLIC_DRIZZLE_DATABASE_URL
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -23,6 +26,7 @@ ARG NEXT_PUBLIC_APP_URL
 ARG STRIPE_SECRET_KEY
 ARG STRIPE_PUBLISHABLE_KEY
 ARG STRIPE_WEBHOOK_SECRET
+
 # 4) Expose them as ENV so `next build` can see them
 ENV NEXT_PUBLIC_DRIZZLE_DATABASE_URL=$NEXT_PUBLIC_DRIZZLE_DATABASE_URL
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -41,29 +45,40 @@ ENV NEXT_PUBLIC_RETURN_URL=$NEXT_PUBLIC_RETURN_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY
 ENV STRIPE_PUBLISHABLE_KEY=$STRIPE_PUBLISHABLE_KEY
-ENV STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET    
+ENV STRIPE_WEBHOOK_SECRET=$STRIPE_WEBHOOK_SECRET
+
 # 5) Install your declared dependencies
 COPY package.json package-lock.json ./
 RUN npm install
+
 # 6) Immediately override Clerk to the latest v6 (supports Next.js 15)
 RUN npm install @clerk/nextjs@latest
+
 # 7) Copy the rest of your source (app/, components/, public/, etc.) and build
 COPY . .
 RUN npm run build
 
+
 # ─── STAGE 2: runtime ─────────────────────────────────────────────────────────
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
+
 WORKDIR /app
+
 # 8) Let Next.js bind to Railway's $PORT (default 3000)
 ARG PORT=3000
 ENV PORT=${PORT}
+
+# ✅ Recommended (avoids dev warnings)
+ENV NODE_ENV=production
+
 # 9) Copy production artifacts from build stage
-COPY --from=build /app/.next      ./.next
-COPY --from=build /app/public     ./public
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/.next         ./.next
+COPY --from=build /app/public        ./public
+COPY --from=build /app/node_modules  ./node_modules
 COPY --from=build /app/package.json  ./package.json
+
 # 10) Expose the listening port
 EXPOSE 3000
-# 11) Start the optimized Next.js server (ensure your package.json has
-#     "start": "next start -p ${PORT:-3000}")
+
+# 11) Start Next.js
 CMD ["npm", "start"]
