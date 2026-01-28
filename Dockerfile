@@ -3,9 +3,6 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 ENV NPM_CONFIG_LEGACY_PEER_DEPS=true
-
-
-ENV NODE_ENV=development
 ENV NPM_CONFIG_PRODUCTION=false
 
 # build args (unchanged)
