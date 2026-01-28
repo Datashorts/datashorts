@@ -69,7 +69,6 @@
     "ollama": "^0.5.14",
     "openai": "^4.91.1",
     "pg": "^8.14.1",
-    "razorpay": "^2.9.6",
     "react": "^19.0.0",
     "react-day-picker": "^8.10.1",
     "react-dom": "^19.0.0",
