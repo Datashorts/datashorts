@@ -2,7 +2,7 @@ import path from "path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Use standalone output for Docker deployment - also helps with prerendering issues
+  // Use standalone output for Docker deployment
   output: 'standalone',
 
   experimental: {

@@ -1,26 +1,39 @@
 "use client"
 
 import * as React from "react"
-import { ClerkProvider } from '@clerk/nextjs'
-import { ThemeProvider as NextThemesProvider } from "next-themes"
+import dynamic from 'next/dynamic'
+
+// Dynamically import providers with no SSR to completely avoid prerendering issues
+const ClerkProviderWrapper = dynamic(
+  () => import('@clerk/nextjs').then(mod => {
+    const { ClerkProvider } = mod
+    return function ClerkWrapper({ children }: { children: React.ReactNode }) {
+      return <ClerkProvider>{children}</ClerkProvider>
+    }
+  }),
+  { ssr: false }
+)
+
+const ThemeProviderWrapper = dynamic(
+  () => import('next-themes').then(mod => {
+    const { ThemeProvider } = mod
+    return function ThemeWrapper({ children }: { children: React.ReactNode }) {
+      return (
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+          {children}
+        </ThemeProvider>
+      )
+    }
+  }),
+  { ssr: false }
+)
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [mounted, setMounted] = React.useState(false)
-
-  React.useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  // During SSR/prerendering, render children without providers to avoid useContext issues
-  if (!mounted) {
-    return <>{children}</>
-  }
-
   return (
-    <ClerkProvider>
-      <NextThemesProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+    <ClerkProviderWrapper>
+      <ThemeProviderWrapper>
         {children}
-      </NextThemesProvider>
-    </ClerkProvider>
+      </ThemeProviderWrapper>
+    </ClerkProviderWrapper>
   )
 }
