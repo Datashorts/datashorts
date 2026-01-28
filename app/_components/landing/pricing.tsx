@@ -71,58 +71,7 @@ export default function Pricing() {
   }, [])
 
   const handleSubscription = async (priceId: string) => {
-    try {
-      const response = await fetch('/api/create-subscription', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ priceId })
-      });
-      
-      const data = await response.json();
-      if (data.success) {
-        // Load Razorpay script
-        const script = document.createElement('script');
-        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-        script.onload = () => {
-          const options = {
-            key: data.key,
-            amount: data.order.amount,
-            currency: data.order.currency,
-            name: 'DataShorts',
-            description: 'DataShorts Pro Subscription',
-            image: '/favicon.ico',
-            order_id: data.order.id,
-            prefill: {
-              name: data.user.name,
-              email: data.user.email,
-            },
-            theme: {
-              color: '#3399cc',
-            },
-            callback_url: `${window.location.origin}/success?order_id=${data.order.id}`,
-            handler: function (response: any) {
-              // Redirect to success page immediately after payment
-              window.location.href = `/success?order_id=${data.order.id}&payment_id=${response.razorpay_payment_id}`;
-            },
-            modal: {
-              ondismiss: function() {
-                console.log('Payment modal closed');
-              }
-            }
-          };
-
-          const rzp = new (window as any).Razorpay(options);
-          rzp.open();
-        };
-        document.body.appendChild(script);
-      } else {
-        console.error('Error creating order:', data.error);
-      }
-    } catch (error) {
-      console.error('Error creating checkout session:', error);
-    }
+    alert('Payment processing is temporarily unavailable. Please try again later.');
   }
 
   const getPricingData = () => {
