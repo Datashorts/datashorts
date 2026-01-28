@@ -2,6 +2,9 @@ import path from "path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Use standalone output for Docker deployment - also helps with prerendering issues
+  output: 'standalone',
+
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",
@@ -16,8 +19,6 @@ const nextConfig: NextConfig = {
     };
     return config;
   },
-
-  
 };
 
 export default nextConfig;
